@@ -1,0 +1,32 @@
+
+> vite_react_shadcn_ts@0.0.0 dev
+> vite --host 127.0.0.1 --port 4173 --clearScreen false
+
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m645[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m4173[22m/[39m
+[2m9:50:06 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ForLawyersLanding.tsx, /src/index.css[22m
+[2m9:50:30 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PartnerLogin.tsx, /src/index.css[22m
+[2m9:50:48 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PartnerVerification.tsx, /src/index.css[22m
+[2m9:51:29 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PartnerApply.tsx, /src/index.css[22m
+[2m9:51:45 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PartnerPortal.tsx, /src/index.css[22m
+[2m9:56:44 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/partner/PartnerTopBar.tsx, /src/index.css[22m
+[2m9:57:40 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ForLawyersLanding.tsx, /src/index.css[22m
+[2m9:58:36 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PartnerLogin.tsx, /src/index.css[22m
+[2m9:59:10 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PartnerVerification.tsx, /src/index.css[22m
+[2m10:01:36 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PartnerApply.tsx, /src/index.css[22m
+[2m10:02:32 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PartnerPortal.tsx, /src/index.css[22m
+[2m10:09:50 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/App.tsx, /src/index.css[22m
+[2m10:11:54 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/Navbar.tsx, /src/index.css[22m
+[2m10:11:57 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m
+[2m10:14:59 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m
+[2m10:15:11 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m
+[2m10:15:50 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m
+[2m10:16:06 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m
+[2m10:48:50 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m
+[2m10:48:56 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m
+[2m10:49:18 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m
+[2m10:49:38 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m
+[2m10:49:46 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m
+[2m10:50:36 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Index.tsx, /src/index.css[22m

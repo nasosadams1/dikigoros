@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, MapPin, Star, Clock, ShieldCheck, ChevronRight, CheckCircle2, Quote, Users, Heart, Home, Scale, FileText, Briefcase, TrendingUp, Video, Phone, ArrowRight, Award, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -83,13 +84,75 @@ const testimonials = [
   },
 ];
 
+const trustStats = [
+  { target: 50, suffix: "", label: "Πιστοποιημένοι Δικηγόροι" },
+  { target: 1000, suffix: "+", label: "Ολοκληρωμένα ραντεβού" },
+  { staticValue: "4.8/5", label: "Μέση Αξιολόγηση" },
+  { target: 10, suffix: "", label: "Πόλεις στην Ελλάδα" },
+] as const;
+
 const Index = () => {
+  const trustStripRef = useRef<HTMLElement | null>(null);
+  const [hasAnimatedTrustStats, setHasAnimatedTrustStats] = useState(false);
+  const [animatedTrustValues, setAnimatedTrustValues] = useState<string[]>(
+    trustStats.map((stat) => ("target" in stat ? `0${stat.suffix}` : stat.staticValue)),
+  );
+
+  useEffect(() => {
+    if (hasAnimatedTrustStats || !trustStripRef.current) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setHasAnimatedTrustStats(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.35 },
+    );
+
+    observer.observe(trustStripRef.current);
+
+    return () => observer.disconnect();
+  }, [hasAnimatedTrustStats]);
+
+  useEffect(() => {
+    if (!hasAnimatedTrustStats) {
+      return;
+    }
+
+    const duration = 1400;
+    let frameId = 0;
+    const startTime = performance.now();
+
+    const tick = (now: number) => {
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      setAnimatedTrustValues(
+        trustStats.map((stat) =>
+          "target" in stat ? `${Math.round(stat.target * eased)}${stat.suffix}` : stat.staticValue,
+        ),
+      );
+
+      if (progress < 1) {
+        frameId = requestAnimationFrame(tick);
+      }
+    };
+
+    frameId = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(frameId);
+  }, [hasAnimatedTrustStats]);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
       {/* Hero */}
-      <section className="relative overflow-hidden border-b border-border">
+      <section id="top" className="relative overflow-hidden border-b border-border">
         <div className="absolute inset-0 bg-gradient-to-b from-secondary/60 to-background" />
         <div className="relative mx-auto max-w-7xl px-5 pb-10 pt-10 lg:px-8 lg:pb-14 lg:pt-12">
           <div className="lg:flex lg:items-center lg:gap-12">
@@ -160,15 +223,15 @@ const Index = () => {
             </div>
 
             {/* Right: Featured Lawyer Preview — hero signature element */}
-            <div className="hidden lg:block lg:w-[340px] xl:w-[380px]">
+            <div className="hidden lg:block lg:w-[400px] xl:w-[450px]">
               <div className="relative">
                 {/* Main featured card */}
-                <div className="rounded-2xl border border-border bg-card p-5 shadow-2xl shadow-foreground/[0.08]">
-                  <div className="flex items-center gap-3.5">
+                <div className="rounded-[1.7rem] border border-border bg-card p-6 shadow-2xl shadow-foreground/[0.08] xl:p-7">
+                  <div className="flex items-center gap-4">
                     <img
                       src={featuredLawyers[0].image}
                       alt={featuredLawyers[0].name}
-                      className="h-16 w-16 rounded-2xl object-cover ring-2 ring-background shadow-md"
+                      className="h-20 w-20 rounded-2xl object-cover ring-2 ring-background shadow-md"
                     />
                     <div className="min-w-0">
                       <p className="truncate text-[13px] font-bold text-foreground">{featuredLawyers[0].name}</p>
@@ -180,24 +243,30 @@ const Index = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="mt-4 flex items-center justify-between rounded-xl bg-sage/10 px-3.5 py-2.5">
+                  <div className="mt-5 flex items-center justify-between rounded-2xl bg-sage/10 px-4 py-3.5">
                     <div>
                       <p className="text-[11px] font-bold text-sage-foreground">Διαθέσιμη σήμερα</p>
-                      <p className="text-sm font-bold text-foreground">14:00, 15:30, 17:00</p>
+                      <p className="text-[1.1rem] font-bold text-foreground">14:00, 15:30, 17:00</p>
                     </div>
-                    <span className="h-2 w-2 rounded-full bg-sage animate-pulse" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-sage animate-pulse" />
                   </div>
-                  <div className="mt-3 flex items-center justify-between">
+                  <div className="hidden">
                     <span className="text-lg font-bold text-foreground">από €{featuredLawyers[0].price}</span>
                     <span className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">Κλείσε Ραντεβού</span>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between gap-4">
+                    <span className="text-[1.9rem] font-bold text-foreground">από €{featuredLawyers[0].price}</span>
+                    <Button asChild className="h-11 rounded-xl px-5 text-sm font-bold shadow-md shadow-primary/20">
+                      <Link to="/booking/maria-papadopoulou">Κλείσε Ραντεβού</Link>
+                    </Button>
                   </div>
                 </div>
 
                 {/* Micro social proof cluster */}
-                <div className="mt-3 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-lg shadow-foreground/[0.04]">
+                <div className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 shadow-lg shadow-foreground/[0.04]">
                   <div className="flex -space-x-2">
                     {featuredLawyers.map((l, i) => (
-                      <img key={i} src={l.image} alt="" className="h-8 w-8 rounded-full border-2 border-card object-cover" />
+                      <img key={i} src={l.image} alt="" className="h-9 w-9 rounded-full border-2 border-card object-cover" />
                     ))}
                   </div>
                   <div>
@@ -212,16 +281,16 @@ const Index = () => {
       </section>
 
       {/* Trust Strip */}
-      <section className="bg-primary">
+      <section ref={trustStripRef} className="bg-primary">
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 px-5 py-5 text-center md:grid-cols-4 lg:px-8">
           {[
             { value: "500+", label: "Πιστοποιημένοι Δικηγόροι" },
             { value: "15.000+", label: "Ολοκληρωμένα Ραντεβού" },
             { value: "4.8/5", label: "Μέση Αξιολόγηση" },
             { value: "45+", label: "Πόλεις στην Ελλάδα" },
-          ].map((stat) => (
+          ].map((stat, index) => (
             <div key={stat.label}>
-              <p className="font-serif text-2xl text-primary-foreground md:text-3xl">{stat.value}</p>
+              <p className="font-serif text-2xl text-primary-foreground md:text-3xl">{animatedTrustValues[index]}</p>
               <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-foreground/60">{stat.label}</p>
             </div>
           ))}
