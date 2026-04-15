@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Search, MapPin, Star, Clock, ShieldCheck, ChevronRight, CheckCircle2, Quote, Users, Heart, Home, Scale, FileText, Briefcase, TrendingUp, Video, Phone, ArrowRight, Award, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { lawyers } from "@/data/lawyers";
 
 const categories = [
   { name: "Οικογενειακό Δίκαιο", desc: "Διαζύγια, επιμέλεια, διατροφή", icon: Heart },
@@ -60,6 +61,8 @@ const featuredLawyers = [
   },
 ];
 
+const featuredLawyerIds = ["maria-papadopoulou", "nikos-antoniou", "eleni-karagianni"];
+
 const testimonials = [
   {
     text: "Βρήκα δικηγόρο για το διαζύγιό μου σε λιγότερο από μία ώρα. Η διαδικασία ήταν απίστευτα απλή και η δικηγόρος εξαιρετική.",
@@ -84,15 +87,24 @@ const testimonials = [
   },
 ];
 
+const totalReviews = lawyers.reduce((sum, lawyer) => sum + lawyer.reviews, 0);
+const averageRating = (
+  lawyers.reduce((sum, lawyer) => sum + lawyer.rating, 0) / Math.max(1, lawyers.length)
+).toFixed(1);
+const totalCities = new Set(lawyers.map((lawyer) => lawyer.city)).size;
+
 const trustStats = [
-  { target: 50, suffix: "", label: "Πιστοποιημένοι Δικηγόροι" },
-  { target: 1000, suffix: "+", label: "Ολοκληρωμένα ραντεβού" },
-  { staticValue: "4.8/5", label: "Μέση Αξιολόγηση" },
-  { target: 10, suffix: "", label: "Πόλεις στην Ελλάδα" },
+  { target: lawyers.length, suffix: "", label: "Ελεγμένα προφίλ" },
+  { target: totalReviews, suffix: "+", label: "Καταγεγραμμένες αξιολογήσεις" },
+  { staticValue: `${averageRating}/5`, label: "Μέση αξιολόγηση" },
+  { target: totalCities, suffix: "", label: "Πόλεις με διαθέσιμα προφίλ" },
 ] as const;
 
 const Index = () => {
+  const navigate = useNavigate();
   const trustStripRef = useRef<HTMLElement | null>(null);
+  const [heroQuery, setHeroQuery] = useState("");
+  const [heroCity, setHeroCity] = useState("");
   const [hasAnimatedTrustStats, setHasAnimatedTrustStats] = useState(false);
   const [animatedTrustValues, setAnimatedTrustValues] = useState<string[]>(
     trustStats.map((stat) => ("target" in stat ? `0${stat.suffix}` : stat.staticValue)),
@@ -117,6 +129,14 @@ const Index = () => {
 
     return () => observer.disconnect();
   }, [hasAnimatedTrustStats]);
+
+  const handleHeroSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const params = new URLSearchParams();
+    if (heroQuery.trim()) params.set("q", heroQuery.trim());
+    if (heroCity.trim()) params.set("city", heroCity.trim());
+    navigate({ pathname: "/search", search: params.toString() });
+  };
 
   useEffect(() => {
     if (!hasAnimatedTrustStats) {
@@ -160,7 +180,7 @@ const Index = () => {
             <div className="flex-1 lg:max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold text-foreground shadow-sm">
                 <ShieldCheck className="h-3.5 w-3.5 text-sage" />
-                Πιστοποιημένο δίκτυο 500+ δικηγόρων σε όλη την Ελλάδα
+                Ελεγμένο δίκτυο δικηγόρων με στοιχεία φακέλου και διαθέσιμα ραντεβού
               </div>
               <h1 className="mt-5 font-serif text-[2.75rem] leading-[1.08] tracking-tight text-foreground md:text-[3.5rem] lg:text-[3.75rem]">
                 Βρες τον σωστό{" "}
@@ -178,10 +198,12 @@ const Index = () => {
               <div className="mt-7 lg:mt-8">
                 <div className="rounded-2xl border border-border bg-card p-4 shadow-xl shadow-foreground/[0.06] md:p-5">
                   <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Αναζήτηση Δικηγόρου</p>
-                  <div className="grid gap-2.5 md:grid-cols-3 md:gap-3">
+                  <form onSubmit={handleHeroSearch} className="grid gap-2.5 md:grid-cols-3 md:gap-3">
                     <div className="relative">
                       <Search className="absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                       <input
+                        value={heroQuery}
+                        onChange={(event) => setHeroQuery(event.target.value)}
                         placeholder="Νομικό θέμα (π.χ. διαζύγιο)"
                         className="h-[52px] w-full rounded-xl border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
                       />
@@ -189,17 +211,17 @@ const Index = () => {
                     <div className="relative">
                       <MapPin className="absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                       <input
+                        value={heroCity}
+                        onChange={(event) => setHeroCity(event.target.value)}
                         placeholder="Πόλη (π.χ. Αθήνα)"
                         className="h-[52px] w-full rounded-xl border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
                       />
                     </div>
-                    <Link to="/search">
-                      <Button className="h-[52px] w-full rounded-xl text-[15px] font-bold tracking-wide">
-                        Αναζήτηση
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </Link>
-                  </div>
+                    <Button type="submit" className="h-[52px] w-full rounded-xl text-[15px] font-bold tracking-wide">
+                      Αναζήτηση
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </form>
                 </div>
               </div>
 
@@ -270,8 +292,8 @@ const Index = () => {
                     ))}
                   </div>
                   <div>
-                    <p className="text-[12px] font-bold text-foreground">127 ραντεβού αυτή την εβδομάδα</p>
-                    <p className="text-[11px] text-muted-foreground">στην Αθήνα & Θεσσαλονίκη</p>
+                    <p className="text-[12px] font-bold text-foreground">Προφίλ με έλεγχο στοιχείων και άμεση κράτηση</p>
+                    <p className="text-[11px] text-muted-foreground">Αθήνα, Θεσσαλονίκη και Πάτρα</p>
                   </div>
                 </div>
               </div>
@@ -283,12 +305,7 @@ const Index = () => {
       {/* Trust Strip */}
       <section ref={trustStripRef} className="bg-primary">
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 px-5 py-5 text-center md:grid-cols-4 lg:px-8">
-          {[
-            { value: "500+", label: "Πιστοποιημένοι Δικηγόροι" },
-            { value: "15.000+", label: "Ολοκληρωμένα Ραντεβού" },
-            { value: "4.8/5", label: "Μέση Αξιολόγηση" },
-            { value: "45+", label: "Πόλεις στην Ελλάδα" },
-          ].map((stat, index) => (
+          {trustStats.map((stat, index) => (
             <div key={stat.label}>
               <p className="font-serif text-2xl text-primary-foreground md:text-3xl">{animatedTrustValues[index]}</p>
               <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-foreground/60">{stat.label}</p>
@@ -311,10 +328,10 @@ const Index = () => {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {featuredLawyers.map((lawyer) => (
+          {featuredLawyers.map((lawyer, index) => (
             <Link
               key={lawyer.name}
-              to="/lawyer/maria-papadopoulou"
+              to={`/lawyer/${featuredLawyerIds[index] || "maria-papadopoulou"}`}
               className="group relative overflow-hidden rounded-2xl border border-border bg-card transition-all hover:shadow-xl hover:shadow-foreground/[0.07] hover:border-primary/15"
             >
               {/* Top section */}
@@ -394,7 +411,7 @@ const Index = () => {
             {categories.map((cat) => (
               <Link
                 key={cat.name}
-                to="/search"
+                to={`/search?specialty=${encodeURIComponent(cat.name)}`}
                 className="group flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-all hover:shadow-lg hover:shadow-foreground/[0.05] hover:border-primary/20"
               >
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">

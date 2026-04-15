@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Dikigoros</title>
+  <desc id="desc">Secure legal marketplace brand card</desc>
+  <rect width="1200" height="630" fill="#f7faf8"/>
+  <rect x="78" y="78" width="1044" height="474" rx="24" fill="#ffffff" stroke="#cfdad4" stroke-width="2"/>
+  <rect x="128" y="128" width="84" height="84" rx="16" fill="#0f6b55"/>
+  <text x="170" y="184" text-anchor="middle" font-family="Georgia, serif" font-size="46" fill="#ffffff">Δ</text>
+  <text x="128" y="286" font-family="Georgia, serif" font-size="82" fill="#12201b">Dikigoros</text>
+  <text x="132" y="356" font-family="Arial, sans-serif" font-size="34" fill="#33443d">Ασφαλής εύρεση και κράτηση δικηγόρου</text>
+  <text x="132" y="414" font-family="Arial, sans-serif" font-size="24" fill="#5f7068">Ραντεβού, έγγραφα, πληρωμές και verified κριτικές σε έναν ιδιωτικό χώρο.</text>
+  <circle cx="1000" cy="198" r="72" fill="#f06f4f"/>
+  <circle cx="906" cy="398" r="118" fill="#dceae3"/>
+  <path d="M862 392h88M906 348v88" stroke="#0f6b55" stroke-width="18" stroke-linecap="round"/>
+</svg>

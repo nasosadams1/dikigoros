@@ -1,13 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Menu, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AuthContainer from "@/components/auth/AuthContainer";
+import { useAuth } from "@/context/AuthContext";
+import { clearPartnerSession, getPartnerSession } from "@/lib/platformRepository";
 
 const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [partnerSession, setPartnerSession] = useState(() => getPartnerSession());
   const location = useLocation();
+  const { user, signOut } = useAuth();
 
   const links = [
     { label: "Αρχική", path: "/#top" },
@@ -17,6 +21,25 @@ const Navbar = () => {
   ];
 
   const currentPath = useMemo(() => `${location.pathname}${location.hash}`, [location.hash, location.pathname]);
+  const isPartnerSignedIn = Boolean(partnerSession);
+  const profilePath = "/account";
+  const partnerPortalPath = "/for-lawyers/portal?view=profile";
+  const profileLabel = "Προφίλ";
+
+  useEffect(() => {
+    setPartnerSession(getPartnerSession());
+  }, [location.pathname, location.search]);
+
+  const handleSignOut = async () => {
+    if (partnerSession) {
+      clearPartnerSession();
+      setPartnerSession(null);
+    }
+
+    if (user) {
+      await signOut();
+    }
+  };
 
   const isActive = (path: string) => {
     if (path === "/#top") {
@@ -52,6 +75,29 @@ const Navbar = () => {
           </div>
 
           <div className="hidden items-center gap-3 md:flex">
+            {user || partnerSession ? (
+              <>
+                {isPartnerSignedIn ? (
+                  <Button asChild variant="ghost" size="sm" className="text-sm font-medium text-muted-foreground">
+                    <Link to={partnerPortalPath}>Πίνακας</Link>
+                  </Button>
+                ) : null}
+                <Button asChild variant="ghost" size="sm" className="text-sm font-medium text-muted-foreground">
+                  <Link to={profilePath}>
+                    <UserRound className="h-4 w-4" />
+                    {profileLabel}
+                  </Link>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-sm font-medium text-muted-foreground"
+                  onClick={() => void handleSignOut()}
+                >
+                  Αποσύνδεση
+                </Button>
+              </>
+            ) : (
             <Button
               variant="ghost"
               size="sm"
@@ -60,15 +106,18 @@ const Navbar = () => {
             >
               Σύνδεση
             </Button>
-            <Button asChild size="sm" className="rounded-lg px-5 text-sm font-medium">
-              <Link to="/for-lawyers">Είστε Δικηγόρος;</Link>
-            </Button>
+            )}
+            {!isPartnerSignedIn ? (
+              <Button asChild size="sm" className="rounded-lg px-5 text-sm font-medium">
+                <Link to="/for-lawyers">Είστε Δικηγόρος;</Link>
+              </Button>
+            ) : null}
           </div>
 
           <button
             className="flex h-10 w-10 items-center justify-center rounded-lg md:hidden"
             onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="Open navigation menu"
+            aria-label="Άνοιγμα μενού πλοήγησης"
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -88,6 +137,32 @@ const Navbar = () => {
                 </Link>
               ))}
               <div className="mt-3 flex flex-col gap-3 border-t border-border pt-4">
+                {user || partnerSession ? (
+                  <>
+                    {isPartnerSignedIn ? (
+                      <Button asChild variant="outline" className="w-full">
+                        <Link to={partnerPortalPath} onClick={() => setMobileOpen(false)}>
+                          Πίνακας
+                        </Link>
+                      </Button>
+                    ) : null}
+                    <Button asChild variant="outline" className="w-full">
+                      <Link to={profilePath} onClick={() => setMobileOpen(false)}>
+                        {profileLabel}
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        setMobileOpen(false);
+                        void handleSignOut();
+                      }}
+                    >
+                      Αποσύνδεση
+                    </Button>
+                  </>
+                ) : (
                 <Button
                   variant="outline"
                   className="w-full"
@@ -98,11 +173,14 @@ const Navbar = () => {
                 >
                   Σύνδεση
                 </Button>
-                <Button asChild className="w-full">
-                  <Link to="/for-lawyers" onClick={() => setMobileOpen(false)}>
-                    Είστε Δικηγόρος;
-                  </Link>
-                </Button>
+                )}
+                {!isPartnerSignedIn ? (
+                  <Button asChild className="w-full">
+                    <Link to="/for-lawyers" onClick={() => setMobileOpen(false)}>
+                      Είστε Δικηγόρος;
+                    </Link>
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>

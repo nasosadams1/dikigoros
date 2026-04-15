@@ -33,9 +33,9 @@ const Footer = () => {
           <div>
             <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-primary-foreground/50">Για Δικηγόρους</h4>
             <ul className="space-y-3">
-              <li><a href="#" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Εγγραφή Δικηγόρου</a></li>
-              <li><a href="#" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Πώς Λειτουργεί</a></li>
-              <li><a href="#" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Τιμολόγηση</a></li>
+              <li><Link to="/for-lawyers/apply" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Εγγραφή Δικηγόρου</Link></li>
+              <li><Link to="/for-lawyers#workflow" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Πώς Λειτουργεί</Link></li>
+              <li><Link to="/for-lawyers/apply" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Αίτηση συνεργασίας</Link></li>
             </ul>
           </div>
 
@@ -43,16 +43,16 @@ const Footer = () => {
           <div>
             <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-primary-foreground/50">Νομικά</h4>
             <ul className="space-y-3">
-              <li><a href="#" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Όροι Χρήσης</a></li>
-              <li><a href="#" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Πολιτική Απορρήτου</a></li>
-              <li><a href="#" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Επικοινωνία</a></li>
+              <li><Link to="/terms" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Όροι Χρήσης</Link></li>
+              <li><Link to="/privacy" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Πολιτική Απορρήτου</Link></li>
+              <li><Link to="/contact" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Επικοινωνία</Link></li>
             </ul>
           </div>
         </div>
 
         <div className="mt-16 flex flex-col items-center justify-between gap-4 border-t border-primary-foreground/10 pt-8 md:flex-row">
-          <p className="text-xs text-primary-foreground/50">© 2025 Dikigoros. Με επιφύλαξη παντός δικαιώματος.</p>
-          <p className="text-xs text-primary-foreground/50">Σχεδιασμένο στην Ελλάδα 🇬🇷</p>
+          <p className="text-xs text-primary-foreground/50">© 2026 Dikigoros. Με επιφύλαξη παντός δικαιώματος.</p>
+          <p className="text-xs text-primary-foreground/50">Σχεδιασμένο στην Ελλάδα</p>
         </div>
       </div>
     </footer>

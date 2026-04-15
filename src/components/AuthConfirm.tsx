@@ -12,7 +12,7 @@ const AuthConfirm: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<ConfirmStatus>("loading");
-  const [title, setTitle] = useState("Επιβεβαίωση email");
+  const [title, setTitle] = useState("Επιβεβαίωση ηλεκτρονικού ταχυδρομείου");
   const [message, setMessage] = useState("Ολοκληρώνουμε με ασφάλεια την επιβεβαίωση του λογαριασμού σας.");
 
   const confirmationParams = useMemo(
@@ -66,7 +66,7 @@ const AuthConfirm: React.FC = () => {
 
         if (data.session?.user) {
           setStatus("success");
-          setTitle("Το email επιβεβαιώθηκε");
+          setTitle("Το ηλεκτρονικό ταχυδρομείο επιβεβαιώθηκε");
           setMessage("Ο λογαριασμός σας είναι έτοιμος. Θα επιστρέψετε αυτόματα στην αρχική σελίδα.");
           redirectTimer = window.setTimeout(() => navigate("/"), REDIRECT_DELAY_MS);
           return;
@@ -77,17 +77,17 @@ const AuthConfirm: React.FC = () => {
         throw new Error(
           hasAuthParams
             ? "Ο σύνδεσμος επιβεβαίωσης είναι ελλιπής ή έχει ήδη χρησιμοποιηθεί."
-            : "Δεν βρέθηκε έγκυρη συνεδρία επιβεβαίωσης. Ανοίξτε τον πιο πρόσφατο σύνδεσμο από το email σας.",
+            : "Δεν βρέθηκε έγκυρη συνεδρία επιβεβαίωσης. Ανοίξτε τον πιο πρόσφατο σύνδεσμο από το ηλεκτρονικό ταχυδρομείο σας.",
         );
-      } catch (error: any) {
-        const rawMessage = error?.message || "";
+      } catch (error: unknown) {
+        const rawMessage = error instanceof Error ? error.message : "";
         const friendlyMessage = rawMessage.includes(PKCE_MISSING_VERIFIER_MESSAGE)
-          ? "Αυτός ο σύνδεσμος επιβεβαίωσης δεν μπορεί πλέον να ολοκληρωθεί σε αυτόν τον browser. Ζητήστε νέο email επιβεβαίωσης."
+          ? "Αυτός ο σύνδεσμος επιβεβαίωσης δεν μπορεί πλέον να ολοκληρωθεί σε αυτόν τον περιηγητή. Ζητήστε νέο μήνυμα επιβεβαίωσης."
           : rawMessage;
 
         setStatus("error");
         setTitle("Η επιβεβαίωση δεν ολοκληρώθηκε");
-        setMessage(friendlyMessage || "Κάτι διέκοψε την επιβεβαίωση. Δοκιμάστε ξανά ή ζητήστε νέο email.");
+        setMessage(friendlyMessage || "Κάτι διέκοψε την επιβεβαίωση. Δοκιμάστε ξανά ή ζητήστε νέο μήνυμα.");
       }
     };
 
@@ -118,12 +118,12 @@ const AuthConfirm: React.FC = () => {
               </div>
               <div>
                 <p className="font-serif text-2xl tracking-tight">Dikigoros</p>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary-foreground/50">Account security</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary-foreground/50">Ασφάλεια λογαριασμού</p>
               </div>
             </div>
             <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-primary-foreground/15 bg-primary-foreground/10 px-3 py-1 text-xs font-bold text-primary-foreground/80">
               <MailCheck className="h-4 w-4 text-gold" />
-              Email verification
+              Επιβεβαίωση ηλεκτρονικού ταχυδρομείου
             </div>
             <h1 className="mt-6 font-serif text-4xl leading-tight tracking-tight">Ολοκλήρωση ασφαλούς σύνδεσης.</h1>
             <p className="mt-4 text-sm leading-6 text-primary-foreground/65">
@@ -133,7 +133,7 @@ const AuthConfirm: React.FC = () => {
 
           <div className="px-8 py-10 sm:px-10 sm:py-12">
             <div className="inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              {status === "loading" ? "Processing" : status === "success" ? "Verified" : "Action needed"}
+              {status === "loading" ? "Επεξεργασία" : status === "success" ? "Επιβεβαιώθηκε" : "Απαιτείται ενέργεια"}
             </div>
             <div className="mt-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">{statusIcon}</div>
             <h2 className="mt-6 font-serif text-3xl tracking-tight text-foreground">{title}</h2>
@@ -147,7 +147,7 @@ const AuthConfirm: React.FC = () => {
 
             {status === "error" && (
               <div className="mt-8 rounded-2xl border border-gold/30 bg-gold/10 p-4 text-sm leading-6 text-gold-foreground">
-                Αν ζητήσατε πολλά email, χρησιμοποιήστε μόνο τον πιο πρόσφατο σύνδεσμο.
+                Αν ζητήσατε πολλά μηνύματα, χρησιμοποιήστε μόνο τον πιο πρόσφατο σύνδεσμο.
               </div>
             )}
 
@@ -168,7 +168,7 @@ const AuthConfirm: React.FC = () => {
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-card px-5 text-sm font-bold text-foreground transition hover:bg-secondary"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  Ζητήστε νέο email
+                  Ζητήστε νέο μήνυμα
                 </button>
               )}
             </div>

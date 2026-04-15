@@ -1,0 +1,1216 @@
+import { publicSupabase, supabase } from "@/lib/supabase";
+
+export type PersistenceSource = "supabase" | "local";
+
+export interface BookingPayload {
+  userId?: string;
+  lawyerId: string;
+  lawyerName: string;
+  consultationType: string;
+  consultationMode: string;
+  price: number;
+  duration: string;
+  dateLabel: string;
+  time: string;
+  clientName: string;
+  clientEmail: string;
+  clientPhone: string;
+  issueSummary?: string;
+}
+
+export interface StoredBooking extends BookingPayload {
+  id: string;
+  referenceId: string;
+  status: "confirmed" | "cancelled" | "completed";
+  createdAt: string;
+  persistenceSource: PersistenceSource;
+}
+
+export interface StoredPayment {
+  id: string;
+  bookingId: string;
+  userId?: string;
+  lawyerId: string;
+  amount: number;
+  currency: "EUR";
+  status: "pending" | "paid" | "refunded" | "failed";
+  invoiceNumber: string;
+  provider: "stripe";
+  stripeCheckoutSessionId?: string;
+  stripePaymentIntentId?: string;
+  checkoutSessionUrl?: string;
+  receiptUrl?: string;
+  createdAt: string;
+  updatedAt?: string;
+  paidAt?: string;
+  persistenceSource: PersistenceSource;
+}
+
+export interface StoredLawyerReview {
+  id: string;
+  bookingId: string;
+  lawyerId: string;
+  clientName: string;
+  rating: number;
+  clarityRating: number;
+  responsivenessRating: number;
+  text: string;
+  consultationType: string;
+  date: string;
+  status: "published" | "pending_review" | "flagged" | "hidden";
+  reply: string;
+  persistenceSource: PersistenceSource;
+}
+
+export interface StoredBookingDocument {
+  id: string;
+  bookingId?: string;
+  bookingReference?: string;
+  clientName?: string;
+  name: string;
+  size: number;
+  type: string;
+  category: string;
+  visibleToLawyer: boolean;
+  uploadedAt: string;
+  storagePath?: string;
+  downloadUrl?: string;
+  persistenceSource: PersistenceSource;
+}
+
+export interface PaymentSetupSession {
+  provider: "stripe";
+  status: "setup_required" | "ready";
+  id?: string;
+  url?: string;
+  clientSecret?: string;
+  requestedAt: string;
+  persistenceSource: PersistenceSource;
+}
+
+export interface PartnerApplicationPayload {
+  fullName: string;
+  workEmail: string;
+  phone: string;
+  city: string;
+  lawFirmName?: string;
+  websiteOrLinkedIn?: string;
+  barAssociation: string;
+  registrationNumber: string;
+  yearsOfExperience: string;
+  specialties: string[];
+  professionalBio: string;
+  documents: Array<{
+    name: string;
+    size: number;
+    type: string;
+  }>;
+}
+
+export interface StoredPartnerApplication extends PartnerApplicationPayload {
+  id: string;
+  referenceId: string;
+  status: "under_review";
+  createdAt: string;
+  persistenceSource: PersistenceSource;
+}
+
+export interface SubmissionResult<T> {
+  record: T;
+  source: PersistenceSource;
+  syncError?: string;
+}
+
+export interface BookingMutationResult {
+  booking: StoredBooking | null;
+  synced: boolean;
+  error?: string;
+}
+
+export interface PartnerSession {
+  email: string;
+  sessionToken?: string;
+  verifiedAt: string;
+  expiresAt: string;
+  role: "partner";
+  approved: true;
+}
+
+const bookingStorageKey = "dikigoros.bookingRequests.v1";
+const paymentStorageKey = "dikigoros.bookingPayments.v1";
+const applicationStorageKey = "dikigoros.partnerApplications.v1";
+const partnerSessionStorageKey = "dikigoros.partnerSession.v1";
+const partnerAccessCodeStorageKey = "dikigoros.partnerAccessCodes.v1";
+export const localPartnerAccessCode = "742913";
+const approvedLocalPartnerEmails = new Set(["partner@lawfirm.gr", "nasoosadamopoylos@gmail.com"]);
+const bookingTableName = (import.meta.env.VITE_SUPABASE_BOOKINGS_TABLE as string | undefined) || "booking_requests";
+const applicationTableName =
+  (import.meta.env.VITE_SUPABASE_PARTNER_APPLICATIONS_TABLE as string | undefined) || "partner_applications";
+const isTestMode = import.meta.env.MODE === "test";
+const enableLocalBookingFallback =
+  isTestMode || import.meta.env.VITE_ENABLE_LOCAL_BOOKING_FALLBACK === "true";
+const requirePartnerBackend = import.meta.env.VITE_REQUIRE_PARTNER_BACKEND === "true";
+const enableLocalPartnerFallback =
+  isTestMode || import.meta.env.VITE_ENABLE_LOCAL_PARTNER_FALLBACK === "true";
+const usePartnerAccessCodeFunction =
+  import.meta.env.VITE_USE_PARTNER_ACCESS_CODE_FUNCTION === "true" ||
+  (!import.meta.env.DEV && import.meta.env.VITE_USE_PARTNER_ACCESS_CODE_FUNCTION !== "false");
+
+export const isVerifiedBooking = (booking?: Pick<StoredBooking, "persistenceSource"> | null) =>
+  booking?.persistenceSource === "supabase";
+
+const getStorage = () => {
+  if (typeof window === "undefined") return null;
+  return window.localStorage;
+};
+
+const readStoredList = <T>(key: string): T[] => {
+  const storage = getStorage();
+  if (!storage) return [];
+
+  try {
+    const rawValue = storage.getItem(key);
+    if (!rawValue) return [];
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeStoredList = <T>(key: string, records: T[]) => {
+  const storage = getStorage();
+  if (!storage) return;
+  storage.setItem(key, JSON.stringify(records));
+};
+
+const sortNewestFirst = <T extends { createdAt?: string; uploadedAt?: string; date?: string }>(items: T[]) =>
+  [...items].sort((a, b) => {
+    const left = new Date(a.createdAt || a.uploadedAt || a.date || 0).getTime();
+    const right = new Date(b.createdAt || b.uploadedAt || b.date || 0).getTime();
+    return right - left;
+  });
+
+const mergeById = <T extends { id: string; createdAt?: string; uploadedAt?: string; date?: string }>(
+  remoteItems: T[],
+  localItems: T[],
+) => {
+  const seen = new Set<string>();
+  const merged: T[] = [];
+
+  [...remoteItems, ...localItems].forEach((item) => {
+    if (seen.has(item.id)) return;
+    seen.add(item.id);
+    merged.push(item);
+  });
+
+  return sortNewestFirst(merged);
+};
+
+interface LocalPartnerAccessCode {
+  email: string;
+  code: string;
+  expiresAt: string;
+}
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+export const isLocalApprovedPartner = (email: string) =>
+  enableLocalPartnerFallback && approvedLocalPartnerEmails.has(normalizeEmail(email));
+
+const getLocalPartnerCodeExpiry = () => new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+const getLocalPartnerAccessCode = (email: string) => {
+  const normalizedEmail = normalizeEmail(email);
+  const now = Date.now();
+
+  return (
+    readStoredList<LocalPartnerAccessCode>(partnerAccessCodeStorageKey).find(
+      (record) => record.email === normalizedEmail && new Date(record.expiresAt).getTime() > now,
+    ) || null
+  );
+};
+
+export const createLocalPartnerAccessCode = (email: string) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!isLocalApprovedPartner(normalizedEmail)) return null;
+
+  const codeRecord: LocalPartnerAccessCode = {
+    email: normalizedEmail,
+    code: localPartnerAccessCode,
+    expiresAt: getLocalPartnerCodeExpiry(),
+  };
+  const existingRecords = readStoredList<LocalPartnerAccessCode>(partnerAccessCodeStorageKey).filter(
+    (record) => record.email !== normalizedEmail,
+  );
+  writeStoredList(partnerAccessCodeStorageKey, [codeRecord, ...existingRecords]);
+  return codeRecord;
+};
+
+const isValidLocalPartnerAccessCode = (email: string, code: string) => {
+  const normalizedCode = code.trim();
+  const storedCode = getLocalPartnerAccessCode(email);
+
+  if (storedCode?.code === normalizedCode) return true;
+  return isLocalApprovedPartner(email) && normalizedCode === localPartnerAccessCode;
+};
+
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return "Unknown persistence error";
+};
+
+const getErrorField = (error: unknown, field: "code" | "details" | "hint") => {
+  if (typeof error !== "object" || !error || !(field in error)) return "";
+  const value = (error as Record<string, unknown>)[field];
+  return typeof value === "string" ? value : "";
+};
+
+export const isPartnerSessionInvalidError = (error: unknown) => {
+  const message = getErrorMessage(error);
+  const code = getErrorField(error, "code");
+  const details = getErrorField(error, "details");
+  const hint = getErrorField(error, "hint");
+
+  return (
+    code === "42501" ||
+    message.includes("PARTNER_SESSION_INVALID") ||
+    details.includes("PARTNER_SESSION_INVALID") ||
+    hint.includes("PARTNER_SESSION_INVALID") ||
+    message.includes("401") ||
+    message.includes("Unauthorized")
+  );
+};
+
+const isSlotUnavailableError = (error: unknown) => getErrorMessage(error).includes("BOOKING_SLOT_UNAVAILABLE");
+const isSelfBookingForbiddenError = (error: unknown) => getErrorMessage(error).includes("SELF_BOOKING_FORBIDDEN");
+
+interface PartnerVerificationResponse {
+  ok?: boolean;
+  sessionToken?: string;
+  session_token?: string;
+  expiresAt?: string;
+  expires_at?: string;
+}
+
+const getPartnerVerificationPayload = (data: unknown): PartnerVerificationResponse | null => {
+  if (!data || typeof data !== "object") return null;
+  return data as PartnerVerificationResponse;
+};
+
+const getRandomSegment = () => {
+  if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+    const values = new Uint32Array(1);
+    crypto.getRandomValues(values);
+    return values[0].toString(36).slice(0, 5).toUpperCase();
+  }
+
+  return Math.random().toString(36).slice(2, 7).toUpperCase();
+};
+
+const createRecordId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now().toString(36)}-${getRandomSegment().toLowerCase()}`;
+};
+
+export const createReferenceId = (prefix: "BK" | "PA") => {
+  const now = new Date();
+  const datePart = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("");
+
+  return `${prefix}-${datePart}-${getRandomSegment()}`;
+};
+
+export const getStoredBookings = () => readStoredList<StoredBooking>(bookingStorageKey);
+
+export const getStoredPayments = () => readStoredList<StoredPayment>(paymentStorageKey);
+
+export const getStoredBookingsForUser = (userId?: string | null, email?: string | null) => {
+  const normalizedEmail = email?.trim().toLowerCase();
+
+  return getStoredBookings().filter((booking) => {
+    if (userId && booking.userId === userId) return true;
+    if (normalizedEmail && booking.clientEmail.trim().toLowerCase() === normalizedEmail) return true;
+    return false;
+  });
+};
+
+export const getStoredBookingsForLawyer = (lawyerId?: string | null) => {
+  if (!lawyerId) return [];
+  return getStoredBookings().filter((booking) => booking.lawyerId === lawyerId);
+};
+
+export const getStoredPaymentsForUser = (userId?: string | null, email?: string | null) => {
+  const userBookings = getStoredBookingsForUser(userId, email);
+  const bookingIds = new Set(userBookings.map((booking) => booking.id));
+
+  return getStoredPayments().filter((payment) => {
+    if (userId && payment.userId === userId) return true;
+    return bookingIds.has(payment.bookingId);
+  });
+};
+
+export const getStoredPaymentsForLawyer = (lawyerId?: string | null) => {
+  if (!lawyerId) return [];
+  return getStoredPayments().filter((payment) => payment.lawyerId === lawyerId);
+};
+
+interface BookingRequestRow {
+  id: string;
+  user_id: string | null;
+  reference_id: string;
+  lawyer_id: string;
+  lawyer_name: string;
+  consultation_type: string;
+  consultation_mode: string;
+  price: number;
+  duration: string;
+  date_label: string;
+  time: string;
+  client_name: string;
+  client_email: string;
+  client_phone: string;
+  issue_summary: string | null;
+  status: StoredBooking["status"];
+  created_at: string;
+}
+
+interface PaymentRow {
+  id: string;
+  booking_id: string;
+  user_id: string | null;
+  lawyer_id: string;
+  amount: number;
+  currency: "EUR";
+  status: StoredPayment["status"];
+  invoice_number: string;
+  stripe_checkout_session_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  checkout_session_url?: string | null;
+  receipt_url?: string | null;
+  paid_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+interface ReviewRow {
+  id: string;
+  booking_id: string;
+  user_id: string;
+  lawyer_id: string;
+  rating: number;
+  clarity_rating: number;
+  responsiveness_rating: number;
+  review_text: string;
+  lawyer_reply?: string | null;
+  status: StoredLawyerReview["status"];
+  created_at: string;
+  client_name?: string | null;
+  consultation_type?: string | null;
+  booking_requests?: {
+    client_name?: string | null;
+    consultation_type?: string | null;
+  } | null;
+}
+
+interface BookingDocumentRow {
+  id: string;
+  booking_id: string | null;
+  name: string;
+  size: number;
+  mime_type: string | null;
+  category: string;
+  storage_path: string | null;
+  visible_to_lawyer: boolean;
+  created_at: string;
+  reference_id?: string | null;
+  client_name?: string | null;
+  booking_requests?: {
+    reference_id?: string | null;
+    client_name?: string | null;
+  } | null;
+}
+
+const bookingFromRow = (row: BookingRequestRow): StoredBooking => ({
+  id: row.id,
+  userId: row.user_id || undefined,
+  referenceId: row.reference_id,
+  lawyerId: row.lawyer_id,
+  lawyerName: row.lawyer_name,
+  consultationType: row.consultation_type,
+  consultationMode: row.consultation_mode,
+  price: Number(row.price),
+  duration: row.duration,
+  dateLabel: row.date_label,
+  time: row.time,
+  clientName: row.client_name,
+  clientEmail: row.client_email,
+  clientPhone: row.client_phone,
+  issueSummary: row.issue_summary || undefined,
+  status: row.status,
+  createdAt: row.created_at,
+  persistenceSource: "supabase",
+});
+
+const paymentFromRow = (row: PaymentRow): StoredPayment => ({
+  id: row.id,
+  bookingId: row.booking_id,
+  userId: row.user_id || undefined,
+  lawyerId: row.lawyer_id,
+  amount: Number(row.amount),
+  currency: row.currency || "EUR",
+  status: row.status,
+  invoiceNumber: row.invoice_number,
+  provider: "stripe",
+  stripeCheckoutSessionId: row.stripe_checkout_session_id || undefined,
+  stripePaymentIntentId: row.stripe_payment_intent_id || undefined,
+  checkoutSessionUrl: row.checkout_session_url || undefined,
+  receiptUrl: row.receipt_url || undefined,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at || undefined,
+  paidAt: row.paid_at || undefined,
+  persistenceSource: "supabase",
+});
+
+const reviewFromRow = (row: ReviewRow): StoredLawyerReview => ({
+  id: row.id,
+  bookingId: row.booking_id,
+  lawyerId: row.lawyer_id,
+  clientName: row.booking_requests?.client_name || row.client_name || "Επαληθευμένος πελάτης",
+  rating: Number(row.rating),
+  clarityRating: Number(row.clarity_rating),
+  responsivenessRating: Number(row.responsiveness_rating),
+  text: row.review_text,
+  consultationType: row.booking_requests?.consultation_type || row.consultation_type || "Συνεδρία",
+  date: row.created_at,
+  status: row.status,
+  reply: row.lawyer_reply || "",
+  persistenceSource: "supabase",
+});
+
+const documentFromRow = (row: BookingDocumentRow): StoredBookingDocument => ({
+  id: row.id,
+  bookingId: row.booking_id || undefined,
+  bookingReference: row.booking_requests?.reference_id || row.reference_id || undefined,
+  clientName: row.booking_requests?.client_name || row.client_name || undefined,
+  name: row.name,
+  size: Number(row.size),
+  type: row.mime_type || "unknown",
+  category: row.category,
+  visibleToLawyer: row.visible_to_lawyer,
+  uploadedAt: row.created_at,
+  storagePath: row.storage_path || undefined,
+  persistenceSource: "supabase",
+});
+
+const fetchSignedDocumentUrl = async (storagePath?: string | null) => {
+  if (!storagePath) return undefined;
+
+  try {
+    const { data, error } = await supabase.storage
+      .from("legal-documents")
+      .createSignedUrl(storagePath, 60 * 10);
+    if (error) throw error;
+    return data?.signedUrl;
+  } catch {
+    return undefined;
+  }
+};
+
+const requestPartnerDocumentUrl = async (
+  documentId: string,
+  partnerSession?: PartnerSession | null,
+) => {
+  if (!partnerSession?.sessionToken) return undefined;
+
+  try {
+    const { data, error } = await publicSupabase.functions.invoke("create-partner-document-url", {
+      body: {
+        email: normalizeEmail(partnerSession.email),
+        sessionToken: partnerSession.sessionToken,
+        documentId,
+      },
+    });
+
+    if (error) throw error;
+    return typeof data?.url === "string" ? data.url : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const fetchBookingsForUser = async (userId?: string | null, email?: string | null) => {
+  const localBookings = enableLocalBookingFallback ? getStoredBookingsForUser(userId, email) : [];
+  if (!userId) return localBookings;
+
+  try {
+    const { data, error } = await supabase
+      .from(bookingTableName)
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    const remoteBookings = (data || []).map((row) => bookingFromRow(row as BookingRequestRow));
+    return enableLocalBookingFallback ? mergeById(remoteBookings, localBookings) : remoteBookings;
+  } catch {
+    return localBookings;
+  }
+};
+
+export const fetchPaymentsForUser = async (userId?: string | null, email?: string | null) => {
+  const localPayments = enableLocalBookingFallback ? getStoredPaymentsForUser(userId, email) : [];
+  if (!userId) return localPayments;
+
+  try {
+    const { data, error } = await supabase
+      .from("booking_payments")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    const remotePayments = (data || []).map((row) => paymentFromRow(row as PaymentRow));
+    return enableLocalBookingFallback ? mergeById(remotePayments, localPayments) : remotePayments;
+  } catch {
+    return localPayments;
+  }
+};
+
+const getPartnerRpcArgs = (lawyerId: string, partnerSession?: PartnerSession | null) => {
+  if (!partnerSession?.sessionToken) return null;
+  return {
+    p_partner_email: normalizeEmail(partnerSession.email),
+    p_session_token: partnerSession.sessionToken,
+    p_lawyer_id: lawyerId,
+  };
+};
+
+export const fetchBookingsForLawyer = async (lawyerId?: string | null, partnerSession?: PartnerSession | null) => {
+  const localBookings = enableLocalBookingFallback ? getStoredBookingsForLawyer(lawyerId) : [];
+  if (!lawyerId) return localBookings;
+
+  try {
+    const partnerRpcArgs = getPartnerRpcArgs(lawyerId, partnerSession);
+    const { data, error } = partnerRpcArgs
+      ? await publicSupabase.rpc("list_bookings_as_partner", partnerRpcArgs)
+      : await supabase
+          .from(bookingTableName)
+          .select("*")
+          .eq("lawyer_id", lawyerId)
+          .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    const remoteBookings = (data || []).map((row) => bookingFromRow(row as BookingRequestRow));
+    return enableLocalBookingFallback ? mergeById(remoteBookings, localBookings) : remoteBookings;
+  } catch (error) {
+    if (partnerSession?.sessionToken && isPartnerSessionInvalidError(error)) {
+      throw new Error("PARTNER_SESSION_INVALID");
+    }
+    return localBookings;
+  }
+};
+
+export const fetchPaymentsForLawyer = async (lawyerId?: string | null, partnerSession?: PartnerSession | null) => {
+  const localPayments = enableLocalBookingFallback ? getStoredPaymentsForLawyer(lawyerId) : [];
+  if (!lawyerId) return localPayments;
+
+  try {
+    const partnerRpcArgs = getPartnerRpcArgs(lawyerId, partnerSession);
+    const { data, error } = partnerRpcArgs
+      ? await publicSupabase.rpc("list_payments_as_partner", partnerRpcArgs)
+      : await supabase
+          .from("booking_payments")
+          .select("*")
+          .eq("lawyer_id", lawyerId)
+          .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    const remotePayments = (data || []).map((row) => paymentFromRow(row as PaymentRow));
+    return enableLocalBookingFallback ? mergeById(remotePayments, localPayments) : remotePayments;
+  } catch (error) {
+    if (partnerSession?.sessionToken && isPartnerSessionInvalidError(error)) {
+      throw new Error("PARTNER_SESSION_INVALID");
+    }
+    return localPayments;
+  }
+};
+
+export const fetchReviewsForLawyer = async (
+  lawyerId?: string | null,
+  includeModerated = true,
+  partnerSession?: PartnerSession | null,
+) => {
+  if (!lawyerId) return [];
+
+  try {
+    const partnerRpcArgs = getPartnerRpcArgs(lawyerId, partnerSession);
+    if (partnerRpcArgs) {
+      const { data, error } = await publicSupabase.rpc("list_reviews_as_partner", partnerRpcArgs);
+      if (error) throw error;
+      return (data || []).map((row) => reviewFromRow(row as ReviewRow));
+    }
+
+    let query = supabase
+      .from("booking_reviews")
+      .select("id,booking_id,user_id,lawyer_id,rating,clarity_rating,responsiveness_rating,review_text,lawyer_reply,status,created_at,booking_requests(client_name,consultation_type)")
+      .eq("lawyer_id", lawyerId)
+      .order("created_at", { ascending: false });
+
+    if (!includeModerated) query = query.eq("status", "published");
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map((row) => reviewFromRow(row as ReviewRow));
+  } catch (error) {
+    if (partnerSession?.sessionToken && isPartnerSessionInvalidError(error)) {
+      throw new Error("PARTNER_SESSION_INVALID");
+    }
+    return [];
+  }
+};
+
+export const updateLawyerReview = async (
+  reviewId: string,
+  updates: Partial<Pick<StoredLawyerReview, "reply" | "status">>,
+  partnerSession?: PartnerSession | null,
+) => {
+  if (!partnerSession?.sessionToken) {
+    if (enableLocalBookingFallback) return;
+    throw new Error("Λείπει το token συνεδρίας συνεργάτη.");
+  }
+
+  try {
+    const { error } = await publicSupabase.rpc("update_review_as_partner", {
+      p_partner_email: normalizeEmail(partnerSession.email),
+      p_session_token: partnerSession.sessionToken,
+      p_review_id: reviewId,
+      p_lawyer_reply: updates.reply ?? null,
+      p_status: updates.status ?? null,
+    });
+    if (error) throw error;
+  } catch (error) {
+    if (isPartnerSessionInvalidError(error)) throw new Error("PARTNER_SESSION_INVALID");
+    if (!enableLocalBookingFallback) throw error;
+    // The partner view remains optimistic when the backend is offline.
+  }
+};
+
+export const fetchDocumentsForLawyer = async (
+  lawyerId?: string | null,
+  partnerSession?: PartnerSession | null,
+): Promise<StoredBookingDocument[]> => {
+  if (!lawyerId) return [];
+
+  try {
+    const partnerRpcArgs = getPartnerRpcArgs(lawyerId, partnerSession);
+    const { data, error } = partnerRpcArgs
+      ? await publicSupabase.rpc("list_documents_as_partner", partnerRpcArgs)
+      : await supabase
+          .from("user_documents")
+          .select("id,booking_id,name,size,mime_type,category,storage_path,visible_to_lawyer,created_at,booking_requests!inner(reference_id,client_name,lawyer_id)")
+          .eq("visible_to_lawyer", true)
+          .eq("booking_requests.lawyer_id", lawyerId)
+          .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    const documents = (data || []).map((row) => documentFromRow(row as BookingDocumentRow));
+    return Promise.all(
+      documents.map(async (document) => ({
+        ...document,
+        downloadUrl: partnerRpcArgs
+          ? await requestPartnerDocumentUrl(document.id, partnerSession)
+          : await fetchSignedDocumentUrl(document.storagePath),
+      })),
+    );
+  } catch (error) {
+    if (partnerSession?.sessionToken && isPartnerSessionInvalidError(error)) {
+      throw new Error("PARTNER_SESSION_INVALID");
+    }
+    return [];
+  }
+};
+
+export const getStoredPartnerApplications = () =>
+  readStoredList<StoredPartnerApplication>(applicationStorageKey);
+
+export const getBookingSlotKey = (booking: Pick<BookingPayload, "lawyerId" | "dateLabel" | "time">) =>
+  `${booking.lawyerId}::${booking.dateLabel}::${booking.time}`;
+
+export const getReservedBookingSlots = (lawyerId: string) =>
+  new Set(
+    getStoredBookings()
+      .filter((booking) => booking.lawyerId === lawyerId && booking.status === "confirmed")
+      .map(getBookingSlotKey),
+  );
+
+export const fetchReservedBookingSlots = async (lawyerId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from(bookingTableName)
+      .select("lawyer_id,date_label,time")
+      .eq("lawyer_id", lawyerId)
+      .eq("status", "confirmed");
+
+    if (error) throw error;
+
+    const remoteSlots = new Set(
+      (data || []).map((booking) =>
+        getBookingSlotKey({
+          lawyerId: String(booking.lawyer_id),
+          dateLabel: String(booking.date_label),
+          time: String(booking.time),
+        }),
+      ),
+    );
+
+    if (enableLocalBookingFallback) {
+      getReservedBookingSlots(lawyerId).forEach((slot) => remoteSlots.add(slot));
+    }
+    return remoteSlots;
+  } catch {
+    return enableLocalBookingFallback ? getReservedBookingSlots(lawyerId) : new Set<string>();
+  }
+};
+
+const persistLocalBooking = (booking: StoredBooking) => {
+  const existing = getStoredBookings();
+  const bySlot = existing.filter((record) => getBookingSlotKey(record) !== getBookingSlotKey(booking));
+  writeStoredList(bookingStorageKey, [booking, ...bySlot]);
+};
+
+const buildInvoiceNumber = (booking: StoredBooking) => `INV-${booking.referenceId.replace(/^BK-/, "")}`;
+
+const createPaymentRecordFromBooking = (
+  booking: StoredBooking,
+  persistenceSource: PersistenceSource = "local",
+): StoredPayment => ({
+  id: createRecordId(),
+  bookingId: booking.id,
+  userId: booking.userId,
+  lawyerId: booking.lawyerId,
+  amount: booking.price,
+  currency: "EUR",
+  status: "pending",
+  invoiceNumber: buildInvoiceNumber(booking),
+  provider: "stripe",
+  createdAt: new Date().toISOString(),
+  persistenceSource,
+});
+
+const persistLocalPayment = (payment: StoredPayment) => {
+  const existing = getStoredPayments().filter((record) => record.bookingId !== payment.bookingId);
+  writeStoredList(paymentStorageKey, [payment, ...existing]);
+};
+
+const persistBookingPayment = (booking: StoredBooking) => {
+  if (!enableLocalBookingFallback && booking.persistenceSource !== "local") return;
+  persistLocalPayment(createPaymentRecordFromBooking(booking, booking.persistenceSource));
+};
+
+export const cancelStoredBooking = (bookingId: string) => {
+  const existing = getStoredBookings();
+  const nextBookings = existing.map((booking) =>
+    booking.id === bookingId ? { ...booking, status: "cancelled" as const } : booking,
+  );
+  writeStoredList(bookingStorageKey, nextBookings);
+  const existingPayment = getStoredPayments().find((payment) => payment.bookingId === bookingId);
+  if (existingPayment) {
+    persistLocalPayment({
+      ...existingPayment,
+      status: existingPayment.status === "paid" ? "refunded" : "failed",
+    });
+  }
+  return nextBookings.find((booking) => booking.id === bookingId) || null;
+};
+
+export const cancelBooking = async (bookingId: string) => {
+  try {
+    const { error } = await supabase.rpc("cancel_booking_as_user", {
+      p_booking_id: bookingId,
+    });
+    if (error) throw error;
+    return cancelStoredBooking(bookingId);
+  } catch (error) {
+    if (enableLocalBookingFallback) return cancelStoredBooking(bookingId);
+    throw error;
+  }
+};
+
+export const completeStoredBooking = (bookingId: string) => {
+  const existing = getStoredBookings();
+  const nextBookings = existing.map((booking) =>
+    booking.id === bookingId ? { ...booking, status: "completed" as const } : booking,
+  );
+  writeStoredList(bookingStorageKey, nextBookings);
+  const completedBooking = nextBookings.find((booking) => booking.id === bookingId);
+  if (completedBooking) {
+    const existingPayment = getStoredPayments().find((payment) => payment.bookingId === bookingId);
+    const paymentStatus = existingPayment?.status === "paid" ? "paid" : "pending";
+    persistLocalPayment({
+      ...(existingPayment || createPaymentRecordFromBooking(completedBooking)),
+      status: paymentStatus,
+      paidAt: paymentStatus === "paid" ? existingPayment?.paidAt || new Date().toISOString() : undefined,
+    });
+  }
+  return nextBookings.find((booking) => booking.id === bookingId) || null;
+};
+
+export const completeBooking = async (bookingId: string, partnerSession?: PartnerSession | null) => {
+  try {
+    if (!partnerSession?.sessionToken) {
+    throw new Error("Λείπει το token συνεδρίας συνεργάτη.");
+    }
+
+    const { error } = await publicSupabase.rpc("complete_booking_as_partner", {
+      p_partner_email: normalizeEmail(partnerSession.email),
+      p_session_token: partnerSession.sessionToken,
+      p_booking_id: bookingId,
+    });
+    if (error) throw error;
+    return completeStoredBooking(bookingId);
+  } catch (error) {
+    if (isPartnerSessionInvalidError(error)) throw new Error("PARTNER_SESSION_INVALID");
+    if (enableLocalBookingFallback) return completeStoredBooking(bookingId);
+    throw error;
+  }
+};
+
+export const completePartnerBooking = async (
+  booking: StoredBooking,
+  partnerSession?: PartnerSession | null,
+): Promise<BookingMutationResult> => {
+  if (!partnerSession?.sessionToken) {
+    return {
+      booking,
+      synced: false,
+      error: "Λείπει το token συνεδρίας συνεργάτη. Κάντε αποσύνδεση και ξανά είσοδο στον πίνακα συνεργάτη.",
+    };
+  }
+
+  try {
+    const { error } = await publicSupabase.rpc("complete_booking_as_partner", {
+      p_partner_email: normalizeEmail(partnerSession.email),
+      p_session_token: partnerSession.sessionToken,
+      p_booking_id: booking.id,
+    });
+
+    if (error) throw error;
+
+    const localBooking = completeStoredBooking(booking.id) || { ...booking, status: "completed" as const };
+    return { booking: localBooking, synced: true };
+  } catch (error) {
+    return {
+      booking,
+      synced: false,
+      error: isPartnerSessionInvalidError(error) ? "PARTNER_SESSION_INVALID" : getErrorMessage(error),
+    };
+  }
+};
+
+const persistLocalApplication = (application: StoredPartnerApplication) => {
+  writeStoredList(applicationStorageKey, [application, ...getStoredPartnerApplications()]);
+};
+
+const insertSupabaseRecord = async (tableName: string, payload: Record<string, unknown>) => {
+  const { error } = await supabase.from(tableName).insert(payload);
+  if (error) throw error;
+};
+
+export const createBooking = async (payload: BookingPayload): Promise<SubmissionResult<StoredBooking>> => {
+  const createdAt = new Date().toISOString();
+  const booking: StoredBooking = {
+    ...payload,
+    id: createRecordId(),
+    referenceId: createReferenceId("BK"),
+    status: "confirmed",
+    createdAt,
+    persistenceSource: "local",
+  };
+
+  try {
+    const { error } = await supabase.rpc("reserve_booking_slot", {
+      p_booking_id: booking.id,
+      p_user_id: booking.userId || null,
+      p_reference_id: booking.referenceId,
+      p_lawyer_id: booking.lawyerId,
+      p_lawyer_name: booking.lawyerName,
+      p_consultation_type: booking.consultationType,
+      p_consultation_mode: booking.consultationMode,
+      p_price: booking.price,
+      p_duration: booking.duration,
+      p_date_label: booking.dateLabel,
+      p_time: booking.time,
+      p_client_name: booking.clientName,
+      p_client_email: booking.clientEmail,
+      p_client_phone: booking.clientPhone,
+      p_issue_summary: booking.issueSummary || null,
+    });
+
+    if (error) throw error;
+
+    const syncedBooking = { ...booking, persistenceSource: "supabase" as const };
+    persistLocalBooking(syncedBooking);
+    await persistBookingPayment(syncedBooking);
+    return { record: syncedBooking, source: "supabase" };
+  } catch (error) {
+    if (isSlotUnavailableError(error)) {
+      throw new Error("Η συγκεκριμένη ώρα δεν είναι πλέον διαθέσιμη.");
+    }
+
+    if (isSelfBookingForbiddenError(error)) {
+      throw new Error("Δεν μπορείτε να κλείσετε ραντεβού στον εαυτό σας.");
+    }
+
+    if (!enableLocalBookingFallback) {
+      throw new Error(getErrorMessage(error));
+    }
+
+    persistLocalBooking(booking);
+    await persistBookingPayment(booking);
+    return { record: booking, source: "local", syncError: getErrorMessage(error) };
+  }
+};
+
+export const requestPaymentSetupSession = async (
+  userId: string | null | undefined,
+  email: string | null | undefined,
+): Promise<PaymentSetupSession> => {
+  const requestedAt = new Date().toISOString();
+
+  try {
+    const { data, error } = await supabase.functions.invoke("create-payment-setup-session", {
+      body: {
+        userId,
+        email: email?.trim().toLowerCase() || "",
+        returnUrl: typeof window !== "undefined" ? `${window.location.origin}/account?tab=payments` : undefined,
+      },
+    });
+
+    if (error) throw error;
+
+    const response = (data || {}) as {
+      id?: string;
+      url?: string;
+      clientSecret?: string;
+      status?: "setup_required" | "ready";
+    };
+    return {
+      provider: "stripe",
+      status: response.status || "setup_required",
+      id: response.id,
+      url: response.url,
+      clientSecret: response.clientSecret,
+      requestedAt,
+      persistenceSource: "supabase",
+    };
+  } catch {
+    return {
+      provider: "stripe",
+      status: "setup_required",
+      requestedAt,
+      persistenceSource: "local",
+    };
+  }
+};
+
+export const requestBookingCheckoutSession = async (booking: StoredBooking): Promise<PaymentSetupSession> => {
+  const requestedAt = new Date().toISOString();
+
+  try {
+    const { data, error } = await supabase.functions.invoke("create-booking-checkout-session", {
+      body: {
+        bookingId: booking.id,
+        lawyerId: booking.lawyerId,
+        amount: booking.price,
+        currency: "EUR",
+        returnUrl: typeof window !== "undefined" ? `${window.location.origin}/account?tab=payments` : undefined,
+      },
+    });
+
+    if (error) throw error;
+
+    const response = (data || {}) as {
+      id?: string;
+      url?: string;
+      clientSecret?: string;
+      status?: "setup_required" | "ready";
+    };
+    if (response.url) {
+      const existingPayment = getStoredPayments().find((payment) => payment.bookingId === booking.id);
+      persistLocalPayment({
+        ...(existingPayment || createPaymentRecordFromBooking(booking)),
+        stripeCheckoutSessionId: response.id,
+        checkoutSessionUrl: response.url,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    return {
+      provider: "stripe",
+      status: response.status || "setup_required",
+      url: response.url,
+      clientSecret: response.clientSecret,
+      requestedAt,
+      persistenceSource: "supabase",
+    };
+  } catch {
+    return {
+      provider: "stripe",
+      status: "setup_required",
+      requestedAt,
+      persistenceSource: "local",
+    };
+  }
+};
+
+export const createPartnerApplication = async (
+  payload: PartnerApplicationPayload,
+): Promise<SubmissionResult<StoredPartnerApplication>> => {
+  const createdAt = new Date().toISOString();
+  const application: StoredPartnerApplication = {
+    ...payload,
+    id: createRecordId(),
+    referenceId: createReferenceId("PA"),
+    status: "under_review",
+    createdAt,
+    persistenceSource: "local",
+  };
+
+  const supabasePayload = {
+    id: application.id,
+    reference_id: application.referenceId,
+    full_name: application.fullName,
+    work_email: application.workEmail,
+    phone: application.phone,
+    city: application.city,
+    law_firm_name: application.lawFirmName || null,
+    website_or_linkedin: application.websiteOrLinkedIn || null,
+    bar_association: application.barAssociation,
+    registration_number: application.registrationNumber,
+    years_of_experience: application.yearsOfExperience,
+    specialties: application.specialties,
+    professional_bio: application.professionalBio,
+    document_metadata: application.documents,
+    status: application.status,
+    created_at: application.createdAt,
+  };
+
+  try {
+    await insertSupabaseRecord(applicationTableName, supabasePayload);
+    const syncedApplication = { ...application, persistenceSource: "supabase" as const };
+    persistLocalApplication(syncedApplication);
+    return { record: syncedApplication, source: "supabase" };
+  } catch (error) {
+    persistLocalApplication(application);
+    return { record: application, source: "local", syncError: getErrorMessage(error) };
+  }
+};
+
+export const createPartnerSession = (email: string, sessionToken?: string, expiresAtOverride?: string): PartnerSession => {
+  const verifiedAt = new Date();
+  const expiresAt = new Date(verifiedAt.getTime() + 12 * 60 * 60 * 1000);
+  const session: PartnerSession = {
+    email: email.trim().toLowerCase(),
+    sessionToken,
+    verifiedAt: verifiedAt.toISOString(),
+    expiresAt: expiresAtOverride || expiresAt.toISOString(),
+    role: "partner",
+    approved: true,
+  };
+
+  const storage = getStorage();
+  storage?.setItem(partnerSessionStorageKey, JSON.stringify(session));
+  return session;
+};
+
+export const verifyApprovedPartner = async (email: string) => {
+  const normalizedEmail = normalizeEmail(email);
+
+  try {
+    const { data, error } = await publicSupabase.rpc("is_approved_partner", {
+      p_email: normalizedEmail,
+    });
+
+    if (error) throw error;
+    return Boolean(data) || isLocalApprovedPartner(normalizedEmail);
+  } catch (error) {
+    if (requirePartnerBackend) throw error;
+    return isLocalApprovedPartner(normalizedEmail);
+  }
+};
+
+export const requestPartnerAccessCode = async (email: string) => {
+  const normalizedEmail = normalizeEmail(email);
+
+  const { data, error } = await publicSupabase.functions.invoke("partner-access-code", {
+    body: { email: normalizedEmail },
+  });
+
+  if (error) throw error;
+  if (!data?.ok) throw new Error("Failed to send partner access code");
+
+  return true;
+};
+export const verifyPartnerAccessCode = async (email: string, code: string) => {
+  const normalizedEmail = normalizeEmail(email);
+
+  try {
+    const { data, error } = await publicSupabase.rpc("verify_partner_access_code", {
+      p_email: normalizedEmail,
+      p_code: code.trim(),
+    });
+
+    if (error) throw error;
+    const verificationPayload = getPartnerVerificationPayload(data);
+    if (verificationPayload?.ok) {
+      return createPartnerSession(
+        normalizedEmail,
+        verificationPayload.sessionToken || verificationPayload.session_token,
+        verificationPayload.expiresAt || verificationPayload.expires_at,
+      );
+    }
+    if (data === true) return createPartnerSession(normalizedEmail);
+    if (isValidLocalPartnerAccessCode(normalizedEmail, code)) return createPartnerSession(normalizedEmail);
+    return null;
+  } catch (error) {
+    if (requirePartnerBackend) throw error;
+    if (isValidLocalPartnerAccessCode(normalizedEmail, code)) return createPartnerSession(normalizedEmail);
+    return null;
+  }
+};
+
+export const getPartnerSession = (): PartnerSession | null => {
+  const storage = getStorage();
+  if (!storage) return null;
+
+  try {
+    const rawValue = storage.getItem(partnerSessionStorageKey);
+    if (!rawValue) return null;
+
+    const session = JSON.parse(rawValue) as PartnerSession;
+    if (!session.email || !session.expiresAt || new Date(session.expiresAt).getTime() <= Date.now()) {
+      storage.removeItem(partnerSessionStorageKey);
+      return null;
+    }
+
+    return session;
+  } catch {
+    storage.removeItem(partnerSessionStorageKey);
+    return null;
+  }
+};
+
+export const clearPartnerSession = () => {
+  getStorage()?.removeItem(partnerSessionStorageKey);
+};

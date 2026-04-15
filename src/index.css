@@ -6,49 +6,49 @@
 
 @layer base {
   :root {
-    --background: 40 33% 96%;
-    --foreground: 222 25% 10%;
+    --background: 156 24% 98%;
+    --foreground: 164 24% 9%;
 
-    --card: 40 30% 98%;
-    --card-foreground: 222 25% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 164 24% 9%;
 
-    --popover: 40 30% 98%;
-    --popover-foreground: 222 25% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 164 24% 9%;
 
-    --primary: 215 50% 14%;
-    --primary-foreground: 40 33% 96%;
+    --primary: 164 72% 24%;
+    --primary-foreground: 156 24% 98%;
 
-    --secondary: 40 20% 91%;
-    --secondary-foreground: 222 25% 10%;
+    --secondary: 158 20% 92%;
+    --secondary-foreground: 164 24% 9%;
 
-    --muted: 40 15% 93%;
-    --muted-foreground: 220 12% 40%;
+    --muted: 156 18% 94%;
+    --muted-foreground: 168 12% 34%;
 
-    --accent: 42 45% 72%;
-    --accent-foreground: 222 25% 10%;
+    --accent: 14 82% 64%;
+    --accent-foreground: 164 24% 9%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 40 18% 86%;
-    --input: 40 18% 86%;
-    --ring: 215 50% 14%;
+    --border: 164 12% 82%;
+    --input: 164 12% 82%;
+    --ring: 164 72% 24%;
 
     --radius: 0.5rem;
 
-    --sage: 150 14% 52%;
-    --sage-foreground: 150 18% 22%;
-    --gold: 42 55% 58%;
-    --gold-foreground: 42 55% 18%;
-    --navy: 215 50% 14%;
-    --ivory: 40 33% 96%;
-    --stone: 40 20% 91%;
-    --charcoal: 222 25% 10%;
+    --sage: 146 28% 50%;
+    --sage-foreground: 150 32% 20%;
+    --gold: 44 68% 52%;
+    --gold-foreground: 44 68% 18%;
+    --navy: 164 72% 24%;
+    --ivory: 156 24% 98%;
+    --stone: 158 20% 92%;
+    --charcoal: 164 24% 9%;
     --partner-navy: 219 43% 15%;
     --partner-navy-soft: 216 33% 22%;
     --partner-ivory: 36 42% 95%;
     --partner-sand: 36 25% 86%;
-    --partner-line: 34 19% 76%;
+    --partner-line: 34 17% 72%;
     --partner-gold: 37 42% 67%;
     --partner-ink: 220 27% 14%;
 
@@ -111,81 +111,75 @@
 @layer components {
   .partner-shell {
     background:
-      radial-gradient(circle at top left, hsl(var(--partner-gold) / 0.18), transparent 26%),
-      radial-gradient(circle at top right, hsl(var(--partner-navy) / 0.12), transparent 28%),
-      linear-gradient(180deg, hsl(var(--partner-ivory)) 0%, hsl(39 24% 92%) 100%);
+      linear-gradient(180deg, rgba(255, 251, 245, 0.98) 0%, rgba(244, 238, 228, 0.98) 100%);
   }
 
   .partner-panel {
-    border: 1px solid hsl(var(--partner-line) / 0.8);
-    background: linear-gradient(180deg, hsl(var(--card) / 0.99) 0%, hsl(var(--partner-ivory) / 0.97) 100%);
-    box-shadow: 0 24px 72px rgba(18, 30, 44, 0.085);
-    @apply rounded-[1.75rem] backdrop-blur-sm;
+    border: 1px solid hsl(var(--partner-line) / 0.92);
+    background: rgba(255, 252, 247, 0.95);
+    box-shadow: 0 10px 30px rgba(18, 30, 44, 0.05);
+    @apply rounded-[24px] backdrop-blur-sm;
   }
 
   .partner-dark-panel {
     background:
-      radial-gradient(circle at top right, rgba(214, 190, 143, 0.1), transparent 22%),
       linear-gradient(180deg, hsl(var(--partner-navy)) 0%, hsl(var(--partner-navy-soft)) 100%);
-    box-shadow: 0 24px 80px rgba(12, 23, 36, 0.22);
-    @apply rounded-[1.75rem] border border-white/10 text-[hsl(var(--partner-ivory))];
+    box-shadow: 0 16px 40px rgba(12, 23, 36, 0.14);
+    @apply rounded-[24px] border border-white/10 text-[hsl(var(--partner-ivory))];
   }
 
   .partner-soft-card {
-    border: 1px solid hsl(var(--partner-line) / 0.78);
-    background: linear-gradient(180deg, rgba(255, 252, 247, 0.92) 0%, rgba(250, 246, 238, 0.86) 100%);
-    box-shadow: 0 12px 30px rgba(18, 30, 44, 0.04);
-    @apply rounded-[1.45rem];
+    border: 1px solid hsl(var(--partner-line) / 0.92);
+    background: rgba(255, 252, 247, 0.92);
+    box-shadow: 0 6px 20px rgba(18, 30, 44, 0.03);
+    @apply rounded-[16px];
   }
 
   .partner-soft-card-strong {
-    border: 1px solid hsl(var(--partner-navy) / 0.1);
+    border: 1px solid hsl(var(--partner-navy) / 0.12);
     background:
-      radial-gradient(circle at top right, hsl(var(--partner-gold) / 0.12), transparent 32%),
-      linear-gradient(180deg, rgba(255, 252, 247, 0.97) 0%, rgba(247, 241, 231, 0.93) 100%);
-    box-shadow: 0 20px 46px rgba(18, 30, 44, 0.07);
-    @apply rounded-[1.55rem];
+      linear-gradient(180deg, rgba(255, 252, 247, 0.98) 0%, rgba(247, 241, 231, 0.94) 100%);
+    box-shadow: 0 8px 24px rgba(18, 30, 44, 0.04);
+    @apply rounded-[16px];
   }
 
   .partner-dark-card {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.035) 100%);
+    background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    @apply rounded-[1.45rem];
+    @apply rounded-[16px];
   }
 
   .partner-dark-card-featured {
-    background:
-      radial-gradient(circle at top right, rgba(214, 190, 143, 0.14), transparent 30%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.085) 0%, rgba(255, 255, 255, 0.045) 100%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    @apply rounded-[1.55rem];
+    @apply rounded-[16px];
   }
 
   .partner-kicker {
     color: hsl(var(--partner-navy-soft));
-    @apply text-[11px] font-bold uppercase tracking-[0.28em];
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em];
   }
 
   .partner-label {
     color: hsl(var(--partner-ink));
-    @apply text-sm font-semibold;
+    @apply text-[13px] font-medium;
   }
 
   .partner-input {
     border: 1px solid hsl(var(--partner-line) / 0.88);
-    background: linear-gradient(180deg, rgba(255, 252, 247, 0.96) 0%, rgba(248, 243, 235, 0.9) 100%);
+    background: rgba(255, 252, 247, 0.96);
     color: hsl(var(--partner-ink));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 0 rgba(16, 28, 42, 0.03);
-    @apply h-12 w-full rounded-xl px-4 text-sm font-medium outline-none transition placeholder:text-muted-foreground/70;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    @apply h-[52px] w-full rounded-[14px] px-4 text-[15px] font-medium outline-none transition placeholder:text-muted-foreground/70;
   }
 
   .partner-textarea {
     border: 1px solid hsl(var(--partner-line) / 0.88);
-    background: linear-gradient(180deg, rgba(255, 252, 247, 0.96) 0%, rgba(248, 243, 235, 0.9) 100%);
+    background: rgba(255, 252, 247, 0.96);
     color: hsl(var(--partner-ink));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 0 rgba(16, 28, 42, 0.03);
-    @apply min-h-[132px] w-full rounded-xl px-4 py-3 text-sm font-medium outline-none transition placeholder:text-muted-foreground/70;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    @apply min-h-[160px] w-full rounded-[14px] px-4 py-3 text-[15px] font-medium outline-none transition placeholder:text-muted-foreground/70;
   }
 
   .partner-input:focus,
@@ -198,12 +192,12 @@
   }
 
   .partner-stat-card {
-    @apply rounded-2xl border border-white/10 bg-white/5 p-4;
+    @apply rounded-[16px] border border-white/10 bg-white/5 p-4;
   }
 
   .partner-chip {
     border: 1px solid hsl(var(--partner-line) / 0.82);
-    background: rgba(255, 251, 245, 0.7);
+    background: rgba(255, 251, 245, 0.78);
     color: hsl(var(--partner-ink));
     @apply inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition;
   }

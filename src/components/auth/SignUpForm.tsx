@@ -28,21 +28,21 @@ const GoogleMark = () => (
 
 const strengthTone = (score: number) => {
   if (score <= 1) return { colorClassName: "bg-destructive", label: "Αδύναμος" };
-  if (score <= 3) return { colorClassName: "bg-gold", label: "Καλός" };
+  if (score <= 3) return { colorClassName: "bg-gold", label: "Μέτριος" };
   return { colorClassName: "bg-sage", label: "Ισχυρός" };
 };
 
 const getErrorMessage = (error: string) => {
   const errorMap: Record<string, string> = {
-    "User already registered": "Υπάρχει ήδη λογαριασμός με αυτό το email. Δοκιμάστε σύνδεση.",
-    "Username already taken": "Αυτό το όνομα χρήστη χρησιμοποιείται ήδη.",
-    "Email rate limit exceeded": "Έγιναν πολλές προσπάθειες. Περιμένετε λίγα λεπτά.",
-    "Signup disabled": "Οι νέες εγγραφές είναι προσωρινά απενεργοποιημένες.",
-    "Invalid email": "Πληκτρολογήστε ένα έγκυρο email.",
+    "User already registered": "Υπάρχει ήδη λογαριασμός με αυτό το ηλεκτρονικό ταχυδρομείο. Συνδεθείτε για να συνεχίσετε.",
+    "Username already taken": "Το όνομα χρήστη χρησιμοποιείται ήδη. Επιλέξτε άλλο.",
+    "Email rate limit exceeded": "Έγιναν πολλές προσπάθειες εγγραφής. Περιμένετε λίγο και δοκιμάστε ξανά.",
+    "Signup disabled": "Οι νέες εγγραφές δεν είναι διαθέσιμες αυτή τη στιγμή.",
+    "Invalid email": "Πληκτρολογήστε έγκυρη διεύθυνση ηλεκτρονικού ταχυδρομείου.",
     "Weak password": "Ο κωδικός είναι πολύ αδύναμος.",
   };
 
-  return errorMap[error] || error || "Κάτι πήγε στραβά. Δοκιμάστε ξανά.";
+  return errorMap[error] || "Δεν ήταν δυνατή η δημιουργία λογαριασμού. Δοκιμάστε ξανά.";
 };
 
 const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerification, onMessage }) => {
@@ -76,7 +76,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
   };
 
   const validateName = (value: string) => {
-    if (!value.trim()) return "Το όνομα χρήστη είναι υποχρεωτικό.";
+    if (!value.trim()) return "Συμπληρώστε όνομα χρήστη.";
     if (value.trim().length < 4) return "Το όνομα χρήστη πρέπει να έχει τουλάχιστον 4 χαρακτήρες.";
     if (value.trim().length > 16) return "Το όνομα χρήστη πρέπει να έχει έως 16 χαρακτήρες.";
     if (!/^[a-zA-Z0-9_]+$/.test(value.trim())) return "Χρησιμοποιήστε μόνο λατινικά γράμματα, αριθμούς και κάτω παύλα.";
@@ -84,20 +84,20 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
   };
 
   const validateEmail = (value: string) => {
-    if (!value.trim()) return "Το email είναι υποχρεωτικό.";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Πληκτρολογήστε ένα έγκυρο email.";
+  if (!value.trim()) return "Συμπληρώστε το ηλεκτρονικό ταχυδρομείο του λογαριασμού σας.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Πληκτρολογήστε έγκυρη διεύθυνση ηλεκτρονικού ταχυδρομείου.";
     return undefined;
   };
 
   const validatePassword = (value: string) => {
-    if (!value) return "Ο κωδικός είναι υποχρεωτικός.";
+    if (!value) return "Συμπληρώστε κωδικό πρόσβασης.";
     if (value.length < 8) return "Ο κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες.";
     if (checkPasswordStrength(value).score < 3) return "Ο κωδικός είναι πολύ αδύναμος.";
     return undefined;
   };
 
   const validateConfirmPassword = (value: string) => {
-    if (!value) return "Επιβεβαιώστε τον κωδικό.";
+    if (!value) return "Επαναλάβετε τον κωδικό πρόσβασης.";
     if (value !== password) return "Οι κωδικοί δεν ταιριάζουν.";
     return undefined;
   };
@@ -113,7 +113,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
     if (emailError) nextErrors.email = emailError;
     if (passwordError) nextErrors.password = passwordError;
     if (confirmPasswordError) nextErrors.confirmPassword = confirmPasswordError;
-    if (!acceptedLegal) nextErrors.legal = "Πρέπει να αποδεχθείτε τους όρους χρήσης.";
+    if (!acceptedLegal) nextErrors.legal = "Πρέπει να αποδεχθείτε τους όρους χρήσης και την πολιτική απορρήτου.";
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -123,7 +123,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
     event.preventDefault();
 
     if (!validateForm()) {
-      onMessage("error", "Συμπληρώστε σωστά τα πεδία και δοκιμάστε ξανά.");
+      onMessage("error", "Συμπληρώστε σωστά τα πεδία για να συνεχίσετε.");
       return;
     }
 
@@ -139,12 +139,12 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
         onMessage("error", friendlyMessage);
       } else if (result?.needsConfirmation) {
         onEmailVerification(email.trim());
-        onMessage("success", "Ο λογαριασμός δημιουργήθηκε. Ελέγξτε το email σας για επιβεβαίωση.");
+        onMessage("success", "Ο λογαριασμός δημιουργήθηκε. Ελέγξτε το ηλεκτρονικό ταχυδρομείο σας για επιβεβαίωση.");
       } else {
         onMessage("success", "Ο λογαριασμός δημιουργήθηκε επιτυχώς.");
       }
-    } catch (error: any) {
-      const friendlyMessage = getErrorMessage(error?.message);
+    } catch (error: unknown) {
+      const friendlyMessage = getErrorMessage(error instanceof Error ? error.message : "");
       setErrors({ general: friendlyMessage });
       onMessage("error", friendlyMessage);
     } finally {
@@ -164,7 +164,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
         onMessage("error", friendlyMessage);
       }
     } catch {
-      const friendlyMessage = "Η εγγραφή με Google απέτυχε. Δοκιμάστε ξανά ή χρησιμοποιήστε email.";
+      const friendlyMessage = "Η εγγραφή με Google δεν ολοκληρώθηκε. Δοκιμάστε ξανά ή συνεχίστε με ηλεκτρονικό ταχυδρομείο.";
       setErrors({ general: friendlyMessage });
       onMessage("error", friendlyMessage);
     } finally {
@@ -174,15 +174,15 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
 
   const passwordStrength = useMemo(() => (password ? checkPasswordStrength(password) : null), [password]);
   const inputClassName =
-    "h-12 w-full rounded-xl border border-border bg-background pl-11 pr-4 text-sm font-medium text-foreground outline-none transition placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/25";
+    "h-[52px] w-full rounded-[14px] border border-border bg-background pl-11 pr-4 text-sm font-medium text-foreground outline-none transition placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/25";
 
   return (
     <div>
       <div className="mb-6">
-        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-sage">Νέος λογαριασμός</p>
+        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-sage">Νέος λογαριασμός</p>
         <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Δημιουργία λογαριασμού</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Κρατήστε το ιστορικό των αιτημάτων σας και συνεχίστε πιο γρήγορα την επόμενη φορά.
+          Δημιουργήστε λογαριασμό για να παρακολουθείτε αιτήματα, ραντεβού και βασικά στοιχεία πρόσβασης στο Dikigoros.
         </p>
       </div>
 
@@ -190,28 +190,28 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
         type="button"
         onClick={handleGoogleSignIn}
         disabled={loading}
-        className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-border bg-card px-4 text-sm font-bold text-foreground shadow-sm transition hover:border-primary/25 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-[52px] w-full items-center justify-center gap-3 rounded-[14px] border border-border bg-card px-4 text-sm font-semibold text-foreground transition hover:border-primary/25 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60"
       >
         <GoogleMark />
         Συνέχεια με Google
       </button>
 
-      <div className="my-5 flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+      <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
         <div className="h-px flex-1 bg-border" />
-        Email
+        ή συνεχίστε με ηλεκτρονικό ταχυδρομείο
         <div className="h-px flex-1 bg-border" />
       </div>
 
       <form className="space-y-4" onSubmit={handleSubmit}>
         {errors.general && (
-          <div className="flex items-start gap-3 rounded-xl border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <div className="flex items-start gap-3 rounded-[14px] border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>{errors.general}</p>
           </div>
         )}
 
         <div className="space-y-2">
-          <label htmlFor="signup-name" className="text-sm font-bold text-foreground">
+          <label htmlFor="signup-name" className="text-sm font-semibold text-foreground">
             Όνομα χρήστη
           </label>
           <div className="relative">
@@ -232,13 +232,13 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
           {errors.name ? (
             <p className="text-xs font-medium text-destructive">{errors.name}</p>
           ) : (
-            <p className="text-xs text-muted-foreground">Το backend δέχεται λατινικά γράμματα, αριθμούς και κάτω παύλα.</p>
+            <p className="text-xs text-muted-foreground">Χρησιμοποιήστε λατινικά γράμματα, αριθμούς και κάτω παύλα.</p>
           )}
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="signup-email" className="text-sm font-bold text-foreground">
-            Email
+          <label htmlFor="signup-email" className="text-sm font-semibold text-foreground">
+            Ηλεκτρονικό ταχυδρομείο
           </label>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -258,8 +258,8 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label htmlFor="signup-password" className="text-sm font-bold text-foreground">
-              Κωδικός
+            <label htmlFor="signup-password" className="text-sm font-semibold text-foreground">
+              Κωδικός πρόσβασης
             </label>
             <div className="relative">
               <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -268,7 +268,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="Ισχυρός κωδικός"
+                placeholder="Ορίστε κωδικό πρόσβασης"
                 className={`${inputClassName} pr-12`}
                 disabled={loading}
                 autoComplete="new-password"
@@ -286,8 +286,8 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="signup-confirm-password" className="text-sm font-bold text-foreground">
-              Επιβεβαίωση
+            <label htmlFor="signup-confirm-password" className="text-sm font-semibold text-foreground">
+              Επιβεβαίωση κωδικού
             </label>
             <div className="relative">
               <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -296,7 +296,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
                 type={showConfirmPassword ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
-                placeholder="Ξανά ο κωδικός"
+                placeholder="Επαναλάβετε τον κωδικό"
                 className={`${inputClassName} pr-12`}
                 disabled={loading}
                 autoComplete="new-password"
@@ -315,23 +315,18 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
         </div>
 
         {passwordStrength && (
-          <div className="rounded-xl border border-border bg-secondary/50 px-4 py-3">
+          <div className="rounded-[14px] border border-border bg-secondary/50 px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="h-2 flex-1 rounded-full bg-background">
-                <div
-                  className={`h-2 rounded-full transition-all ${passwordStrength.colorClassName}`}
-                  style={{ width: `${(passwordStrength.score / 5) * 100}%` }}
-                />
+                <div className={`h-2 rounded-full transition-all ${passwordStrength.colorClassName}`} style={{ width: `${(passwordStrength.score / 5) * 100}%` }} />
               </div>
-              <span className="text-xs font-bold text-foreground">{passwordStrength.label}</span>
+              <span className="text-xs font-semibold text-foreground">{passwordStrength.label}</span>
             </div>
-            {passwordStrength.feedback.length > 0 && (
-              <p className="mt-2 text-xs text-muted-foreground">Λείπει: {passwordStrength.feedback.join(", ")}.</p>
-            )}
+            {passwordStrength.feedback.length > 0 && <p className="mt-2 text-xs text-muted-foreground">Χρειάζεται ακόμη: {passwordStrength.feedback.join(", ")}.</p>}
           </div>
         )}
 
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-[14px] border border-border bg-card p-4">
           <label className="flex items-start gap-3">
             <input
               type="checkbox"
@@ -344,7 +339,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
               disabled={loading}
             />
             <span className="text-sm leading-6 text-muted-foreground">
-              Συμφωνώ με τους όρους χρήσης και την πολιτική απορρήτου της πλατφόρμας.
+              Συμφωνώ με τους όρους χρήσης και την πολιτική απορρήτου του Dikigoros.
             </span>
           </label>
           {errors.legal && <p className="mt-2 text-xs font-medium text-destructive">{errors.legal}</p>}
@@ -353,7 +348,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
         <button
           type="submit"
           disabled={loading}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/15 transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-[14px] bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/15 transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {loading ? "Δημιουργείται..." : "Δημιουργία λογαριασμού"}
@@ -362,7 +357,7 @@ const SignUpForm: React.FC<SignUpFormProps> = ({ onToggleForm, onEmailVerificati
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Έχετε ήδη λογαριασμό;{" "}
-        <button onClick={onToggleForm} className="font-bold text-primary hover:underline" disabled={loading}>
+        <button onClick={onToggleForm} className="font-semibold text-primary hover:underline" disabled={loading}>
           Σύνδεση
         </button>
       </p>

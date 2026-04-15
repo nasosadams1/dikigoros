@@ -25,24 +25,24 @@ const GoogleMark = () => (
 
 const getErrorMessage = (error: string) => {
   const errorMap: Record<string, string> = {
-    "Invalid login credentials": "Λάθος email ή κωδικός. Ελέγξτε τα στοιχεία σας και δοκιμάστε ξανά.",
-    "Email not confirmed": "Παρακαλούμε επιβεβαιώστε πρώτα το email σας.",
-    "Too many requests": "Έγιναν πολλές προσπάθειες. Περιμένετε λίγα λεπτά και δοκιμάστε ξανά.",
-    "User not found": "Δεν βρέθηκε λογαριασμός με αυτό το email.",
-    "Failed to fetch": "Δεν ήταν δυνατή η σύνδεση. Ελέγξτε τη σύνδεσή σας.",
+    "Invalid login credentials": "Το ηλεκτρονικό ταχυδρομείο ή ο κωδικός δεν αντιστοιχούν σε ενεργό λογαριασμό.",
+    "Email not confirmed": "Πρέπει πρώτα να επιβεβαιώσετε το ηλεκτρονικό ταχυδρομείο του λογαριασμού σας.",
+    "Too many requests": "Έγιναν πολλές προσπάθειες σύνδεσης. Περιμένετε λίγο και δοκιμάστε ξανά.",
+    "User not found": "Δεν βρέθηκε λογαριασμός με αυτό το ηλεκτρονικό ταχυδρομείο.",
+    "Failed to fetch": "Δεν ήταν δυνατή η σύνδεση με την υπηρεσία. Ελέγξτε τη σύνδεσή σας.",
   };
 
-  return errorMap[error] || error || "Κάτι πήγε στραβά. Δοκιμάστε ξανά.";
+  return errorMap[error] || "Δεν ήταν δυνατή η σύνδεση. Δοκιμάστε ξανά.";
 };
 
 const validateEmail = (value: string) => {
-  if (!value.trim()) return "Το email είναι υποχρεωτικό.";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Πληκτρολογήστε ένα έγκυρο email.";
+  if (!value.trim()) return "Συμπληρώστε το ηλεκτρονικό ταχυδρομείο του λογαριασμού σας.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Πληκτρολογήστε έγκυρη διεύθυνση ηλεκτρονικού ταχυδρομείου.";
   return undefined;
 };
 
 const validatePassword = (value: string) => {
-  if (!value) return "Ο κωδικός είναι υποχρεωτικός.";
+  if (!value) return "Συμπληρώστε τον κωδικό πρόσβασης.";
   if (value.length < 6) return "Ο κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες.";
   return undefined;
 };
@@ -71,7 +71,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onToggleForm, onForgotPassword, o
     event.preventDefault();
 
     if (!validateForm()) {
-      onMessage("error", "Συμπληρώστε σωστά τα πεδία και δοκιμάστε ξανά.");
+      onMessage("error", "Συμπληρώστε σωστά το ηλεκτρονικό ταχυδρομείο και τον κωδικό πρόσβασης.");
       return;
     }
 
@@ -85,8 +85,8 @@ const LoginForm: React.FC<LoginFormProps> = ({ onToggleForm, onForgotPassword, o
         setErrors({ general: friendlyMessage });
         onMessage("error", friendlyMessage);
       }
-    } catch (error: any) {
-      const friendlyMessage = getErrorMessage(error?.message);
+    } catch (error: unknown) {
+      const friendlyMessage = getErrorMessage(error instanceof Error ? error.message : "");
       setErrors({ general: friendlyMessage });
       onMessage("error", friendlyMessage);
     } finally {
@@ -106,7 +106,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onToggleForm, onForgotPassword, o
         onMessage("error", friendlyMessage);
       }
     } catch {
-      const friendlyMessage = "Η σύνδεση με Google απέτυχε. Δοκιμάστε ξανά ή χρησιμοποιήστε email.";
+      const friendlyMessage = "Η σύνδεση με Google δεν ολοκληρώθηκε. Δοκιμάστε ξανά ή χρησιμοποιήστε ηλεκτρονικό ταχυδρομείο και κωδικό.";
       setErrors({ general: friendlyMessage });
       onMessage("error", friendlyMessage);
     } finally {
@@ -115,15 +115,15 @@ const LoginForm: React.FC<LoginFormProps> = ({ onToggleForm, onForgotPassword, o
   };
 
   const inputClassName =
-    "h-12 w-full rounded-xl border border-border bg-background pl-11 pr-4 text-sm font-medium text-foreground outline-none transition placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/25";
+    "h-[52px] w-full rounded-[14px] border border-border bg-background pl-11 pr-4 text-sm font-medium text-foreground outline-none transition placeholder:text-muted-foreground/60 focus:border-primary/40 focus:ring-2 focus:ring-primary/25";
 
   return (
     <div>
       <div className="mb-6">
-        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-sage">Είσοδος λογαριασμού</p>
+        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-sage">ΣΥΝΔΕΣΗ ΛΟΓΑΡΙΑΣΜΟΥ</p>
         <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Σύνδεση στο Dikigoros</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Μπείτε για να διαχειριστείτε αιτήματα, ραντεβού και τα στοιχεία του λογαριασμού σας.
+          Συνδεθείτε για να διαχειριστείτε αιτήματα, ραντεβού και βασικά στοιχεία του λογαριασμού σας.
         </p>
       </div>
 
@@ -131,29 +131,29 @@ const LoginForm: React.FC<LoginFormProps> = ({ onToggleForm, onForgotPassword, o
         type="button"
         onClick={handleGoogleSignIn}
         disabled={loading}
-        className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-border bg-card px-4 text-sm font-bold text-foreground shadow-sm transition hover:border-primary/25 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-[52px] w-full items-center justify-center gap-3 rounded-[14px] border border-border bg-card px-4 text-sm font-semibold text-foreground transition hover:border-primary/25 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60"
       >
         <GoogleMark />
         Συνέχεια με Google
       </button>
 
-      <div className="my-5 flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+      <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
         <div className="h-px flex-1 bg-border" />
-        Email
+        ή είσοδος με ηλεκτρονικό ταχυδρομείο
         <div className="h-px flex-1 bg-border" />
       </div>
 
       <form className="space-y-4" onSubmit={handleSubmit}>
         {errors.general && (
-          <div className="flex items-start gap-3 rounded-xl border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <div className="flex items-start gap-3 rounded-[14px] border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>{errors.general}</p>
           </div>
         )}
 
         <div className="space-y-2">
-          <label htmlFor="login-email" className="text-sm font-bold text-foreground">
-            Email
+          <label htmlFor="login-email" className="text-sm font-semibold text-foreground">
+            Ηλεκτρονικό ταχυδρομείο
           </label>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -172,8 +172,8 @@ const LoginForm: React.FC<LoginFormProps> = ({ onToggleForm, onForgotPassword, o
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="login-password" className="text-sm font-bold text-foreground">
-            Κωδικός
+          <label htmlFor="login-password" className="text-sm font-semibold text-foreground">
+            Κωδικός πρόσβασης
           </label>
           <div className="relative">
             <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -182,7 +182,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onToggleForm, onForgotPassword, o
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Πληκτρολογήστε τον κωδικό"
+              placeholder="Εισαγάγετε τον κωδικό σας"
               className={`${inputClassName} pr-12`}
               disabled={loading}
               autoComplete="current-password"
@@ -200,7 +200,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onToggleForm, onForgotPassword, o
         </div>
 
         <div className="text-right">
-          <button type="button" onClick={onForgotPassword} className="text-sm font-bold text-primary hover:underline" disabled={loading}>
+          <button type="button" onClick={onForgotPassword} className="text-sm font-semibold text-primary hover:underline" disabled={loading}>
             Ξεχάσατε τον κωδικό;
           </button>
         </div>
@@ -208,7 +208,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onToggleForm, onForgotPassword, o
         <button
           type="submit"
           disabled={loading}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/15 transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-[14px] bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/15 transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {loading ? "Γίνεται σύνδεση..." : "Σύνδεση"}
@@ -217,8 +217,8 @@ const LoginForm: React.FC<LoginFormProps> = ({ onToggleForm, onForgotPassword, o
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Δεν έχετε λογαριασμό;{" "}
-        <button onClick={onToggleForm} className="font-bold text-primary hover:underline" disabled={loading}>
-          Δημιουργία λογαριασμού
+        <button onClick={onToggleForm} className="font-semibold text-primary hover:underline" disabled={loading}>
+          Δημιουργήστε λογαριασμό
         </button>
       </p>
     </div>

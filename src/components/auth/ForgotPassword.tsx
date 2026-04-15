@@ -8,8 +8,8 @@ interface ForgotPasswordFormProps {
 }
 
 const validateEmail = (value: string) => {
-  if (!value.trim()) return "Το email είναι υποχρεωτικό.";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Πληκτρολογήστε ένα έγκυρο email.";
+  if (!value.trim()) return "Συμπληρώστε το ηλεκτρονικό ταχυδρομείο του λογαριασμού σας.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return "Πληκτρολογήστε έγκυρη διεύθυνση ηλεκτρονικού ταχυδρομείου.";
   return undefined;
 };
 
@@ -36,15 +36,15 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBack, onMessa
     try {
       const { error: resetError } = await resetPassword(email.trim());
       if (resetError) {
-        const errorMessage = resetError.message || "Δεν ήταν δυνατή η αποστολή email επαναφοράς.";
+        const errorMessage = resetError.message || "Δεν ήταν δυνατή η αποστολή μηνύματος επαναφοράς.";
         setError(errorMessage);
         onMessage("error", errorMessage);
       } else {
         setSent(true);
-        onMessage("success", "Στάλθηκε email επαναφοράς κωδικού.");
+        onMessage("success", "Στάλθηκε σύνδεσμος επαναφοράς κωδικού.");
       }
-    } catch (requestError: any) {
-      const errorMessage = requestError?.message || "Κάτι πήγε στραβά. Δοκιμάστε ξανά.";
+    } catch (requestError: unknown) {
+      const errorMessage = requestError instanceof Error ? requestError.message : "Δεν ήταν δυνατή η αποστολή συνδέσμου επαναφοράς. Δοκιμάστε ξανά.";
       setError(errorMessage);
       onMessage("error", errorMessage);
     } finally {
@@ -58,13 +58,13 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBack, onMessa
         <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-sage/25 bg-sage/10 text-sage">
           <CheckCircle className="h-8 w-8" />
         </div>
-        <h2 className="font-serif text-3xl tracking-tight text-foreground">Ελέγξτε το email σας</h2>
+        <h2 className="font-serif text-3xl tracking-tight text-foreground">Ελέγξτε το ηλεκτρονικό ταχυδρομείο σας</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Στείλαμε σύνδεσμο επαναφοράς στο <span className="font-bold text-foreground">{email}</span>.
+          Στείλαμε ασφαλή σύνδεσμο επαναφοράς στο <span className="font-bold text-foreground">{email}</span>.
         </p>
 
         <div className="mt-6 rounded-xl border border-border bg-secondary/50 p-4 text-left text-sm leading-6 text-muted-foreground">
-          Ανοίξτε τον νεότερο σύνδεσμο επαναφοράς και δημιουργήστε νέο κωδικό. Αν δεν εμφανίζεται, ελέγξτε spam ή promotions.
+          Ανοίξτε τον πιο πρόσφατο σύνδεσμο επαναφοράς και ορίστε νέο κωδικό. Αν δεν εμφανίζεται, ελέγξτε spam ή promotions.
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -76,7 +76,7 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBack, onMessa
             }}
             className="inline-flex h-11 items-center justify-center rounded-xl border border-border bg-card px-4 text-sm font-bold text-foreground transition hover:bg-secondary"
           >
-            Άλλο email
+            Άλλο ηλεκτρονικό ταχυδρομείο
           </button>
           <button
             type="button"
@@ -105,7 +105,7 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBack, onMessa
         <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-sage">Ασφαλής ανάκτηση</p>
         <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Επαναφορά κωδικού</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Πληκτρολογήστε το email σας και θα σας στείλουμε ασφαλή σύνδεσμο επαναφοράς.
+          Πληκτρολογήστε το ηλεκτρονικό ταχυδρομείο του λογαριασμού σας και θα στείλουμε ασφαλή σύνδεσμο επαναφοράς.
         </p>
       </div>
 
@@ -119,7 +119,7 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({ onBack, onMessa
 
         <div className="space-y-2">
           <label htmlFor="reset-email" className="text-sm font-bold text-foreground">
-            Email
+            Ηλεκτρονικό ταχυδρομείο
           </label>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

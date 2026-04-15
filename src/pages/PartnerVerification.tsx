@@ -1,9 +1,10 @@
 import { ArrowLeft, ArrowRight, MailCheck, RefreshCw, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import PartnerShell from "@/components/partner/PartnerShell";
 import { Button } from "@/components/ui/button";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import { getPartnerSession, requestPartnerAccessCode, verifyPartnerAccessCode } from "@/lib/platformRepository";
 
 interface VerificationState {
   email?: string;
@@ -16,10 +17,18 @@ const PartnerVerification = () => {
   const routeState = (location.state || {}) as VerificationState;
   const [code, setCode] = useState("");
   const [resent, setResent] = useState(false);
+  const [verificationError, setVerificationError] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
 
   const email = routeState.email || "partner@lawfirm.gr";
   const destination = routeState.destination || "/for-lawyers/portal";
   const isReady = useMemo(() => code.length === 6, [code]);
+
+  useEffect(() => {
+    if (getPartnerSession()) {
+      navigate(destination, { replace: true });
+    }
+  }, [destination, navigate]);
 
   return (
     <PartnerShell className="flex min-h-[calc(100vh-120px)] items-center">
@@ -29,7 +38,7 @@ const PartnerVerification = () => {
           <h1 className="mt-5 font-serif text-[2.55rem] leading-[1.04] tracking-[-0.03em] text-[hsl(var(--partner-ivory))]">
             Επιβεβαιώστε την ασφαλή πρόσβαση.
           </h1>
-          <p className="mt-5 text-sm leading-7 text-white/72">Στείλαμε έναν μοναδικό κωδικό στο εγκεκριμένο email σας.</p>
+          <p className="mt-5 text-sm leading-7 text-white/72">Στείλαμε έναν μοναδικό κωδικό στο εγκεκριμένο ηλεκτρονικό ταχυδρομείο σας.</p>
 
           <div className="mt-8 space-y-3">
             <div className="partner-stat-card">
@@ -89,23 +98,42 @@ const PartnerVerification = () => {
               <Button
                 size="lg"
                 className="h-12 rounded-xl bg-[hsl(var(--partner-navy))] px-6 text-[hsl(var(--partner-ivory))] hover:bg-[hsl(var(--partner-navy))]/92"
-                disabled={!isReady}
-                onClick={() =>
-                  navigate(destination, {
-                    state: {
-                      email,
-                    },
-                  })
-                }
+                disabled={!isReady || isVerifying}
+                onClick={async () => {
+                  setVerificationError("");
+                  setIsVerifying(true);
+
+                  try {
+                    const session = await verifyPartnerAccessCode(email, code);
+                    if (!session) {
+                      setVerificationError("Ο κωδικός δεν επιβεβαιώθηκε. Ελέγξτε τον πιο πρόσφατο κωδικό και προσπαθήστε ξανά.");
+                      return;
+                    }
+
+                    navigate(destination, {
+                      state: {
+                        email: session.email,
+                      },
+                    });
+                  } catch {
+                    setVerificationError("Δεν ήταν δυνατή η επαλήθευση πρόσβασης. Προσπαθήστε ξανά.");
+                  } finally {
+                    setIsVerifying(false);
+                  }
+                }}
               >
-                Επαλήθευση & Συνέχεια
+                {isVerifying ? "Γίνεται επαλήθευση..." : "Επαλήθευση & Συνέχεια"}
                 <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             </div>
+            {verificationError ? <p className="mt-4 text-sm font-semibold text-destructive">{verificationError}</p> : null}
 
             <button
               type="button"
-              onClick={() => setResent(true)}
+              onClick={async () => {
+                await requestPartnerAccessCode(email);
+                setResent(true);
+              }}
               className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[hsl(var(--partner-navy-soft))] transition hover:text-[hsl(var(--partner-ink))]"
             >
               <RefreshCw className="h-4 w-4" />

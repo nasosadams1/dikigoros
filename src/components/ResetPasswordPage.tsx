@@ -76,7 +76,7 @@ const ResetPasswordPage: React.FC = () => {
           throw new Error(
             hasRecoveryParams
               ? "Ο σύνδεσμος επαναφοράς δεν είναι έγκυρος ή έχει λήξει."
-              : "Ανοίξτε τον πιο πρόσφατο σύνδεσμο επαναφοράς από το email σας.",
+              : "Ανοίξτε τον πιο πρόσφατο σύνδεσμο επαναφοράς από το ηλεκτρονικό ταχυδρομείο σας.",
           );
         }
 
@@ -84,10 +84,10 @@ const ResetPasswordPage: React.FC = () => {
         setStatus("ready");
         setTitle("Δημιουργία νέου κωδικού");
         setMessage("Επιλέξτε έναν ισχυρό κωδικό. Μετά την αποθήκευση μπορείτε να συνδεθείτε άμεσα.");
-      } catch (error: any) {
-        const rawMessage = error?.message || "";
+      } catch (error: unknown) {
+        const rawMessage = error instanceof Error ? error.message : "";
         const friendlyMessage = rawMessage.includes(PKCE_MISSING_VERIFIER_MESSAGE)
-          ? "Αυτός ο σύνδεσμος επαναφοράς δεν μπορεί πλέον να ολοκληρωθεί σε αυτόν τον browser. Ζητήστε νέο email."
+          ? "Αυτός ο σύνδεσμος επαναφοράς δεν μπορεί πλέον να ολοκληρωθεί σε αυτόν τον περιηγητή. Ζητήστε νέο μήνυμα."
           : rawMessage;
 
         if (cancelled) return;
@@ -127,8 +127,8 @@ const ResetPasswordPage: React.FC = () => {
       setStatus("success");
       setTitle("Ο κωδικός ενημερώθηκε");
       setMessage("Ο κωδικός σας άλλαξε επιτυχώς. Μπορείτε να επιστρέψετε και να συνδεθείτε με τον νέο κωδικό.");
-    } catch (error: any) {
-      setFormError(error?.message || "Δεν ήταν δυνατή η ενημέρωση του κωδικού.");
+    } catch (error: unknown) {
+      setFormError(error instanceof Error ? error.message : "Δεν ήταν δυνατή η ενημέρωση του κωδικού.");
     } finally {
       setIsSubmitting(false);
     }
@@ -145,7 +145,7 @@ const ResetPasswordPage: React.FC = () => {
               </div>
               <div>
                 <p className="font-serif text-2xl tracking-tight">Dikigoros</p>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary-foreground/50">Account recovery</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary-foreground/50">Ανάκτηση λογαριασμού</p>
               </div>
             </div>
             <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-primary-foreground/15 bg-primary-foreground/10 px-3 py-1 text-xs font-bold text-primary-foreground/80">
@@ -154,13 +154,13 @@ const ResetPasswordPage: React.FC = () => {
             </div>
             <h1 className="mt-6 font-serif text-4xl leading-tight tracking-tight">Αλλάξτε τον κωδικό σας με ασφάλεια.</h1>
             <p className="mt-4 text-sm leading-6 text-primary-foreground/65">
-              Η σελίδα ολοκληρώνει το recovery flow από το email σας και κρατά την ίδια Supabase λειτουργία.
+              Η σελίδα ολοκληρώνει τη ροή ανάκτησης από το ηλεκτρονικό ταχυδρομείο σας και διατηρεί την ίδια ασφαλή λειτουργία.
             </p>
           </div>
 
           <div className="px-8 py-10 sm:px-10 sm:py-12">
             <div className="inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              {status === "loading" ? "Preparing" : status === "ready" ? "Ready" : status === "success" ? "Updated" : "Action needed"}
+              {status === "loading" ? "Προετοιμασία" : status === "ready" ? "Έτοιμο" : status === "success" ? "Ενημερώθηκε" : "Απαιτείται ενέργεια"}
             </div>
 
             <div className="mt-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary">

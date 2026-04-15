@@ -1,0 +1,32 @@
+
+> vite_react_shadcn_ts@0.0.0 dev
+> vite --host 127.0.0.1 --port 4173 --clearScreen false
+
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m380[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m4173[22m/[39m
+[2m12:26:02 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/partner/PartnerPortalGuard.tsx, /src/index.css[22m
+[2m12:26:14 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/partner/PartnerPortalGuard.tsx, /src/index.css[22m
+[2m12:26:56 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/userWorkspace.ts[22m
+[2m12:27:08 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/userWorkspace.ts[22m
+[2m12:27:12 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/userWorkspace.ts[22m
+[2m12:27:45 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/partnerWorkspace.ts[22m
+[2m12:27:57 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/lawyerRepository.ts[22m
+[2m12:29:27 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/partnerWorkspace.ts[22m
+[2m8:14:15 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/userWorkspace.ts[22m
+[2m8:14:24 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/userWorkspace.ts[22m
+[2m8:16:09 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/partner/PartnerPortalGuard.tsx, /src/index.css[22m
+[2m8:16:19 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/partner/PartnerPortalGuard.tsx, /src/index.css[22m
+[2m8:16:28 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/partner/PartnerPortalGuard.tsx, /src/index.css[22m
+[2m8:16:34 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/partner/PartnerPortalGuard.tsx, /src/index.css[22m
+[2m8:16:45 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/partnerWorkspace.ts[22m
+[2m8:17:12 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/partner/PartnerPortalGuard.tsx, /src/index.css[22m
+[2m8:17:17 μ.μ.[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/partner/PartnerPortalGuard.tsx, /src/index.css[22m
+[2m8:18:39 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/userWorkspace.ts[22m
+[2m8:19:22 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/test/platformRepository.test.ts[22m
+[2m8:19:39 μ.μ.[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/lib/partnerWorkspace.ts[22m
+[2m8:42:49 μ.μ.[22m [36m[1m[vite][22m[39m [32m.env.local changed, restarting server...[39m
+[2m8:42:49 μ.μ.[22m [36m[1m[vite][22m[39m server restarted.
+[2m8:42:51 μ.μ.[22m [36m[1m[vite][22m[39m [32m.env.local changed, restarting server...[39m
+[2m8:42:51 μ.μ.[22m [36m[1m[vite][22m[39m server restarted.

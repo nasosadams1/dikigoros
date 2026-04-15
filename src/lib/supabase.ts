@@ -44,10 +44,48 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// Partner/public requests must stay detached from browser auth storage.
+// Otherwise a stale JWT can override the anon role and make public RPCs fail.
+export const publicSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false,
+    storageKey: `${authStorageKey}-public`,
+    flowType: "implicit",
+  },
+  global: {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+    },
+  },
+});
+
 export interface UserProfile {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  city?: string;
+  preferred_language?: string;
+  preferred_consultation_mode?: "any" | "video" | "phone" | "inPerson";
+  preferred_legal_categories?: string[];
+  budget_range?: string;
+  urgency_preference?: string;
+  notification_preferences?: {
+    email?: boolean;
+    sms?: boolean;
+    reminders?: boolean;
+  };
+  privacy_settings?: {
+    share_phone_with_booked_lawyers?: boolean;
+    allow_document_access_by_booking?: boolean;
+    product_updates?: boolean;
+  };
+  saved_lawyer_ids?: string[];
+  compared_lawyer_ids?: string[];
+  lawyer_notes?: Record<string, string>;
   coins: number;
   total_coins_earned: number;
   xp: number;
@@ -168,8 +206,8 @@ export const signUpWithEmail = async (email: string, password: string, username:
 
     if (error) return { data: null, error };
 
-    const identities = Array.isArray((data?.user as any)?.identities)
-      ? ((data?.user as any)?.identities as unknown[])
+    const identities = Array.isArray((data?.user as { identities?: unknown[] } | null)?.identities)
+      ? (data?.user as { identities?: unknown[] }).identities
       : null;
     const looksLikeObfuscatedExistingUser =
       !!data?.user &&
@@ -187,6 +225,26 @@ export const signUpWithEmail = async (email: string, password: string, username:
         id: data.user.id,
         name: data.user.user_metadata?.display_name || normalizedUsername,
         email: normalizedEmail,
+        phone: "",
+        city: "",
+        preferred_language: "Ελληνικά",
+        preferred_consultation_mode: "any",
+        preferred_legal_categories: [],
+        budget_range: "",
+        urgency_preference: "",
+        notification_preferences: {
+          email: true,
+          sms: false,
+          reminders: true,
+        },
+        privacy_settings: {
+          share_phone_with_booked_lawyers: true,
+          allow_document_access_by_booking: true,
+          product_updates: false,
+        },
+        saved_lawyer_ids: [],
+        compared_lawyer_ids: [],
+        lawyer_notes: {},
         xp: 0,
         level: 1,
         coins: 0,

@@ -1,5 +1,5 @@
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Session, User as SupabaseUser } from "@supabase/supabase-js";
+import { AuthError, Session, User as SupabaseUser } from "@supabase/supabase-js";
 import {
   clearPersistedSupabaseAuth,
   createUserProfile,
@@ -23,18 +23,20 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
-  signUp: (email: string, password: string, username: string) => Promise<{ error: any; needsConfirmation?: boolean }>;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signInWithGoogle: () => Promise<{ error: any }>;
+  signUp: (email: string, password: string, username: string) => Promise<{ error: AuthOperationError; needsConfirmation?: boolean }>;
+  signIn: (email: string, password: string) => Promise<{ error: AuthOperationError }>;
+  signInWithGoogle: () => Promise<{ error: AuthOperationError }>;
   signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<{ error: any }>;
-  updateEmail: (email: string) => Promise<{ error: any }>;
+  resetPassword: (email: string) => Promise<{ error: AuthOperationError }>;
+  updateEmail: (email: string) => Promise<{ error: AuthOperationError }>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   applyAuthoritativeProfile: (profile: UserProfile) => Promise<void>;
   refetchProfile: () => Promise<void>;
   setNavigationCallback: (callback: () => void) => void;
-  confirmUser: (email: string) => Promise<{ error: any }>;
+  confirmUser: (email: string) => Promise<{ error: AuthOperationError }>;
 }
+
+type AuthOperationError = AuthError | Error | { message?: string } | null;
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -55,6 +57,26 @@ const createDefaultProfile = (user: SupabaseUser, preferredUsername?: string): O
     id: user.id,
     name: userName,
     email: userEmail,
+    phone: "",
+    city: "",
+    preferred_language: "Ελληνικά",
+    preferred_consultation_mode: "any",
+    preferred_legal_categories: [],
+    budget_range: "",
+    urgency_preference: "",
+    notification_preferences: {
+      email: true,
+      sms: false,
+      reminders: true,
+    },
+    privacy_settings: {
+      share_phone_with_booked_lawyers: true,
+      allow_document_access_by_booking: true,
+      product_updates: false,
+    },
+    saved_lawyer_ids: [],
+    compared_lawyer_ids: [],
+    lawyer_notes: {},
     coins: 0,
     total_coins_earned: 0,
     xp: 0,
@@ -122,7 +144,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const displayName = await getDisplayName(authUser.id);
-        if (displayName && displayName !== "Unknown User" && displayName !== data.name) {
+        const shouldBackfillName =
+          displayName &&
+          displayName !== "Unknown User" &&
+          (!data.name || data.name === "Unknown User");
+
+        if (shouldBackfillName) {
           const { data: updatedProfile } = await supabaseUpdateUserProfile(authUser.id, { name: displayName });
           setProfile(updatedProfile || { ...data, name: displayName });
         } else {
