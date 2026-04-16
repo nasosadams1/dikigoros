@@ -37,6 +37,7 @@ import {
   getPartnerSession,
   isVerifiedBooking,
   requestBookingCheckoutSession,
+  requestBookingRefund,
   requestPaymentSetupSession,
   type StoredBooking,
   type StoredPayment,
@@ -59,12 +60,14 @@ import {
   type UserWorkspace,
 } from "@/lib/userWorkspace";
 import { clearPaymentReturnParams, getPaymentReturnNotice, parseUserProfileTab } from "@/lib/userProfileNavigation";
+import { createOperationalCase } from "@/lib/operationsRepository";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { id: "overview", label: "Workspace", icon: UserRound },
   { id: "profile", label: "Client details", icon: UserRound },
   { id: "bookings", label: "Consultations", icon: CalendarDays },
+  { id: "messages", label: "Messages", icon: MessageSquareQuote },
   { id: "saved", label: "Saved & compare", icon: Heart },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "payments", label: "Billing & receipts", icon: CreditCard },
@@ -449,6 +452,56 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     persistWorkspace({ ...workspace, comparedLawyerIds });
   };
 
+  const handleCancelBookingWithRefund = (bookingId: string) => {
+    const booking = bookings.find((item) => item.id === bookingId);
+    const payment = payments.find((item) => item.bookingId === bookingId);
+
+    void (async () => {
+      await cancelBooking(bookingId);
+
+      if (booking && payment?.status === "paid" && isVerifiedBooking(booking)) {
+        const refund = await requestBookingRefund(booking);
+        if (refund.status === "review_required") {
+          createOperationalCase({
+            area: "payments",
+            title: "Refund review after cancellation",
+            summary: `A paid booking was cancelled and needs support review before the refund can be completed for ${booking.referenceId}.`,
+            priority: "high",
+            requesterEmail: booking.clientEmail,
+            relatedReference: payment.invoiceNumber || booking.referenceId,
+            evidence: [
+              `Booking: ${booking.referenceId}`,
+              `Payment status before cancellation: ${payment.status}`,
+              `Lawyer: ${booking.lawyerName}`,
+            ],
+          });
+          setPaymentSetupState({
+            loading: false,
+            message: "The booking was cancelled. Support will review the paid refund path and follow up with the next step.",
+            tone: "info",
+          });
+        } else {
+          setPaymentSetupState({
+            loading: false,
+            message:
+              refund.status === "refunded"
+                ? "The booking was cancelled and the refund was started through the original payment method."
+                : "The booking was cancelled. The refund has been requested through the original payment method.",
+            tone: "success",
+          });
+        }
+      }
+
+      setBookingVersion((version) => version + 1);
+    })().catch(() => {
+      setPaymentSetupState({
+        loading: false,
+        message: "The booking could not be cancelled right now. Refresh and try again, or contact support.",
+        tone: "error",
+      });
+    });
+  };
+
   const handleCancelBooking = (bookingId: string) => {
     void cancelBooking(bookingId).then(() => {
       setBookingVersion((version) => version + 1);
@@ -585,6 +638,21 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
       text: draft.text.trim(),
     }, userId).then((result) => {
       setWorkspace(result.workspace);
+      if (result.persisted) {
+        createOperationalCase({
+          area: "reviews",
+          title: "Review moderation check",
+          summary: `A completed-booking review was submitted for ${booking.lawyerName}. Confirm booking linkage, private-case detail safety, and publication status.`,
+          priority: "normal",
+          requesterEmail: booking.clientEmail,
+          relatedReference: booking.referenceId,
+          evidence: [
+            `Overall: ${draft.rating}/5`,
+            `Clarity: ${draft.clarityRating}/5`,
+            `Responsiveness: ${draft.responsivenessRating}/5`,
+          ],
+        });
+      }
       setReviewSubmitState((current) => ({
         ...current,
         [booking.id]: result.persisted
@@ -717,7 +785,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
               <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
                 <Panel title="Συνέχεια υπόθεσης" eyebrow="Επόμενη κίνηση">
                   {nextBooking ? (
-                    <BookingCard booking={nextBooking} onCancel={handleCancelBooking} featured />
+                    <BookingCard booking={nextBooking} onCancel={handleCancelBookingWithRefund} featured />
                   ) : (
                     <EmptyState
                       icon={CalendarDays}
@@ -792,7 +860,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                 <div className="grid gap-4">
                   {bookings.length > 0 ? (
                     bookings.map((booking) => (
-                      <BookingCard key={booking.id} booking={booking} onCancel={handleCancelBooking} />
+                      <BookingCard key={booking.id} booking={booking} onCancel={handleCancelBookingWithRefund} />
                     ))
                   ) : (
                     <EmptyState
@@ -800,6 +868,74 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                       title="Δεν υπάρχουν ακόμα ραντεβού"
                       description="Μόλις κλείσετε ραντεβού, θα εμφανιστεί εδώ με κατάσταση, κόστος και επόμενες ενέργειες."
                       action={<Button asChild className="rounded-xl font-bold"><Link to="/search">Κλείστε ραντεβού</Link></Button>}
+                    />
+                  )}
+                </div>
+              </Panel>
+            ) : null}
+
+            {activeView === "messages" ? (
+              <Panel title="Messages and next steps" eyebrow="Post-booking workspace">
+                <div className="grid gap-4">
+                  {bookings.length > 0 ? (
+                    bookings.map((booking) => {
+                      const payment = payments.find((item) => item.bookingId === booking.id);
+                      const linkedDocuments = workspace.documents.filter((document) => document.linkedBookingId === booking.id);
+
+                      return (
+                        <article key={booking.id} className="rounded-xl border border-border bg-card p-4">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-wider text-primary">{booking.referenceId}</p>
+                              <h3 className="mt-1 text-lg font-bold text-foreground">{booking.lawyerName}</h3>
+                              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                {booking.dateLabel} at {booking.time} - {booking.consultationType}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground">
+                              {statusLabels[booking.status]}
+                            </span>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 md:grid-cols-3">
+                            <div className="rounded-lg bg-secondary/45 p-3">
+                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Payment</p>
+                              <p className="mt-1 text-sm font-bold text-foreground">{payment?.status || "pending"}</p>
+                            </div>
+                            <div className="rounded-lg bg-secondary/45 p-3">
+                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Documents</p>
+                              <p className="mt-1 text-sm font-bold text-foreground">{linkedDocuments.length} linked</p>
+                            </div>
+                            <div className="rounded-lg bg-secondary/45 p-3">
+                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Next step</p>
+                              <p className="mt-1 text-sm font-bold text-foreground">
+                                {booking.status === "completed" ? "Leave a review" : "Prepare documents"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button type="button" variant="outline" onClick={() => selectView("documents")} className="rounded-xl text-xs font-bold">
+                              <FileText className="h-4 w-4" />
+                              Upload documents
+                            </Button>
+                            <Button type="button" variant="outline" onClick={() => selectView("payments")} className="rounded-xl text-xs font-bold">
+                              <CreditCard className="h-4 w-4" />
+                              Receipts
+                            </Button>
+                            <Button asChild variant="outline" className="rounded-xl text-xs font-bold">
+                              <Link to="/help">Support</Link>
+                            </Button>
+                          </div>
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <EmptyState
+                      icon={MessageSquareQuote}
+                      title="No consultation workspace yet"
+                      description="After booking, this becomes the place for next steps, document prompts, receipts, and support paths."
+                      action={<Button asChild className="rounded-xl font-bold"><Link to="/search">Find a lawyer</Link></Button>}
                     />
                   )}
                 </div>
@@ -936,7 +1072,23 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => void removeUserDocumentPersisted(workspaceKey, document.id, userId).then(setWorkspace)}
+                              onClick={() =>
+                                void removeUserDocumentPersisted(workspaceKey, document.id, userId).then((nextWorkspace) => {
+                                  setWorkspace(nextWorkspace);
+                                  createOperationalCase({
+                                    area: "privacyDocuments",
+                                    title: "Document deletion record",
+                                    summary: `Client removed ${document.name}. Confirm retention/deletion obligations and support visibility state.`,
+                                    priority: "normal",
+                                    requesterEmail: userEmail,
+                                    relatedReference: document.id,
+                                    evidence: [
+                                      `Document category: ${document.category}`,
+                                      `Visible to lawyer before deletion: ${document.visibleToLawyer ? "yes" : "no"}`,
+                                    ],
+                                  });
+                                })
+                              }
                               aria-label={`Διαγραφή ${document.name}`}
                               className="rounded-xl font-bold text-destructive hover:text-destructive"
                             >

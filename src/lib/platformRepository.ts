@@ -88,6 +88,14 @@ export interface PaymentSetupSession {
   persistenceSource: PersistenceSource;
 }
 
+export interface BookingRefundResult {
+  provider: "stripe";
+  status: "refunded" | "pending" | "review_required";
+  refundId?: string;
+  requestedAt: string;
+  persistenceSource: PersistenceSource;
+}
+
 export interface PartnerApplicationPayload {
   fullName: string;
   workEmail: string;
@@ -1101,6 +1109,55 @@ export const requestBookingCheckoutSession = async (
     return {
       provider: "stripe",
       status: "setup_required",
+      requestedAt,
+      persistenceSource: "local",
+    };
+  }
+};
+
+export const requestBookingRefund = async (
+  booking: StoredBooking,
+  reason = "requested_by_customer",
+): Promise<BookingRefundResult> => {
+  const requestedAt = new Date().toISOString();
+
+  try {
+    const { data, error } = await supabase.functions.invoke("create-booking-refund", {
+      body: {
+        bookingId: booking.id,
+        reason,
+      },
+    });
+
+    if (error) throw error;
+
+    const response = (data || {}) as {
+      status?: "refunded" | "pending";
+      refundId?: string;
+    };
+
+    if (response.status === "refunded") {
+      const existingPayment = getStoredPaymentForBooking(booking.id);
+      if (existingPayment) {
+        persistLocalPayment({
+          ...existingPayment,
+          status: "refunded",
+          updatedAt: requestedAt,
+        });
+      }
+    }
+
+    return {
+      provider: "stripe",
+      status: response.status || "pending",
+      refundId: response.refundId,
+      requestedAt,
+      persistenceSource: "supabase",
+    };
+  } catch {
+    return {
+      provider: "stripe",
+      status: "review_required",
       requestedAt,
       persistenceSource: "local",
     };

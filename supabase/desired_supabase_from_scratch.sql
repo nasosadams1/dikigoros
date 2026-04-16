@@ -542,7 +542,14 @@ begin
   end if;
 
   update public.booking_payments
-  set status = case when status = 'paid' then 'refunded' else 'failed' end,
+  set status = case when status = 'pending' then 'failed' else status end,
+      provider_payload = case
+        when status = 'paid' then provider_payload || jsonb_build_object(
+          'refundReviewRequired', true,
+          'cancelledAt', now()
+        )
+        else provider_payload
+      end,
       updated_at = now()
   where booking_id = p_booking_id
     and status in ('pending','paid');
@@ -1342,6 +1349,74 @@ grant execute on function public.nomos_is_current_partner_for_lawyer(text) to au
 revoke execute on function public.create_partner_access_code(text,text) from public, anon, authenticated;
 grant execute on function public.create_partner_access_code(text,text) to service_role;
 
+create table if not exists public.operational_cases (
+  id uuid primary key default gen_random_uuid(),
+  reference_id text not null unique,
+  area text not null check (area in ('payments','supply','verification','reviews','bookingDisputes','support','privacyDocuments','security')),
+  title text not null,
+  summary text not null,
+  status text not null default 'new' check (status in ('new','assigned','waiting_evidence','in_review','escalated','resolved','rejected','suspended')),
+  priority text not null default 'normal' check (priority in ('urgent','high','normal','low')),
+  owner text not null default 'Operations lead',
+  requester_email text,
+  related_reference text,
+  evidence jsonb not null default '[]'::jsonb,
+  timeline jsonb not null default '[]'::jsonb,
+  sla_due_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists operational_cases_area_status_idx on public.operational_cases (area,status,sla_due_at);
+create index if not exists operational_cases_requester_idx on public.operational_cases (requester_email,created_at desc) where requester_email is not null;
+
+create table if not exists public.operational_audit_events (
+  id uuid primary key default gen_random_uuid(),
+  operational_case_id uuid references public.operational_cases (id) on delete cascade,
+  actor_id uuid references auth.users (id) on delete set null,
+  actor_label text not null default 'Operations',
+  event_type text not null,
+  note text,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists operational_audit_case_idx on public.operational_audit_events (operational_case_id,created_at desc);
+
+create table if not exists public.booking_payment_events (
+  id uuid primary key default gen_random_uuid(),
+  booking_id uuid references public.booking_requests (id) on delete cascade,
+  stripe_event_id text not null unique,
+  event_type text not null,
+  payment_status text,
+  provider_payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists booking_payment_events_booking_idx on public.booking_payment_events (booking_id,created_at desc);
+
+alter table public.operational_cases enable row level security;
+alter table public.operational_audit_events enable row level security;
+alter table public.booking_payment_events enable row level security;
+drop policy if exists "Users can create own support cases" on public.operational_cases;
+create policy "Users can create own support cases" on public.operational_cases
+  for insert to authenticated
+  with check (
+    area in ('payments','bookingDisputes','support','privacyDocuments','security')
+    and (
+      requester_email is null
+      or lower(requester_email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+    )
+  );
+drop policy if exists "Users can read own support cases" on public.operational_cases;
+create policy "Users can read own support cases" on public.operational_cases
+  for select to authenticated
+  using (
+    requester_email is not null
+    and lower(requester_email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
+grant select,insert on public.operational_cases to authenticated;
+
 notify pgrst, 'reload schema';
 
 commit;
@@ -1360,6 +1435,8 @@ from (
     ('partner_access_codes', to_regclass('public.partner_access_codes') is not null),
     ('partner_sessions', to_regclass('public.partner_sessions') is not null),
     ('partner_applications', to_regclass('public.partner_applications') is not null),
+    ('operational_cases', to_regclass('public.operational_cases') is not null),
+    ('booking_payment_events', to_regclass('public.booking_payment_events') is not null),
     ('submit_booking_review_rpc', to_regprocedure('public.submit_booking_review(uuid,text,integer,integer,integer,text)') is not null),
     ('save_partner_workspace_rpc', to_regprocedure('public.save_partner_workspace_as_partner(text,text,jsonb,jsonb,jsonb,jsonb)') is not null),
     ('cancel_booking_rpc', to_regprocedure('public.cancel_booking_as_user(uuid)') is not null),

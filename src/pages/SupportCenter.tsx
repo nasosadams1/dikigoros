@@ -4,6 +4,7 @@ import { ArrowRight, CalendarX, CreditCard, FileText, KeyRound, MessageSquareWar
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
+import SEO from "@/components/SEO";
 import {
   createOperationalCase,
   type OperationalCasePriority,
@@ -66,6 +67,11 @@ const SupportCenter = () => {
 
   return (
   <div className="min-h-screen bg-background">
+    <SEO
+      title="Support center | Dikigoros"
+      description="Open a support case for bookings, payments, refunds, account access, documents, privacy requests, security concerns, or complaints."
+      path="/help"
+    />
     <Navbar />
     <main className="mx-auto max-w-6xl px-5 py-12 lg:px-8 lg:py-16">
       <p className="text-xs font-bold uppercase tracking-widest text-primary">Support center</p>

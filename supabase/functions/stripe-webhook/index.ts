@@ -47,6 +47,17 @@ const verifyStripeSignature = async (payload: string, signatureHeader: string, s
   return timingSafeEqual(toHex(digest), signature);
 };
 
+const requiresLiveStripe = () =>
+  Deno.env.get("REQUIRE_LIVE_STRIPE") === "true" || Deno.env.get("STRIPE_REQUIRE_LIVE_MODE") === "true";
+
+const getStripeModeError = () => {
+  const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") || "";
+  if (requiresLiveStripe() && !stripeSecretKey.startsWith("sk_live_")) {
+    return "Live Stripe mode is required for payment webhooks.";
+  }
+  return "";
+};
+
 const patchPayment = async (bookingId: string, updates: Record<string, unknown>) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -71,6 +82,44 @@ const patchPayment = async (bookingId: string, updates: Record<string, unknown>)
 
   if (!response.ok) {
     throw new Error(`Payment update failed: ${await response.text()}`);
+  }
+};
+
+const recordPaymentEvent = async (bookingId: string, event: Record<string, unknown>, type: string, object: Record<string, unknown>) => {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) return;
+
+  const stripeEventId = String(event.id || "");
+  if (!stripeEventId) return;
+
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/booking_payment_events?on_conflict=stripe_event_id`,
+    {
+      method: "POST",
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=ignore-duplicates,return=minimal",
+      },
+      body: JSON.stringify({
+        booking_id: bookingId,
+        stripe_event_id: stripeEventId,
+        event_type: type,
+        payment_status: String(object.payment_status || object.status || ""),
+        provider_payload: {
+          stripeApiVersion,
+          objectId: object.id || "",
+          mode: object.mode || "",
+          paymentIntent: object.payment_intent || "",
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    console.error("Payment event record failed", await response.text());
   }
 };
 
@@ -125,6 +174,8 @@ Deno.serve(async (request) => {
 
   const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
   if (!webhookSecret) return json({ error: "Missing STRIPE_WEBHOOK_SECRET" }, 500);
+  const stripeModeError = getStripeModeError();
+  if (stripeModeError) return json({ error: stripeModeError }, 500);
 
   const signatureHeader = request.headers.get("stripe-signature") || "";
   const payload = await request.text();
@@ -154,6 +205,8 @@ Deno.serve(async (request) => {
 
   const bookingId = String(object.client_reference_id || object.metadata?.booking_id || "");
   if (!bookingId) return json({ received: true, ignored: "missing booking id" });
+
+  await recordPaymentEvent(bookingId, event, type, object);
 
   if (type === "charge.refunded" || (type === "refund.updated" && object.status === "succeeded")) {
     await patchPayment(bookingId, {

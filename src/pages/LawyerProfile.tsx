@@ -21,6 +21,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
+import SEO from "@/components/SEO";
 import { consultationModeIcons, type Lawyer } from "@/data/lawyers";
 import { useAuth } from "@/context/AuthContext";
 import { areLawyerIdsEqual, fetchPartnerLawyerId, getStoredPartnerLawyerId } from "@/lib/partnerIdentity";
@@ -114,7 +115,7 @@ const LawyerProfile = () => {
     [availabilityRules, lawyer, lowestConsultation, reservedSlots],
   );
   const similarLawyers = useMemo(
-    () => (lawyer ? getSimilarLawyerGroups(lawyerCatalog, lawyer) : { cheaper: [], faster: [], moreReviewed: [] }),
+    () => (lawyer ? getSimilarLawyerGroups(lawyerCatalog, lawyer) : { bestMatch: [], cheaper: [], faster: [], moreReviewed: [] }),
     [lawyer, lawyerCatalog],
   );
 
@@ -164,6 +165,11 @@ const LawyerProfile = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title={`${lawyer.name} - ${lawyer.specialty} | Dikigoros`}
+        description={`Compare ${lawyer.name} by specialty, verified profile details, reviews, availability, consultation modes, and starting price.`}
+        path={`/lawyer/${lawyer.id}`}
+      />
       <Navbar />
 
       <main className="mx-auto max-w-7xl px-5 py-6 lg:px-8 lg:py-8">
@@ -394,7 +400,8 @@ const LawyerProfile = () => {
 
             <section className="mt-8">
               <h2 className="font-serif text-xl tracking-tight text-foreground">Similar lawyer alternatives</h2>
-              <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <AlternativeGroup title="Best overall match" lawyers={similarLawyers.bestMatch} />
                 <AlternativeGroup title="Cheaper" lawyers={similarLawyers.cheaper} />
                 <AlternativeGroup title="Faster response" lawyers={similarLawyers.faster} />
                 <AlternativeGroup title="More reviewed" lawyers={similarLawyers.moreReviewed} />

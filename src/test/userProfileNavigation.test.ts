@@ -4,6 +4,7 @@ import { clearPaymentReturnParams, getPaymentReturnNotice, parseUserProfileTab }
 describe("user profile navigation", () => {
   it("accepts only known account tabs", () => {
     expect(parseUserProfileTab("profile")).toBe("profile");
+    expect(parseUserProfileTab("messages")).toBe("messages");
     expect(parseUserProfileTab("payments")).toBe("payments");
     expect(parseUserProfileTab("documents")).toBe("documents");
     expect(parseUserProfileTab("admin")).toBe("overview");

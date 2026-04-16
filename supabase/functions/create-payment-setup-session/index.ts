@@ -50,6 +50,15 @@ const getRequiredEnv = (name: string) => {
   return value;
 };
 
+const requiresLiveStripe = () =>
+  Deno.env.get("REQUIRE_LIVE_STRIPE") === "true" || Deno.env.get("STRIPE_REQUIRE_LIVE_MODE") === "true";
+
+const assertStripeMode = (secretKey: string) => {
+  if (requiresLiveStripe() && !secretKey.startsWith("sk_live_")) {
+    throw new Error("Live Stripe mode is required for payment setup.");
+  }
+};
+
 const normalizeReturnUrl = (returnUrl: unknown, request: Request) => {
   const allowedOrigins = getAllowedOrigins();
   const requestOrigin = request.headers.get("Origin")?.replace(/\/+$/, "") || "";
@@ -90,6 +99,7 @@ Deno.serve(async (request) => {
     const supabaseUrl = getRequiredEnv("SUPABASE_URL");
     const anonKey = getRequiredEnv("SUPABASE_ANON_KEY");
     const stripeSecretKey = getRequiredEnv("STRIPE_SECRET_KEY");
+    assertStripeMode(stripeSecretKey);
 
     const user = await getAuthUser(request, supabaseUrl, anonKey);
     if (!user) return json(request, { error: "Authentication required" }, 401);
@@ -117,7 +127,10 @@ Deno.serve(async (request) => {
     });
 
     const payload = await stripeResponse.json();
-    if (!stripeResponse.ok) return json(request, { error: payload.error?.message || "Stripe setup failed" }, 400);
+    if (!stripeResponse.ok) {
+      console.error("Stripe setup failed", payload.error?.message || payload);
+      return json(request, { error: "Payment method setup could not be started. Try again or contact support." }, 400);
+    }
 
     return json(request, {
       provider: "stripe",

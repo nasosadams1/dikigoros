@@ -271,8 +271,41 @@ export const getNextAvailabilityOptions = (
 
 export const getSimilarLawyerGroups = (lawyers: Lawyer[], current: Lawyer) => {
   const alternatives = lawyers.filter((lawyer) => lawyer.id !== current.id);
+  const currentSpecialtyTokens = new Set(
+    [current.specialty, current.specialtyShort, current.bestFor, ...current.specialties, ...current.specialtyKeywords]
+      .flatMap((value) => normalizeMarketplaceText(value).split(/\s+/))
+      .filter((token) => token.length > 3),
+  );
+  const currentModes = new Set(current.consultations.map((consultation) => consultation.mode));
+  const currentLanguages = new Set(current.languages.map(normalizeMarketplaceText));
+
+  const scoreSimilarity = (lawyer: Lawyer) => {
+    const specialtyTokens = [lawyer.specialty, lawyer.specialtyShort, lawyer.bestFor, ...lawyer.specialties, ...lawyer.specialtyKeywords]
+      .flatMap((value) => normalizeMarketplaceText(value).split(/\s+/))
+      .filter((token) => token.length > 3);
+    const specialtyOverlap = specialtyTokens.filter((token) => currentSpecialtyTokens.has(token)).length;
+    const modeOverlap = lawyer.consultations.filter((consultation) => currentModes.has(consultation.mode)).length;
+    const languageOverlap = lawyer.languages.filter((language) => currentLanguages.has(normalizeMarketplaceText(language))).length;
+    const cityMatch = includesMarketplaceText(lawyer.city, current.city) || includesMarketplaceText(current.city, lawyer.city) ? 1 : 0;
+    const priceDistance = Math.abs(lawyer.price - current.price);
+
+    return (
+      specialtyOverlap * 28 +
+      cityMatch * 18 +
+      modeOverlap * 12 +
+      languageOverlap * 10 +
+      lawyer.rating * 8 +
+      Math.min(lawyer.reviews, 80) * 0.4 +
+      (isAvailableToday(lawyer) ? 18 : isAvailableTomorrow(lawyer) ? 10 : 0) -
+      lawyer.responseMinutes * 0.06 -
+      priceDistance * 0.05
+    );
+  };
 
   return {
+    bestMatch: [...alternatives]
+      .sort((first, second) => scoreSimilarity(second) - scoreSimilarity(first))
+      .slice(0, 2),
     cheaper: alternatives
       .filter((lawyer) => lawyer.price <= current.price)
       .sort((first, second) => first.price - second.price || second.rating - first.rating)

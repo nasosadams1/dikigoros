@@ -3,6 +3,7 @@ import { ArrowRight, CheckCircle2, CreditCard, FileText, LockKeyhole, MessageSqu
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
+import SEO from "@/components/SEO";
 
 const trustPages = {
   "/trust/verification-standards": {
@@ -80,6 +81,11 @@ const TrustPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title={`${page.eyebrow} | Dikigoros`}
+        description={page.intro}
+        path={location.pathname}
+      />
       <Navbar />
       <main className="mx-auto max-w-5xl px-5 py-12 lg:px-8 lg:py-16">
         <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary">

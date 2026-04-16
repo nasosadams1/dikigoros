@@ -5,13 +5,16 @@ import { ArrowRight, CalendarDays, MapPin, ShieldCheck, Star } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
+import SEO from "@/components/SEO";
 import { getLawyers } from "@/lib/lawyerRepository";
 import { defaultLawyerSearchFilters, searchLawyers } from "@/lib/lawyerSearch";
 import { cityDirectory, formatCurrency, getDiscoveryConfig, issueDirectory } from "@/lib/marketplace";
+import { getDiscoverySeo } from "@/lib/seo";
 
 const DiscoveryPage = () => {
   const { issueSlug, citySlug } = useParams();
   const config = getDiscoveryConfig(issueSlug, citySlug);
+  const seo = getDiscoverySeo(issueSlug, citySlug);
   const { data: marketplaceLawyers = [] } = useQuery({ queryKey: ["lawyers"], queryFn: getLawyers });
   const lawyers = useMemo(
     () =>
@@ -25,6 +28,7 @@ const DiscoveryPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title={seo.title} description={seo.description} path={seo.path} />
       <Navbar />
       <main className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-16">
         <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">

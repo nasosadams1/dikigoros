@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
+import SEO from "@/components/SEO";
 import { type ConsultationMode } from "@/data/lawyers";
 import { getLawyers } from "@/lib/lawyerRepository";
 import {
@@ -107,6 +108,11 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="Find and book a verified lawyer | Dikigoros"
+        description="Describe your legal issue, compare verified lawyers by reviews, availability, response time, and price, then book and pay securely."
+        path="/"
+      />
       <Navbar />
 
       <section id="top" className="border-b border-border bg-secondary/35">

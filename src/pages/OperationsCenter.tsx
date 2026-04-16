@@ -18,6 +18,7 @@ import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
+import SEO from "@/components/SEO";
 import { getLawyers } from "@/lib/lawyerRepository";
 import {
   getOperationalRulesByArea,
@@ -104,6 +105,11 @@ const OperationsCenter = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="Production operations | Dikigoros"
+        description="Operational workflows for live payments, supply density, verification, reviews, booking disputes, support, privacy, documents, and security."
+        path="/operations"
+      />
       <Navbar />
       <main className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-16">
         <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">

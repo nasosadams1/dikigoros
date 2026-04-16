@@ -11,6 +11,7 @@ import {
 import { Link } from "react-router-dom";
 import PartnerShell from "@/components/partner/PartnerShell";
 import { Button } from "@/components/ui/button";
+import SEO from "@/components/SEO";
 
 const roiPoints = [
   "Fewer irrelevant requests",
@@ -74,6 +75,11 @@ const onboardingSteps = [
 const ForLawyersLanding = () => {
   return (
     <PartnerShell>
+      <SEO
+        title="For lawyers and firms | Dikigoros"
+        description="Join a verified legal marketplace with qualified consultations, availability control, booking management, review credibility, and clear commercial plans."
+        path="/for-lawyers"
+      />
       <div className="space-y-5">
         <section className="partner-panel p-7 lg:p-8">
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">

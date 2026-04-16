@@ -23,6 +23,7 @@ import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
+import SEO from "@/components/SEO";
 import { useAuth } from "@/context/AuthContext";
 import { consultationModeLabels, type ConsultationMode, type Lawyer } from "@/data/lawyers";
 import { areLawyerIdsEqual, fetchPartnerLawyerId, getStoredPartnerLawyerId } from "@/lib/partnerIdentity";
@@ -264,6 +265,11 @@ const SearchResults = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="Compare lawyers | Dikigoros"
+        description="Compare verified lawyers by specialty, best fit, city, reviews, response time, availability, consultation mode, and starting price."
+        path="/search"
+      />
       <Navbar />
 
       <div className="sticky top-16 z-40 border-b border-border bg-card/95 backdrop-blur-md lg:top-[72px]">
