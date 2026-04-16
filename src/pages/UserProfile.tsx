@@ -62,14 +62,14 @@ import { clearPaymentReturnParams, getPaymentReturnNotice, parseUserProfileTab }
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { id: "overview", label: "Επισκόπηση", icon: UserRound },
-  { id: "profile", label: "Προφίλ", icon: UserRound },
-  { id: "bookings", label: "Ραντεβού", icon: CalendarDays },
-  { id: "saved", label: "Αποθηκευμένοι", icon: Heart },
-  { id: "documents", label: "Έγγραφα", icon: FileText },
-  { id: "payments", label: "Πληρωμές", icon: CreditCard },
-  { id: "reviews", label: "Κριτικές", icon: MessageSquareQuote },
-  { id: "privacy", label: "Απόρρητο", icon: LockKeyhole },
+  { id: "overview", label: "Workspace", icon: UserRound },
+  { id: "profile", label: "Client details", icon: UserRound },
+  { id: "bookings", label: "Consultations", icon: CalendarDays },
+  { id: "saved", label: "Saved & compare", icon: Heart },
+  { id: "documents", label: "Documents", icon: FileText },
+  { id: "payments", label: "Billing & receipts", icon: CreditCard },
+  { id: "reviews", label: "Reviews", icon: MessageSquareQuote },
+  { id: "privacy", label: "Privacy", icon: LockKeyhole },
 ] as const;
 
 type ActiveView = (typeof navItems)[number]["id"];

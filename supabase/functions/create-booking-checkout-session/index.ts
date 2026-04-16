@@ -196,6 +196,10 @@ Deno.serve(async (request) => {
     form.set("metadata[reference_id]", booking.reference_id);
     form.set("metadata[lawyer_id]", booking.lawyer_id);
     form.set("metadata[user_id]", user.id);
+    form.set("payment_intent_data[metadata][booking_id]", booking.id);
+    form.set("payment_intent_data[metadata][reference_id]", booking.reference_id);
+    form.set("payment_intent_data[metadata][lawyer_id]", booking.lawyer_id);
+    form.set("payment_intent_data[metadata][user_id]", user.id);
 
     const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
       method: "POST",

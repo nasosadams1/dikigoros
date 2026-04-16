@@ -335,6 +335,12 @@ export const getStoredBookings = () => readStoredList<StoredBooking>(bookingStor
 
 export const getStoredPayments = () => readStoredList<StoredPayment>(paymentStorageKey);
 
+export const getStoredBookingById = (bookingId?: string | null) =>
+  bookingId ? getStoredBookings().find((booking) => booking.id === bookingId) || null : null;
+
+export const getStoredPaymentForBooking = (bookingId?: string | null) =>
+  bookingId ? getStoredPayments().find((payment) => payment.bookingId === bookingId) || null : null;
+
 export const getStoredBookingsForUser = (userId?: string | null, email?: string | null) => {
   const normalizedEmail = email?.trim().toLowerCase();
 
@@ -813,6 +819,28 @@ const persistLocalPayment = (payment: StoredPayment) => {
   writeStoredList(paymentStorageKey, [payment, ...existing]);
 };
 
+export const recordLocalCheckoutReturn = (
+  bookingId: string,
+  status: "paid" | "failed",
+  stripeCheckoutSessionId?: string | null,
+) => {
+  const booking = getStoredBookingById(bookingId);
+  if (!booking) return null;
+
+  const existingPayment = getStoredPaymentForBooking(bookingId);
+  const now = new Date().toISOString();
+  const payment: StoredPayment = {
+    ...(existingPayment || createPaymentRecordFromBooking(booking, booking.persistenceSource)),
+    status,
+    stripeCheckoutSessionId: stripeCheckoutSessionId || existingPayment?.stripeCheckoutSessionId,
+    paidAt: status === "paid" ? existingPayment?.paidAt || now : existingPayment?.paidAt,
+    updatedAt: now,
+  };
+
+  persistLocalPayment(payment);
+  return payment;
+};
+
 const persistBookingPayment = (booking: StoredBooking) => {
   if (!enableLocalBookingFallback && booking.persistenceSource !== "local") return;
   persistLocalPayment(createPaymentRecordFromBooking(booking, booking.persistenceSource));
@@ -1024,7 +1052,10 @@ export const requestPaymentSetupSession = async (
   }
 };
 
-export const requestBookingCheckoutSession = async (booking: StoredBooking): Promise<PaymentSetupSession> => {
+export const requestBookingCheckoutSession = async (
+  booking: StoredBooking,
+  returnUrl?: string,
+): Promise<PaymentSetupSession> => {
   const requestedAt = new Date().toISOString();
 
   try {
@@ -1034,7 +1065,9 @@ export const requestBookingCheckoutSession = async (booking: StoredBooking): Pro
         lawyerId: booking.lawyerId,
         amount: booking.price,
         currency: "EUR",
-        returnUrl: typeof window !== "undefined" ? `${window.location.origin}/account?tab=payments` : undefined,
+        returnUrl:
+          returnUrl ||
+          (typeof window !== "undefined" ? `${window.location.origin}/account?tab=payments` : undefined),
       },
     });
 

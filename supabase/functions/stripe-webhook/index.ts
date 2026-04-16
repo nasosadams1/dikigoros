@@ -155,6 +155,21 @@ Deno.serve(async (request) => {
   const bookingId = String(object.client_reference_id || object.metadata?.booking_id || "");
   if (!bookingId) return json({ received: true, ignored: "missing booking id" });
 
+  if (type === "charge.refunded" || (type === "refund.updated" && object.status === "succeeded")) {
+    await patchPayment(bookingId, {
+      status: "refunded",
+      stripe_payment_intent_id: object.payment_intent,
+      receipt_url: object.receipt_url || null,
+      provider_payload: {
+        stripeApiVersion,
+        eventId: event.id,
+        refundStatus: object.status || "refunded",
+      },
+    });
+
+    return json({ received: true });
+  }
+
   if (type === "checkout.session.completed" || type === "checkout.session.async_payment_succeeded") {
     const receiptUrl = await fetchReceiptUrl(object.payment_intent);
 

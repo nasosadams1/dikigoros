@@ -1,570 +1,400 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, MapPin, Star, Clock, ShieldCheck, ChevronRight, CheckCircle2, Quote, Users, Heart, Home, Scale, FileText, Briefcase, TrendingUp, Video, Phone, ArrowRight, Award, Zap } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarCheck,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Languages,
+  MapPin,
+  MessageSquareText,
+  Search,
+  ShieldCheck,
+  Star,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { lawyers } from "@/data/lawyers";
+import Navbar from "@/components/Navbar";
+import { type ConsultationMode } from "@/data/lawyers";
+import { getLawyers } from "@/lib/lawyerRepository";
+import {
+  consultationModeNames,
+  featuredGroupLabels,
+  formatCurrency,
+  getFeaturedLawyerGroups,
+  getMarketplaceStats,
+  getRecommendedLawyers,
+  popularLegalJourneys,
+  publicTrustMechanics,
+  type FeaturedGroupKey,
+  type LanguageIntent,
+} from "@/lib/marketplace";
+import { cn } from "@/lib/utils";
 
-const categories = [
-  { name: "Οικογενειακό Δίκαιο", desc: "Διαζύγια, επιμέλεια, διατροφή", icon: Heart },
-  { name: "Εργατικό Δίκαιο", desc: "Απολύσεις, αποζημιώσεις, συμβάσεις", icon: Briefcase },
-  { name: "Ακίνητα & Μισθώσεις", desc: "Αγοραπωλησίες, ενοικιάσεις, διαφορές", icon: Home },
-  { name: "Ποινικό Δίκαιο", desc: "Υπεράσπιση, παραστάσεις, προσφυγές", icon: Scale },
-  { name: "Κληρονομικό Δίκαιο", desc: "Διαθήκες, αποδοχή, αποποίηση", icon: FileText },
-  { name: "Εμπορικό Δίκαιο", desc: "Εταιρείες, συμβάσεις, διαφορές", icon: TrendingUp },
+const modeOptions: Array<{ value: "any" | ConsultationMode; label: string }> = [
+  { value: "any", label: "Any mode" },
+  { value: "video", label: "Video consultation" },
+  { value: "phone", label: "Phone consultation" },
+  { value: "inPerson", label: "Office visit" },
 ];
 
-const featuredLawyers = [
-  {
-    name: "Μαρία Παπαδοπούλου",
-    specialty: "Οικογενειακό Δίκαιο",
-    bestFor: "Διαζύγια & επιμέλεια τέκνων",
-    city: "Αθήνα",
-    rating: 4.9,
-    reviews: 127,
-    experience: 14,
-    price: 60,
-    available: "Σήμερα",
-    response: "< 1 ώρα",
-    types: ["Video", "Τηλέφωνο"],
-    image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&h=400&fit=crop&crop=face",
-  },
-  {
-    name: "Νίκος Αντωνίου",
-    specialty: "Εργατικό Δίκαιο",
-    bestFor: "Απολύσεις & εργατικές διαφορές",
-    city: "Θεσσαλονίκη",
-    rating: 4.8,
-    reviews: 94,
-    experience: 18,
-    price: 50,
-    available: "Αύριο",
-    response: "< 2 ώρες",
-    types: ["Video", "Αυτοπρόσωπα"],
-    image: "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&h=400&fit=crop&crop=face",
-  },
-  {
-    name: "Ελένη Καραγιάννη",
-    specialty: "Ακίνητα & Μισθώσεις",
-    bestFor: "Αγοραπωλησίες & μισθωτικές διαφορές",
-    city: "Αθήνα",
-    rating: 4.9,
-    reviews: 156,
-    experience: 21,
-    price: 70,
-    available: "Σήμερα",
-    response: "< 30 λεπτά",
-    types: ["Video", "Τηλέφωνο", "Αυτοπρόσωπα"],
-    image: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&h=400&fit=crop&crop=face",
-  },
+const languageOptions: Array<{ value: "any" | LanguageIntent; label: string }> = [
+  { value: "any", label: "Any language" },
+  { value: "Greek", label: "Greek" },
+  { value: "English", label: "English" },
 ];
 
-const featuredLawyerIds = ["maria-papadopoulou", "nikos-antoniou", "eleni-karagianni"];
+const groupOrder: FeaturedGroupKey[] = ["topRated", "fastestResponse", "bestValue", "availableSoon"];
 
-const testimonials = [
+const trustCards = [
   {
-    text: "Βρήκα δικηγόρο για το διαζύγιό μου σε λιγότερο από μία ώρα. Η διαδικασία ήταν απίστευτα απλή και η δικηγόρος εξαιρετική.",
-    name: "Κατερίνα Μ.",
-    location: "Αθήνα",
-    rating: 5,
-    issue: "Οικογενειακό Δίκαιο",
+    icon: ShieldCheck,
+    title: "Verified partner profiles",
+    text: "Identity, license, bar association, and core professional details are checked before a profile appears publicly.",
   },
   {
-    text: "Μετά από χρόνια αβεβαιότητας με τον εργοδότη μου, βρήκα επιτέλους κάποιον που με βοήθησε. Η κράτηση έγινε μέσα σε 2 λεπτά.",
-    name: "Γιώργος Δ.",
-    location: "Θεσσαλονίκη",
-    rating: 5,
-    issue: "Εργατικό Δίκαιο",
+    icon: MessageSquareText,
+    title: "Reviews after booking",
+    text: "Published reviews are tied to completed consultations, with moderation and lawyer reply handling.",
   },
   {
-    text: "Χρειαζόμουν βοήθεια με κληρονομικό θέμα. Η πλατφόρμα μου επέτρεψε να συγκρίνω δικηγόρους και να διαλέξω τον καλύτερο.",
-    name: "Δημήτρης Κ.",
-    location: "Πάτρα",
-    rating: 5,
-    issue: "Κληρονομικό Δίκαιο",
+    icon: CalendarCheck,
+    title: "Real availability rules",
+    text: "Booking options follow each lawyer's published schedule, booking window, and buffer rules.",
+  },
+  {
+    icon: CreditCard,
+    title: "Secure booking and payment",
+    text: "Reservation and payment steps use Stripe-backed checkout before the consultation is confirmed.",
   },
 ];
-
-const totalReviews = lawyers.reduce((sum, lawyer) => sum + lawyer.reviews, 0);
-const averageRating = (
-  lawyers.reduce((sum, lawyer) => sum + lawyer.rating, 0) / Math.max(1, lawyers.length)
-).toFixed(1);
-const totalCities = new Set(lawyers.map((lawyer) => lawyer.city)).size;
-
-const trustStats = [
-  { target: lawyers.length, suffix: "", label: "Ελεγμένα προφίλ" },
-  { target: totalReviews, suffix: "+", label: "Καταγεγραμμένες αξιολογήσεις" },
-  { staticValue: `${averageRating}/5`, label: "Μέση αξιολόγηση" },
-  { target: totalCities, suffix: "", label: "Πόλεις με διαθέσιμα προφίλ" },
-] as const;
 
 const Index = () => {
   const navigate = useNavigate();
-  const trustStripRef = useRef<HTMLElement | null>(null);
-  const [heroQuery, setHeroQuery] = useState("");
-  const [heroCity, setHeroCity] = useState("");
-  const [hasAnimatedTrustStats, setHasAnimatedTrustStats] = useState(false);
-  const [animatedTrustValues, setAnimatedTrustValues] = useState<string[]>(
-    trustStats.map((stat) => ("target" in stat ? `0${stat.suffix}` : stat.staticValue)),
-  );
+  const [legalIssue, setLegalIssue] = useState("");
+  const [city, setCity] = useState("");
+  const [mode, setMode] = useState<"any" | ConsultationMode>("any");
+  const [language, setLanguage] = useState<"any" | LanguageIntent>("any");
+  const [problemDescription, setProblemDescription] = useState("");
+  const [activeGroup, setActiveGroup] = useState<FeaturedGroupKey>("topRated");
 
-  useEffect(() => {
-    if (hasAnimatedTrustStats || !trustStripRef.current) {
-      return;
-    }
+  const { data: marketplaceLawyers = [], isFetching } = useQuery({
+    queryKey: ["lawyers"],
+    queryFn: getLawyers,
+  });
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setHasAnimatedTrustStats(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.35 },
-    );
+  const stats = useMemo(() => getMarketplaceStats(marketplaceLawyers), [marketplaceLawyers]);
+  const featuredGroups = useMemo(() => getFeaturedLawyerGroups(marketplaceLawyers), [marketplaceLawyers]);
+  const recommendedLawyers = useMemo(() => getRecommendedLawyers(marketplaceLawyers, 3), [marketplaceLawyers]);
+  const activeFeaturedLawyers = featuredGroups[activeGroup].length > 0 ? featuredGroups[activeGroup] : recommendedLawyers;
+  const heroLawyer = recommendedLawyers[0] || marketplaceLawyers[0];
+  const reviewBackedLawyers = recommendedLawyers.filter((lawyer) => lawyer.reviews > 0);
 
-    observer.observe(trustStripRef.current);
-
-    return () => observer.disconnect();
-  }, [hasAnimatedTrustStats]);
-
-  const handleHeroSearch = (event: FormEvent<HTMLFormElement>) => {
+  const handleHeroSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const params = new URLSearchParams();
-    if (heroQuery.trim()) params.set("q", heroQuery.trim());
-    if (heroCity.trim()) params.set("city", heroCity.trim());
+    const query = legalIssue.trim() || problemDescription.trim();
+
+    if (query) params.set("q", query);
+    if (city.trim()) params.set("city", city.trim());
+    if (mode !== "any") params.set("type", mode);
+    if (language !== "any") params.set("language", language);
+
     navigate({ pathname: "/search", search: params.toString() });
   };
-
-  useEffect(() => {
-    if (!hasAnimatedTrustStats) {
-      return;
-    }
-
-    const duration = 1400;
-    let frameId = 0;
-    const startTime = performance.now();
-
-    const tick = (now: number) => {
-      const progress = Math.min((now - startTime) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-
-      setAnimatedTrustValues(
-        trustStats.map((stat) =>
-          "target" in stat ? `${Math.round(stat.target * eased)}${stat.suffix}` : stat.staticValue,
-        ),
-      );
-
-      if (progress < 1) {
-        frameId = requestAnimationFrame(tick);
-      }
-    };
-
-    frameId = requestAnimationFrame(tick);
-
-    return () => cancelAnimationFrame(frameId);
-  }, [hasAnimatedTrustStats]);
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      {/* Hero */}
-      <section id="top" className="relative overflow-hidden border-b border-border">
-        <div className="absolute inset-0 bg-gradient-to-b from-secondary/60 to-background" />
-        <div className="relative mx-auto max-w-7xl px-5 pb-10 pt-10 lg:px-8 lg:pb-14 lg:pt-12">
-          <div className="lg:flex lg:items-center lg:gap-12">
-            {/* Left: Copy + Search */}
-            <div className="flex-1 lg:max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold text-foreground shadow-sm">
-                <ShieldCheck className="h-3.5 w-3.5 text-sage" />
-                Ελεγμένο δίκτυο δικηγόρων με στοιχεία φακέλου και διαθέσιμα ραντεβού
-              </div>
-              <h1 className="mt-5 font-serif text-[2.75rem] leading-[1.08] tracking-tight text-foreground md:text-[3.5rem] lg:text-[3.75rem]">
-                Βρες τον σωστό{" "}
-                <br className="hidden md:block" />
-                δικηγόρο.{" "}
-                <span className="text-muted-foreground">Κλείσε{" "}
-                <br className="hidden lg:block" />
-                ραντεβού σήμερα.</span>
-              </h1>
-              <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-foreground/70 md:text-base">
-                Σύγκρινε πιστοποιημένους δικηγόρους ανά ειδικότητα, αξιολογήσεις, διαθεσιμότητα και τιμή. Κλείσε βιντεοκλήση, τηλεφωνικό ή αυτοπρόσωπο ραντεβού σε λιγότερο από 2 λεπτά.
-              </p>
-
-              {/* Search Card */}
-              <div className="mt-7 lg:mt-8">
-                <div className="rounded-2xl border border-border bg-card p-4 shadow-xl shadow-foreground/[0.06] md:p-5">
-                  <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Αναζήτηση Δικηγόρου</p>
-                  <form onSubmit={handleHeroSearch} className="grid gap-2.5 md:grid-cols-3 md:gap-3">
-                    <div className="relative">
-                      <Search className="absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        value={heroQuery}
-                        onChange={(event) => setHeroQuery(event.target.value)}
-                        placeholder="Νομικό θέμα (π.χ. διαζύγιο)"
-                        className="h-[52px] w-full rounded-xl border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
-                      />
-                    </div>
-                    <div className="relative">
-                      <MapPin className="absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        value={heroCity}
-                        onChange={(event) => setHeroCity(event.target.value)}
-                        placeholder="Πόλη (π.χ. Αθήνα)"
-                        className="h-[52px] w-full rounded-xl border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
-                      />
-                    </div>
-                    <Button type="submit" className="h-[52px] w-full rounded-xl text-[15px] font-bold tracking-wide">
-                      Αναζήτηση
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </form>
-                </div>
-              </div>
-
-              {/* Trust indicators */}
-              <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 md:gap-x-8">
-                <span className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-                  <ShieldCheck className="h-4 w-4 text-sage" />
-                  Πιστοποιημένοι
-                </span>
-                <span className="hidden h-4 w-px bg-border md:block" />
-                <span className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-                  <Star className="h-4 w-4 fill-gold text-gold" />
-                  4.8+ αξιολόγηση
-                </span>
-                <span className="hidden h-4 w-px bg-border md:block" />
-                <span className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-                  <Clock className="h-4 w-4 text-sage" />
-                  Ραντεβού εντός 24ω
-                </span>
-              </div>
-            </div>
-
-            {/* Right: Featured Lawyer Preview — hero signature element */}
-            <div className="hidden lg:block lg:w-[400px] xl:w-[450px]">
-              <div className="relative">
-                {/* Main featured card */}
-                <div className="rounded-[1.7rem] border border-border bg-card p-6 shadow-2xl shadow-foreground/[0.08] xl:p-7">
-                  <div className="flex items-center gap-4">
-                    <img
-                      src={featuredLawyers[0].image}
-                      alt={featuredLawyers[0].name}
-                      className="h-20 w-20 rounded-2xl object-cover ring-2 ring-background shadow-md"
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-bold text-foreground">{featuredLawyers[0].name}</p>
-                      <p className="text-xs font-medium text-muted-foreground">{featuredLawyers[0].specialty} · {featuredLawyers[0].city}</p>
-                      <div className="mt-1 flex items-center gap-1">
-                        <Star className="h-3.5 w-3.5 fill-gold text-gold" />
-                        <span className="text-xs font-bold text-foreground">{featuredLawyers[0].rating}</span>
-                        <span className="text-[11px] text-muted-foreground">({featuredLawyers[0].reviews})</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-5 flex items-center justify-between rounded-2xl bg-sage/10 px-4 py-3.5">
-                    <div>
-                      <p className="text-[11px] font-bold text-sage-foreground">Διαθέσιμη σήμερα</p>
-                      <p className="text-[1.1rem] font-bold text-foreground">14:00, 15:30, 17:00</p>
-                    </div>
-                    <span className="h-2.5 w-2.5 rounded-full bg-sage animate-pulse" />
-                  </div>
-                  <div className="hidden">
-                    <span className="text-lg font-bold text-foreground">από €{featuredLawyers[0].price}</span>
-                    <span className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">Κλείσε Ραντεβού</span>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between gap-4">
-                    <span className="text-[1.9rem] font-bold text-foreground">από €{featuredLawyers[0].price}</span>
-                    <Button asChild className="h-11 rounded-xl px-5 text-sm font-bold shadow-md shadow-primary/20">
-                      <Link to="/booking/maria-papadopoulou">Κλείσε Ραντεβού</Link>
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Micro social proof cluster */}
-                <div className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 shadow-lg shadow-foreground/[0.04]">
-                  <div className="flex -space-x-2">
-                    {featuredLawyers.map((l, i) => (
-                      <img key={i} src={l.image} alt="" className="h-9 w-9 rounded-full border-2 border-card object-cover" />
-                    ))}
-                  </div>
-                  <div>
-                    <p className="text-[12px] font-bold text-foreground">Προφίλ με έλεγχο στοιχείων και άμεση κράτηση</p>
-                    <p className="text-[11px] text-muted-foreground">Αθήνα, Θεσσαλονίκη και Πάτρα</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Trust Strip */}
-      <section ref={trustStripRef} className="bg-primary">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 px-5 py-5 text-center md:grid-cols-4 lg:px-8">
-          {trustStats.map((stat, index) => (
-            <div key={stat.label}>
-              <p className="font-serif text-2xl text-primary-foreground md:text-3xl">{animatedTrustValues[index]}</p>
-              <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary-foreground/60">{stat.label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Featured Lawyers */}
-      <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-16">
-        <div className="mb-8 flex items-end justify-between">
+      <section id="top" className="border-b border-border bg-secondary/35">
+        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 lg:grid-cols-[1.08fr_0.92fr] lg:px-8 lg:py-14">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-sage">Κορυφαίοι Επαγγελματίες</p>
-            <h2 className="mt-1.5 font-serif text-[1.75rem] tracking-tight text-foreground md:text-[2.25rem]">Κορυφαίοι Δικηγόροι</h2>
-            <p className="mt-1 text-sm text-foreground/60">Υψηλά αξιολογημένοι από πραγματικούς πελάτες</p>
-          </div>
-          <Link to="/search" className="hidden items-center gap-1.5 text-sm font-bold text-foreground hover:text-primary md:flex">
-            Δες Όλους <ChevronRight className="h-4 w-4" />
-          </Link>
-        </div>
+            <p className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground">
+              <ShieldCheck className="h-3.5 w-3.5 text-sage" />
+              Verified lawyers, real availability, booking-backed reviews
+            </p>
+            <h1 className="mt-5 max-w-3xl font-serif text-[2.65rem] leading-[1.06] tracking-tight text-foreground md:text-[3.4rem]">
+              Describe the legal issue. Compare the right lawyers. Book with payment.
+            </h1>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
+              Start with the facts that change the match: issue, city, consultation mode, and language. Add details only when they help the lawyer prepare.
+            </p>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {featuredLawyers.map((lawyer, index) => (
-            <Link
-              key={lawyer.name}
-              to={`/lawyer/${featuredLawyerIds[index] || "maria-papadopoulou"}`}
-              className="group relative overflow-hidden rounded-2xl border border-border bg-card transition-all hover:shadow-xl hover:shadow-foreground/[0.07] hover:border-primary/15"
-            >
-              {/* Top section */}
-              <div className="p-5 pb-3">
-                <div className="flex items-start gap-4">
-                  <div className="relative">
-                    <img
-                      src={lawyer.image}
-                      alt={lawyer.name}
-                      className="h-[72px] w-[72px] rounded-2xl object-cover ring-2 ring-background shadow-lg"
-                    />
-                    <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-sage ring-2 ring-card">
-                      <CheckCircle2 className="h-3 w-3 text-white" />
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <h3 className="truncate font-sans text-[15px] font-bold text-foreground">{lawyer.name}</h3>
-                    <p className="mt-0.5 text-[13px] font-semibold text-primary/80">{lawyer.specialty}</p>
-                    <p className="mt-0.5 text-xs text-foreground/50">{lawyer.city} · {lawyer.experience} χρόνια εμπειρίας</p>
-                    <div className="mt-2 flex items-center gap-1.5">
-                      <Star className="h-4 w-4 fill-gold text-gold" />
-                      <span className="text-sm font-bold text-foreground">{lawyer.rating}</span>
-                      <span className="text-xs text-foreground/50">({lawyer.reviews} αξιολογήσεις)</span>
-                    </div>
-                  </div>
-                </div>
-                {/* Best-for line */}
-                <p className="mt-3 text-xs font-semibold text-foreground/60">
-                  <span className="text-sage">Ιδανική για:</span> {lawyer.bestFor}
+            <form onSubmit={handleHeroSubmit} className="mt-7 rounded-lg border border-border bg-card p-4 shadow-xl shadow-foreground/[0.05] md:p-5">
+              <div className="grid gap-3 md:grid-cols-2">
+                <FieldShell icon={Search} label="Legal issue">
+                  <input
+                    value={legalIssue}
+                    onChange={(event) => setLegalIssue(event.target.value)}
+                    placeholder="Divorce, dismissal, inheritance..."
+                    className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
+                  />
+                </FieldShell>
+                <FieldShell icon={MapPin} label="City">
+                  <input
+                    value={city}
+                    onChange={(event) => setCity(event.target.value)}
+                    placeholder="Athens, Thessaloniki..."
+                    className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
+                  />
+                </FieldShell>
+                <FieldShell icon={CalendarCheck} label="Consultation mode">
+                  <select
+                    value={mode}
+                    onChange={(event) => setMode(event.target.value as "any" | ConsultationMode)}
+                    className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none"
+                  >
+                    {modeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </FieldShell>
+                <FieldShell icon={Languages} label="Language">
+                  <select
+                    value={language}
+                    onChange={(event) => setLanguage(event.target.value as "any" | LanguageIntent)}
+                    className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none"
+                  >
+                    {languageOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </FieldShell>
+              </div>
+              <label className="mt-3 block rounded-lg border border-border bg-background px-3 py-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Problem description, optional</span>
+                <textarea
+                  value={problemDescription}
+                  onChange={(event) => setProblemDescription(event.target.value)}
+                  rows={3}
+                  placeholder="A few lines about what happened and what you need next."
+                  className="mt-1 w-full resize-none bg-transparent text-sm font-medium leading-6 text-foreground outline-none placeholder:text-muted-foreground/60"
+                />
+              </label>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <Button type="submit" className="h-12 rounded-lg px-6 text-sm font-bold">
+                  Compare matching lawyers
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+                <p className="text-xs font-semibold text-muted-foreground">
+                  {isFetching ? "Refreshing marketplace data..." : `${stats.verifiedProfiles} public profiles from the marketplace layer`}
                 </p>
               </div>
+            </form>
+          </div>
 
-              {/* Meta bar */}
-              <div className="mx-5 flex items-center gap-3 border-t border-border pt-3 pb-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground/60">
-                  <Clock className="h-3.5 w-3.5" />
-                  {lawyer.response}
-                </div>
-                <div className="h-3 w-px bg-border" />
-                <div className="flex gap-1.5">
-                  {lawyer.types.map((t) => (
-                    <span key={t} className="rounded-md bg-secondary px-2 py-0.5 text-[11px] font-bold text-foreground/60">{t}</span>
-                  ))}
+          {heroLawyer ? (
+            <aside className="self-center rounded-lg border border-border bg-card p-5 shadow-2xl shadow-foreground/[0.07]">
+              <div className="flex items-start gap-4">
+                <img src={heroLawyer.image} alt={heroLawyer.name} className="h-20 w-20 rounded-lg object-cover shadow-md ring-2 ring-background" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-sage">Available marketplace profile</p>
+                  <h2 className="mt-1 truncate text-lg font-bold text-foreground">{heroLawyer.name}</h2>
+                  <p className="text-sm font-semibold text-primary">{heroLawyer.specialty}</p>
+                  <p className="mt-1 text-xs font-semibold text-muted-foreground">{heroLawyer.city} · {heroLawyer.experience} years</p>
                 </div>
               </div>
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                <HeroMetric label="Rating" value={`${heroLawyer.rating}/5`} detail={`${heroLawyer.reviews} reviews`} />
+                <HeroMetric label="Response" value={heroLawyer.response} detail="Published profile signal" />
+                <HeroMetric label="Next slot" value={heroLawyer.available} detail="Availability rules" />
+                <HeroMetric label="From" value={formatCurrency(heroLawyer.price)} detail="First consultation" />
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {heroLawyer.consultationModes.map((item) => (
+                  <span key={item} className="rounded-md bg-secondary px-2.5 py-1 text-xs font-bold text-foreground">
+                    {consultationModeNames[item]}
+                  </span>
+                ))}
+              </div>
+              <Button asChild className="mt-5 h-11 w-full rounded-lg font-bold">
+                <Link to={`/lawyer/${heroLawyer.id}`}>View decision page</Link>
+              </Button>
+            </aside>
+          ) : null}
+        </div>
+      </section>
 
-              {/* Bottom section */}
-              <div className="flex items-center justify-between bg-secondary/60 px-5 py-3">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-foreground/40">Από</span>
-                  <span className="ml-1.5 text-lg font-bold text-foreground">€{lawyer.price}</span>
+      <section className="bg-primary text-primary-foreground">
+        <div className="mx-auto grid max-w-7xl gap-4 px-5 py-5 md:grid-cols-4 lg:px-8">
+          <TrustStat value={String(stats.verifiedProfiles)} label="verified public profiles" />
+          <TrustStat value={`${stats.totalReviews}+`} label="booking-linked reviews" />
+          <TrustStat value={`${stats.averageRating}/5`} label="marketplace rating" />
+          <TrustStat value={`${stats.availableToday}`} label="available today" />
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-sage">Marketplace groups</p>
+            <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Featured from live public profiles</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              These groups are calculated from rating, reviews, response time, price, and availability data used across search and profiles.
+            </p>
+          </div>
+          <Button asChild variant="outline" className="rounded-lg font-bold">
+            <Link to="/search">Open comparison engine</Link>
+          </Button>
+        </div>
+
+        <div className="mt-6 flex gap-2 overflow-x-auto pb-1">
+          {groupOrder.map((group) => (
+            <button
+              key={group}
+              type="button"
+              onClick={() => setActiveGroup(group)}
+              className={cn(
+                "shrink-0 rounded-lg border px-3 py-2 text-xs font-bold transition",
+                activeGroup === group
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-foreground hover:border-primary/30",
+              )}
+            >
+              {featuredGroupLabels[group]}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          {activeFeaturedLawyers.map((lawyer) => (
+            <Link
+              key={lawyer.id}
+              to={`/lawyer/${lawyer.id}`}
+              className="rounded-lg border border-border bg-card p-5 transition hover:border-primary/25 hover:shadow-xl hover:shadow-foreground/[0.05]"
+            >
+              <div className="flex items-start gap-4">
+                <img src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-lg object-cover ring-2 ring-background" />
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wider text-primary">{lawyer.specialty}</p>
+                  <h3 className="mt-1 truncate text-base font-bold text-foreground">{lawyer.name}</h3>
+                  <p className="text-xs font-semibold text-muted-foreground">{lawyer.bestFor}</p>
                 </div>
-                <div className="flex items-center gap-1.5 rounded-full bg-sage/15 px-3 py-1 text-xs font-bold text-sage-foreground">
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage animate-pulse" />
-                  Διαθέσιμος: {lawyer.available}
-                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                <ProofPill icon={MapPin}>{lawyer.city}</ProofPill>
+                <ProofPill icon={Star}>{lawyer.rating} · {lawyer.reviews}</ProofPill>
+                <ProofPill icon={Clock}>{lawyer.response}</ProofPill>
+                <ProofPill icon={CalendarCheck}>{lawyer.available}</ProofPill>
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
+                <span className="text-lg font-bold text-foreground">{formatCurrency(lawyer.price)}</span>
+                <span className="text-xs font-bold text-primary">Compare and book</span>
               </div>
             </Link>
           ))}
         </div>
-
-        <div className="mt-6 text-center md:hidden">
-          <Link to="/search">
-            <Button variant="outline" className="rounded-xl font-bold">Δες Όλους τους Δικηγόρους</Button>
-          </Link>
-        </div>
       </section>
 
-      {/* Categories */}
-      <section id="categories" className="border-y border-border bg-secondary/40">
+      <section id="categories" className="border-y border-border bg-secondary/35">
         <div className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
-          <div className="mb-8 text-center">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-sage">Τομείς Δικαίου</p>
-            <h2 className="mt-1.5 font-serif text-[1.75rem] tracking-tight text-foreground md:text-[2.25rem]">Δημοφιλείς Κατηγορίες</h2>
-          </div>
-          <div className="mx-auto grid max-w-4xl gap-2.5 md:grid-cols-2 lg:grid-cols-3">
-            {categories.map((cat) => (
-              <Link
-                key={cat.name}
-                to={`/search?specialty=${encodeURIComponent(cat.name)}`}
-                className="group flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-all hover:shadow-lg hover:shadow-foreground/[0.05] hover:border-primary/20"
-              >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                  <cat.icon className="h-5 w-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-sans text-[14px] font-bold text-foreground group-hover:text-primary transition-colors">{cat.name}</h3>
-                  <p className="mt-0.5 text-xs text-foreground/50">{cat.desc}</p>
-                </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-foreground/25 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">Popular legal journeys</p>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Start from the problem, not a category list</h2>
+          <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+            {popularLegalJourneys.map((journey) => (
+              <Link key={journey.title} to={journey.to} className="rounded-lg border border-border bg-card p-4 transition hover:border-primary/25 hover:shadow-md">
+                <h3 className="text-base font-bold text-foreground">{journey.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{journey.description}</p>
+                <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-primary">
+                  See lawyers
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </span>
               </Link>
             ))}
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
       <section id="how-it-works" className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
-        <div className="mb-8 text-center">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-sage">Απλή Διαδικασία</p>
-          <h2 className="mt-1.5 font-serif text-[1.75rem] tracking-tight text-foreground md:text-[2.25rem]">Πώς Λειτουργεί</h2>
+        <div className="text-center">
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">Transactional path</p>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Describe, compare, book and pay</h2>
         </div>
-        <div className="mx-auto grid max-w-4xl gap-0 md:grid-cols-3">
+        <div className="mx-auto mt-7 grid max-w-5xl gap-3 md:grid-cols-3">
           {[
-            {
-              step: "01",
-              title: "Περιγράψτε το θέμα σας",
-              desc: "Αναζητήστε ανά κατηγορία δικαίου, τοποθεσία και τύπο ραντεβού.",
-            },
-            {
-              step: "02",
-              title: "Επιλέξτε δικηγόρο",
-              desc: "Δείτε προφίλ, αξιολογήσεις, εμπειρία, τιμές και διαθεσιμότητα.",
-            },
-            {
-              step: "03",
-              title: "Κλείστε ραντεβού",
-              desc: "Video, τηλεφωνικό ή αυτοπρόσωπο ραντεβού σε λιγότερο από 2 λεπτά.",
-            },
-          ].map((item, idx) => (
-            <div key={item.step} className="relative text-center px-6 py-6">
-              {idx < 2 && <div className="absolute right-0 top-1/2 hidden h-px w-full -translate-y-1/2 bg-gradient-to-r from-transparent via-border to-transparent md:block" style={{ left: '50%', width: '100%' }} />}
-              <div className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20">
-                <span className="font-serif text-lg text-primary-foreground">{item.step}</span>
-              </div>
-              <h3 className="mt-4 font-sans text-[15px] font-bold text-foreground">{item.title}</h3>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-foreground/55">{item.desc}</p>
+            ["01", "Describe the issue", "Use issue, city, language, and mode to narrow the marketplace quickly."],
+            ["02", "Compare lawyers", "Review specialty, fit, rating, response time, next slot, consultation modes, and price."],
+            ["03", "Book and pay", "Reserve a real slot, confirm the summary, and complete the secure payment step."],
+          ].map(([step, title, text]) => (
+            <div key={step} className="rounded-lg border border-border bg-card p-5">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary font-serif text-primary-foreground">{step}</span>
+              <h3 className="mt-4 text-lg font-bold text-foreground">{title}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Testimonials — redesigned for premium feel */}
-      <section className="border-y border-border bg-primary">
+      <section className="border-y border-border bg-card">
         <div className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
-          <div className="mb-8 text-center">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-primary-foreground/40">Αληθινές Ιστορίες</p>
-            <h2 className="mt-1.5 font-serif text-[1.75rem] tracking-tight text-primary-foreground md:text-[2.25rem]">Τι Λένε οι Πελάτες</h2>
-          </div>
-          <div className="mx-auto grid max-w-5xl gap-4 md:grid-cols-3">
-            {testimonials.map((t) => (
-              <div key={t.name} className="relative rounded-2xl bg-primary-foreground/[0.08] border border-primary-foreground/[0.08] p-6 backdrop-blur-sm">
-                <Quote className="h-8 w-8 text-gold/60 mb-3" />
-                <p className="text-[15px] leading-relaxed text-primary-foreground font-medium">{t.text}</p>
-                <div className="mt-5 flex items-center gap-3 border-t border-primary-foreground/10 pt-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/20 text-primary-foreground font-serif text-sm font-bold">
-                    {t.name[0]}
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-primary-foreground">{t.name}</p>
-                    <p className="text-[11px] font-semibold text-primary-foreground/50">{t.location} · {t.issue}</p>
-                  </div>
-                  <div className="ml-auto flex items-center gap-0.5">
-                    {Array.from({ length: t.rating }).map((_, i) => (
-                      <Star key={i} className="h-3.5 w-3.5 fill-gold text-gold" />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Why Choose Us */}
-      <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
-        <div className="mb-8 text-center">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-sage">Γιατί Εμάς</p>
-          <h2 className="mt-1.5 font-serif text-[1.75rem] tracking-tight text-foreground md:text-[2.25rem]">Γιατί το Dikigoros</h2>
-        </div>
-        <div className="mx-auto grid max-w-4xl gap-3 md:grid-cols-2">
-          {[
-            { icon: ShieldCheck, title: "Πιστοποιημένο Δίκτυο", desc: "Κάθε δικηγόρος ελέγχεται, επαληθεύεται και αξιολογείται πριν ενταχθεί στην πλατφόρμα." },
-            { icon: Star, title: "Πραγματικές Αξιολογήσεις", desc: "Όλες οι αξιολογήσεις προέρχονται από πραγματικά ραντεβού. Καμία ψεύτικη κριτική." },
-            { icon: Zap, title: "Γρήγορη Απάντηση", desc: "Οι δικηγόροι μας απαντούν εντός ωρών, όχι ημερών. Πολλοί διαθέσιμοι αυθημερόν." },
-            { icon: Users, title: "Εύκολη Σύγκριση", desc: "Συγκρίνετε ειδικότητα, εμπειρία, τιμές, αξιολογήσεις και διαθεσιμότητα σε μία οθόνη." },
-          ].map((item) => (
-            <div key={item.title} className="flex gap-4 rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-md hover:shadow-foreground/[0.04]">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                <item.icon className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-sans text-[15px] font-bold text-foreground">{item.title}</h3>
-                <p className="mt-1 text-[13px] leading-relaxed text-foreground/55">{item.desc}</p>
+          <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-sage">Trust mechanics</p>
+              <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Proof that follows the booking system</h2>
+              <div className="mt-5 space-y-2">
+                {publicTrustMechanics.map((item) => (
+                  <p key={item} className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-sage" />
+                    {item}
+                  </p>
+                ))}
               </div>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section id="faq" className="border-t border-border bg-secondary/40">
-        <div className="mx-auto max-w-3xl px-5 py-12 lg:px-8 lg:py-14">
-          <div className="mb-8 text-center">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-sage">Βοήθεια</p>
-            <h2 className="mt-1.5 font-serif text-[1.75rem] tracking-tight text-foreground md:text-[2.25rem]">Συχνές Ερωτήσεις</h2>
+            <div className="grid gap-3 md:grid-cols-2">
+              {trustCards.map(({ icon: Icon, title, text }) => (
+                <div key={title} className="rounded-lg border border-border bg-background p-5">
+                  <Icon className="h-5 w-5 text-primary" />
+                  <h3 className="mt-3 text-base font-bold text-foreground">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <Accordion type="single" collapsible className="space-y-2">
-            {[
-              { q: "Πώς επιλέγονται οι δικηγόροι στην πλατφόρμα;", a: "Κάθε δικηγόρος περνάει από αυστηρή διαδικασία πιστοποίησης. Ελέγχουμε άδεια ασκήσεως, εμπειρία, αξιολογήσεις και επαγγελματικό ιστορικό πριν εγκρίνουμε κάποιον στο δίκτυό μας." },
-              { q: "Πόσο κοστίζει μια συμβουλή;", a: "Οι τιμές ξεκινούν από €30 και ορίζονται από κάθε δικηγόρο ξεχωριστά. Μπορείτε να δείτε τις ακριβείς τιμές στο προφίλ κάθε δικηγόρου πριν κλείσετε ραντεβού." },
-              { q: "Μπορώ να κάνω video ραντεβού;", a: "Ναι. Προσφέρουμε τρεις τύπους ραντεβού: βιντεοκλήση, τηλεφωνική κλήση και αυτοπρόσωπη συνάντηση. Μπορείτε να φιλτράρετε τους δικηγόρους ανά διαθέσιμο τύπο ραντεβού." },
-              { q: "Τι γίνεται αν δεν μείνω ικανοποιημένος;", a: "Η ικανοποίησή σας είναι η προτεραιότητά μας. Αν αντιμετωπίσετε οποιοδήποτε πρόβλημα, η ομάδα υποστήριξης είναι διαθέσιμη να σας βοηθήσει." },
-              { q: "Πώς κλείνω ραντεβού;", a: "Βρείτε τον δικηγόρο που σας ταιριάζει, επιλέξτε τύπο ραντεβού, ημερομηνία και ώρα, και ολοκληρώστε την κράτηση σε λιγότερο από 2 λεπτά." },
-            ].map((faq, i) => (
-              <AccordionItem key={i} value={`faq-${i}`} className="rounded-xl border border-border bg-card px-5">
-                <AccordionTrigger className="py-4 text-left font-sans text-[15px] font-bold text-foreground hover:no-underline">
-                  {faq.q}
-                </AccordionTrigger>
-                <AccordionContent className="pb-4 text-[13px] leading-relaxed text-foreground/55">
-                  {faq.a}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
         </div>
       </section>
 
-      {/* CTA Banner */}
+      {reviewBackedLawyers.length > 0 ? (
+        <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">Review-backed proof</p>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Published review signals, not homepage testimonials</h2>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {reviewBackedLawyers.map((lawyer) => (
+              <Link key={lawyer.id} to={`/lawyer/${lawyer.id}`} className="rounded-lg border border-border bg-card p-5 transition hover:border-primary/25">
+                <div className="flex items-center gap-1.5 text-gold">
+                  <Star className="h-4 w-4 fill-current" />
+                  <span className="font-bold text-foreground">{lawyer.rating}</span>
+                  <span className="text-sm font-semibold text-muted-foreground">from {lawyer.reviews} reviews</span>
+                </div>
+                <h3 className="mt-3 text-base font-bold text-foreground">{lawyer.name}</h3>
+                <p className="mt-1 text-sm font-semibold text-primary">{lawyer.specialty}</p>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Reviews are published only after completed consultations and appear on the lawyer decision page.
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8">
-        <div className="rounded-2xl bg-primary px-8 py-10 text-center lg:px-16 lg:py-12">
-          <h2 className="font-serif text-[1.75rem] tracking-tight text-primary-foreground md:text-[2.25rem]">
-            Βρες τον δικηγόρο που χρειάζεσαι
-          </h2>
-          <p className="mx-auto mt-2.5 max-w-lg text-[15px] text-primary-foreground/60">
-            Σύγκρινε πιστοποιημένους δικηγόρους και κλείσε ραντεβού σε λιγότερο από 2 λεπτά.
+        <div className="rounded-lg bg-primary px-6 py-9 text-center text-primary-foreground">
+          <h2 className="font-serif text-3xl tracking-tight">Ready to compare real options?</h2>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-primary-foreground/70">
+            Move into search with the same public marketplace data, then shortlist, compare, and book.
           </p>
-          <Link to="/search">
-            <Button size="lg" variant="secondary" className="mt-6 rounded-xl px-8 font-bold">
-              Ξεκίνα Αναζήτηση
+          <Button asChild variant="secondary" className="mt-5 rounded-lg font-bold">
+            <Link to="/search">
+              Find a lawyer
               <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </section>
 
@@ -572,5 +402,45 @@ const Index = () => {
     </div>
   );
 };
+
+const FieldShell = ({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: typeof Search;
+  label: string;
+  children: React.ReactNode;
+}) => (
+  <label className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2">
+    <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+    <span className="min-w-0 flex-1">
+      <span className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
+      {children}
+    </span>
+  </label>
+);
+
+const HeroMetric = ({ label, value, detail }: { label: string; value: string; detail: string }) => (
+  <div className="rounded-lg border border-border bg-secondary/45 p-3">
+    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+    <p className="mt-1 text-sm font-bold text-foreground">{value}</p>
+    <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">{detail}</p>
+  </div>
+);
+
+const TrustStat = ({ value, label }: { value: string; label: string }) => (
+  <div className="text-center md:text-left">
+    <p className="font-serif text-3xl">{value}</p>
+    <p className="mt-1 text-xs font-bold uppercase tracking-wider text-primary-foreground/60">{label}</p>
+  </div>
+);
+
+const ProofPill = ({ icon: Icon, children }: { icon: typeof Search; children: React.ReactNode }) => (
+  <span className="inline-flex min-h-8 items-center gap-1.5 rounded-md bg-secondary px-2.5 py-1 font-semibold text-foreground">
+    <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+    {children}
+  </span>
+);
 
 export default Index;

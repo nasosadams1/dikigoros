@@ -1,13 +1,17 @@
 import { Link, useParams } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Award,
   Briefcase,
+  CalendarDays,
   CheckCircle2,
   Clock,
+  CreditCard,
+  FileText,
   Heart,
   MapPin,
+  MessageSquareQuote,
   Scale,
   ShieldCheck,
   Star,
@@ -20,8 +24,16 @@ import Navbar from "@/components/Navbar";
 import { consultationModeIcons, type Lawyer } from "@/data/lawyers";
 import { useAuth } from "@/context/AuthContext";
 import { areLawyerIdsEqual, fetchPartnerLawyerId, getStoredPartnerLawyerId } from "@/lib/partnerIdentity";
-import { getLawyerById, getLawyerReviews, type PublicLawyerReview } from "@/lib/lawyerRepository";
-import { getPartnerSession } from "@/lib/platformRepository";
+import { getLawyerById, getLawyerReviews, getLawyers, type PublicLawyerReview } from "@/lib/lawyerRepository";
+import { fetchPartnerAvailabilityRulesForLawyer } from "@/lib/partnerWorkspace";
+import { fetchReservedBookingSlots, getPartnerSession } from "@/lib/platformRepository";
+import {
+  formatCurrency,
+  getLowestConsultation,
+  getNextAvailabilityOptions,
+  getSimilarLawyerGroups,
+  type AvailabilityRules,
+} from "@/lib/marketplace";
 import {
   getUserWorkspace,
   syncUserWorkspace,
@@ -37,6 +49,9 @@ const LawyerProfile = () => {
   const [workspace, setWorkspace] = useState(() => getUserWorkspace(workspaceKey));
   const [lawyer, setLawyer] = useState<Lawyer | null | undefined>(undefined);
   const [reviews, setReviews] = useState<PublicLawyerReview[]>([]);
+  const [availabilityRules, setAvailabilityRules] = useState<AvailabilityRules | null>(null);
+  const [reservedSlots, setReservedSlots] = useState<Set<string>>(() => new Set());
+  const [lawyerCatalog, setLawyerCatalog] = useState<Lawyer[]>([]);
   const [currentPartnerLawyerId, setCurrentPartnerLawyerId] = useState<string | null>(() => getStoredPartnerLawyerId(partnerSession?.email));
 
   useEffect(() => {
@@ -65,20 +80,43 @@ const LawyerProfile = () => {
     let active = true;
 
     void (async () => {
-      const [nextLawyer, nextReviews] = await Promise.all([
+      const [nextLawyer, nextReviews, nextAvailabilityRules, nextReservedSlots, nextLawyerCatalog] = await Promise.all([
         getLawyerById(id),
         id ? getLawyerReviews(id) : Promise.resolve([]),
+        id ? fetchPartnerAvailabilityRulesForLawyer(id) : Promise.resolve(null),
+        id ? fetchReservedBookingSlots(id) : Promise.resolve(new Set<string>()),
+        getLawyers(),
       ]);
 
       if (!active) return;
       setLawyer(nextLawyer || null);
       setReviews(nextReviews);
+      setAvailabilityRules(nextAvailabilityRules);
+      setReservedSlots(nextReservedSlots);
+      setLawyerCatalog(nextLawyerCatalog);
     })();
 
     return () => {
       active = false;
     };
   }, [id]);
+
+  const lowestConsultation = useMemo(() => (lawyer ? getLowestConsultation(lawyer) : null), [lawyer]);
+  const nextSlots = useMemo(
+    () =>
+      lawyer && availabilityRules
+        ? getNextAvailabilityOptions(availabilityRules, lowestConsultation, {
+            lawyerId: lawyer.id,
+            maxOptions: 4,
+            reservedSlots,
+          })
+        : [],
+    [availabilityRules, lawyer, lowestConsultation, reservedSlots],
+  );
+  const similarLawyers = useMemo(
+    () => (lawyer ? getSimilarLawyerGroups(lawyerCatalog, lawyer) : { cheaper: [], faster: [], moreReviewed: [] }),
+    [lawyer, lawyerCatalog],
+  );
 
   if (lawyer === undefined) {
     return (
@@ -114,7 +152,7 @@ const LawyerProfile = () => {
     );
   }
 
-  const lowestPrice = Math.min(...lawyer.consultations.map((consultation) => consultation.price));
+  const lowestPrice = lowestConsultation?.price || Math.min(...lawyer.consultations.map((consultation) => consultation.price));
   const saved = workspace.savedLawyerIds.includes(lawyer.id);
   const compared = workspace.comparedLawyerIds.includes(lawyer.id);
   const reviewCount = reviews.length || lawyer.reviews;
@@ -187,11 +225,18 @@ const LawyerProfile = () => {
                         <ShieldCheck className="h-4 w-4" />
                         Επαληθευμένος φάκελος συνεργάτη
                       </span>
-                      <span className="text-[12px] font-semibold text-foreground/55">Έλεγχος: {lawyer.verification.checkedAt}</span>
+                      <span className="text-[12px] font-semibold text-foreground/55">Last check: {lawyer.verification.checkedAt}</span>
                     </div>
                     <p className="mt-2 text-[13px] leading-6 text-foreground/65">
                       {lawyer.verification.barAssociation} · {lawyer.verification.registryLabel}
                     </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {lawyer.verification.evidence.map((item) => (
+                        <span key={item} className="rounded-md bg-card px-2.5 py-1 text-[11px] font-bold text-foreground">
+                          {item}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -199,6 +244,34 @@ const LawyerProfile = () => {
               <p className="mt-5 border-t border-border pt-5 text-[14px] leading-relaxed text-foreground/60 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                 {lawyer.bio}
               </p>
+            </section>
+
+            <section className="mt-7 rounded-2xl border border-border bg-card p-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-sage">Real next slots</p>
+                  <h2 className="mt-1 font-serif text-xl tracking-tight text-foreground">Available before you enter booking</h2>
+                </div>
+                <span className="rounded-lg bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground">
+                  Uses the same booking availability rules
+                </span>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {nextSlots.length > 0 ? nextSlots.map((slot) => (
+                  <Link key={`${slot.dateLabel}-${slot.time}`} to={`/booking/${lawyer.id}`} className="rounded-xl border border-border bg-background p-3 transition hover:border-primary/25">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{slot.shortDateLabel}</p>
+                    <p className="mt-1 text-sm font-bold text-foreground">{slot.dateLabel}</p>
+                    <p className="mt-1 inline-flex items-center gap-1 text-sm font-bold text-primary">
+                      <Clock className="h-3.5 w-3.5" />
+                      {slot.time}
+                    </p>
+                  </Link>
+                )) : (
+                  <div className="rounded-xl border border-dashed border-border bg-secondary/40 p-4 text-sm font-semibold text-muted-foreground sm:col-span-2 lg:col-span-4">
+                    No near-term public slots are available from the current published schedule.
+                  </div>
+                )}
+              </div>
             </section>
 
             <section className="mt-7">
@@ -233,6 +306,18 @@ const LawyerProfile = () => {
                   );
                 })}
               </div>
+            </section>
+
+            <section className="mt-8 grid gap-4 md:grid-cols-3">
+              <DecisionInfoCard icon={FileText} title="What to prepare">
+                A short timeline, names of involved parties, key deadlines, and any contracts, notices, court papers, or messages that explain the issue.
+              </DecisionInfoCard>
+              <DecisionInfoCard icon={MessageSquareQuote} title="What happens">
+                The first consultation clarifies the facts, immediate risks, likely next steps, and whether the lawyer can take the matter forward.
+              </DecisionInfoCard>
+              <DecisionInfoCard icon={CreditCard} title="Change terms">
+                Free cancellation or reschedule up to 24 hours before the slot. Later changes may need support review before refund handling.
+              </DecisionInfoCard>
             </section>
 
             <section className="mt-8 grid gap-6 md:grid-cols-2">
@@ -283,11 +368,17 @@ const LawyerProfile = () => {
                         ))}
                       </div>
                     </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <ReviewMetric label="Overall" value={`${review.rating}/5`} />
+                      <ReviewMetric label="Clarity" value={`${review.clarityRating}/5`} />
+                      <ReviewMetric label="Responsiveness" value={`${review.responsivenessRating}/5`} />
+                    </div>
                     <p className="mt-3 text-[14px] leading-relaxed text-foreground/70">{review.text}</p>
                     {review.lawyerReply ? (
-                      <p className="mt-3 rounded-xl bg-secondary px-4 py-3 text-[13px] leading-relaxed text-foreground/65">
-                        {review.lawyerReply}
-                      </p>
+                      <div className="mt-3 rounded-xl bg-secondary px-4 py-3 text-[13px] leading-relaxed text-foreground/65">
+                        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Lawyer reply</p>
+                        <p>{review.lawyerReply}</p>
+                      </div>
                     ) : null}
                   </div>
                 )) : (
@@ -298,6 +389,15 @@ const LawyerProfile = () => {
                     </p>
                   </div>
                 )}
+              </div>
+            </section>
+
+            <section className="mt-8">
+              <h2 className="font-serif text-xl tracking-tight text-foreground">Similar lawyer alternatives</h2>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <AlternativeGroup title="Cheaper" lawyers={similarLawyers.cheaper} />
+                <AlternativeGroup title="Faster response" lawyers={similarLawyers.faster} />
+                <AlternativeGroup title="More reviewed" lawyers={similarLawyers.moreReviewed} />
               </div>
             </section>
 
@@ -326,8 +426,8 @@ const LawyerProfile = () => {
             <div className="rounded-2xl border border-border bg-card p-5 shadow-xl shadow-foreground/[0.06]">
               <p className="text-[11px] font-bold uppercase tracking-widest text-foreground/40">Κλείστε ραντεβού</p>
               <div className="mt-2.5 flex items-baseline gap-1.5">
-                <span className="text-[1.75rem] font-bold text-foreground">από €{lowestPrice}</span>
-                <span className="text-[13px] font-semibold text-foreground/40">/ συνεδρία</span>
+                <span className="text-[1.75rem] font-bold text-foreground">from {formatCurrency(lowestPrice)}</span>
+                <span className="text-[13px] font-semibold text-foreground/40">/ consultation</span>
               </div>
 
               <div className="mt-4 space-y-2.5">
@@ -335,6 +435,8 @@ const LawyerProfile = () => {
                 <Signal icon={ShieldCheck}>{lawyer.verification.barAssociation}</Signal>
                 <Signal icon={Clock}>Απάντηση {lawyer.response}</Signal>
                 <Signal icon={Star}>{displayRating} ({reviewCount} αξιολογήσεις)</Signal>
+                <Signal icon={CreditCard}>Payment step before commitment</Signal>
+                <Signal icon={CalendarDays}>Real slot held during checkout</Signal>
                 <Signal icon={ShieldCheck}>Δωρεάν ακύρωση 24 ώρες πριν</Signal>
               </div>
 
@@ -342,6 +444,20 @@ const LawyerProfile = () => {
                 <p className="text-[11px] font-bold text-sage-foreground">Επόμενη διαθεσιμότητα</p>
                 <p className="mt-0.5 text-[15px] font-bold text-foreground">{lawyer.available}</p>
               </div>
+
+              {nextSlots.length > 0 ? (
+                <div className="mt-3 rounded-xl border border-border bg-background p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Near-term slots</p>
+                  <div className="mt-2 space-y-1.5">
+                    {nextSlots.slice(0, 3).map((slot) => (
+                      <p key={`${slot.dateLabel}-${slot.time}`} className="flex items-center justify-between gap-3 text-xs font-bold text-foreground">
+                        <span>{slot.shortDateLabel}</span>
+                        <span>{slot.time}</span>
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {isOwnLawyerProfile ? (
                 <Button type="button" disabled className="mt-4 h-12 w-full rounded-xl text-[15px] font-bold">
@@ -406,6 +522,47 @@ const Signal = ({ icon: Icon, children }: { icon: LucideIcon; children: React.Re
   <div className="flex items-center gap-2.5 text-[13px] font-semibold text-foreground">
     <Icon className="h-4 w-4 text-sage" />
     {children}
+  </div>
+);
+
+const ReviewMetric = ({ label, value }: { label: string; value: string }) => (
+  <div className="rounded-lg border border-border bg-background px-3 py-2">
+    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+    <p className="mt-0.5 text-sm font-bold text-foreground">{value}</p>
+  </div>
+);
+
+const DecisionInfoCard = ({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  children: React.ReactNode;
+}) => (
+  <div className="rounded-xl border border-border bg-card p-4">
+    <Icon className="h-5 w-5 text-primary" />
+    <h3 className="mt-3 text-sm font-bold text-foreground">{title}</h3>
+    <p className="mt-2 text-[13px] leading-6 text-muted-foreground">{children}</p>
+  </div>
+);
+
+const AlternativeGroup = ({ title, lawyers }: { title: string; lawyers: Lawyer[] }) => (
+  <div className="rounded-xl border border-border bg-card p-4">
+    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
+    <div className="mt-3 space-y-2">
+      {lawyers.length > 0 ? lawyers.map((lawyer) => (
+        <Link key={lawyer.id} to={`/lawyer/${lawyer.id}`} className="block rounded-lg bg-secondary/60 p-3 transition hover:bg-secondary">
+          <p className="truncate text-sm font-bold text-foreground">{lawyer.name}</p>
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">
+            {formatCurrency(lawyer.price)} · {lawyer.response} · {lawyer.reviews} reviews
+          </p>
+        </Link>
+      )) : (
+        <p className="text-sm leading-6 text-muted-foreground">No stronger alternative in this group yet.</p>
+      )}
+    </div>
   </div>
 );
 

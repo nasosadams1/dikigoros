@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   CalendarDays,
@@ -8,13 +8,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  CreditCard,
   Mail,
-  MessageSquare,
+  ReceiptText,
   ShieldCheck,
   Star,
+  Upload,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import AuthContainer from "@/components/auth/AuthContainer";
 import Navbar from "@/components/Navbar";
 import { consultationModeIcons, type Lawyer } from "@/data/lawyers";
 import { useAuth } from "@/context/AuthContext";
@@ -29,13 +32,16 @@ import {
 import {
   createBooking,
   fetchReservedBookingSlots,
+  getStoredBookingById,
   getBookingSlotKey,
   getPartnerSession,
+  recordLocalCheckoutReturn,
+  requestBookingCheckoutSession,
   type StoredBooking,
 } from "@/lib/platformRepository";
 import { cn } from "@/lib/utils";
 
-const steps = ["Τύπος", "Ημερομηνία", "Στοιχεία", "Επιβεβαίωση"];
+const steps = ["Τύπος", "Ημερομηνία", "Στοιχεία", "Πληρωμή", "Επιβεβαίωση"];
 const shortDays = ["Κυρ", "Δευ", "Τρί", "Τετ", "Πέμ", "Παρ", "Σάβ"];
 const longDays = ["Κυριακή", "Δευτέρα", "Τρίτη", "Τετάρτη", "Πέμπτη", "Παρασκευή", "Σάββατο"];
 const shortMonths = ["Ιαν", "Φεβ", "Μαρ", "Απρ", "Μαΐ", "Ιουν", "Ιουλ", "Αυγ", "Σεπ", "Οκτ", "Νοε", "Δεκ"];
@@ -61,8 +67,18 @@ const getDurationMinutes = (duration?: string) => {
   return match ? Number(match[0]) : 30;
 };
 
+const buildCalendarUrl = (booking: StoredBooking | null, lawyerName: string) => {
+  if (!booking) return "https://calendar.google.com/calendar/render?action=TEMPLATE";
+
+  const title = encodeURIComponent(`Legal consultation with ${lawyerName}`);
+  const details = encodeURIComponent(`${booking.consultationType} · ${booking.referenceId}`);
+  const location = encodeURIComponent(booking.consultationMode === "inPerson" ? lawyerName : "Online / phone");
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}&location=${location}`;
+};
+
 const Booking = () => {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const [lawyer, setLawyer] = useState<Lawyer | null | undefined>(undefined);
   const { user, profile } = useAuth();
   const partnerSession = getPartnerSession();
@@ -84,6 +100,8 @@ const Booking = () => {
   const [confirmedBooking, setConfirmedBooking] = useState<StoredBooking | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentState, setPaymentState] = useState({ loading: false, error: "" });
+  const [authOpen, setAuthOpen] = useState(false);
   const [currentPartnerLawyerId, setCurrentPartnerLawyerId] = useState<string | null>(() => getStoredPartnerLawyerId(partnerSession?.email));
 
   useEffect(() => {
@@ -170,6 +188,35 @@ const Booking = () => {
     };
   }, [partnerSession?.email]);
 
+  useEffect(() => {
+    const checkout = searchParams.get("checkout");
+    const bookingId = searchParams.get("bookingId");
+    if (!checkout || !bookingId) return;
+
+    const storedBooking = getStoredBookingById(bookingId);
+    if (storedBooking) {
+      setConfirmedBooking(storedBooking);
+      setSelectedTime(storedBooking.time);
+      recordLocalCheckoutReturn(
+        bookingId,
+        checkout === "success" ? "paid" : "failed",
+        searchParams.get("session_id"),
+      );
+    }
+
+    if (checkout === "success") {
+      setPaymentState({ loading: false, error: "" });
+      setCurrentStep(4);
+      return;
+    }
+
+    setPaymentState({
+      loading: false,
+      error: "Payment was not completed. Your card was not charged. You can try secure payment again.",
+    });
+    setCurrentStep(3);
+  }, [searchParams]);
+
   const detailErrors = useMemo(() => {
     const errors: Record<string, string> = {};
     if (!details.fullName.trim()) errors.fullName = "Συμπληρώστε ονοματεπώνυμο.";
@@ -239,7 +286,8 @@ const Booking = () => {
   const canContinue =
     (currentStep === 0 && selectedType !== null) ||
     (currentStep === 1 && selectedDate !== null && selectedTime !== null && !selectedSlotReserved) ||
-    (currentStep === 2 && Object.keys(detailErrors).length === 0);
+    (currentStep === 2 && Object.keys(detailErrors).length === 0) ||
+    (currentStep === 3 && Boolean(confirmedBooking));
 
   const handleNext = async () => {
     if (currentStep === 2 && Object.keys(detailErrors).length > 0) {
@@ -276,15 +324,14 @@ const Booking = () => {
         setCurrentStep(3);
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
-        if (message.includes("Δεν μπορείτε να κλείσετε ραντεβού στον εαυτό σας")) {
+        if (message.includes("Δεν μπορείτε να κλείσετε ραντεβού στον εαυτό σας") || message.includes("SELF_BOOKING")) {
           setSubmitError("Δεν μπορείτε να κλείσετε ραντεβού στον εαυτό σας.");
           return;
         }
-        setSubmitError("Δεν ήταν δυνατή η καταχώριση της κράτησης. Προσπαθήστε ξανά.");
         setSubmitError(
           message.includes("BOOKING_SLOT_UNAVAILABLE") || message.includes("δεν είναι πλέον διαθέσιμη")
             ? "Η ώρα δεν είναι πλέον διαθέσιμη. Επιλέξτε άλλη ώρα."
-            : "Δεν αποθηκεύτηκε πραγματική κράτηση στο Supabase. Ελέγξτε ότι το SQL schema έχει εφαρμοστεί και δοκιμάστε ξανά.",
+            : "Δεν μπορέσαμε να κρατήσουμε αυτή την ώρα. Δοκιμάστε ξανά ή επιλέξτε άλλη διαθέσιμη ώρα.",
         );
       } finally {
         setIsSubmitting(false);
@@ -293,7 +340,44 @@ const Booking = () => {
       return;
     }
 
-    setCurrentStep((step) => Math.min(3, step + 1));
+    if (currentStep === 3 && confirmedBooking) {
+      if (!user?.id) {
+        setPaymentState({
+          loading: false,
+          error: "Create or sign in to your account to complete secure payment and keep the receipt with your booking.",
+        });
+        setAuthOpen(true);
+        return;
+      }
+
+      setPaymentState({ loading: true, error: "" });
+
+      try {
+        const returnUrl =
+          typeof window !== "undefined"
+            ? `${window.location.origin}/booking/${lawyer.id}?bookingId=${confirmedBooking.id}`
+            : undefined;
+        const session = await requestBookingCheckoutSession(confirmedBooking, returnUrl);
+        if (session.url && typeof window !== "undefined") {
+          window.location.assign(session.url);
+          return;
+        }
+
+        setPaymentState({
+          loading: false,
+          error: "We could not open secure payment for this reservation. Please try again or contact support.",
+        });
+      } catch {
+        setPaymentState({
+          loading: false,
+          error: "Payment could not start. Your card was not charged. Please try again.",
+        });
+      }
+
+      return;
+    }
+
+    setCurrentStep((step) => Math.min(4, step + 1));
   };
 
   const showError = (field: string) => (touched[field] || attemptedDetails) && detailErrors[field];
@@ -534,39 +618,88 @@ const Booking = () => {
           ) : null}
 
           {currentStep === 3 ? (
+            <div>
+              <h1 className="font-serif text-2xl tracking-tight text-foreground">Secure payment</h1>
+              <p className="mt-1.5 text-sm font-medium text-muted-foreground">
+                Your slot is ready to reserve. Confirm the commitment details before opening Stripe Checkout.
+              </p>
+
+              <div className="mt-5 rounded-2xl border border-border bg-card p-5">
+                <SummaryRow label="Lawyer" value={lawyer.name} />
+                <SummaryRow label="Consultation" value={selectedConsultation?.type || "—"} />
+                <SummaryRow label="Duration" value={selectedConsultation?.duration || "—"} />
+                <SummaryRow label="Slot" value={`${confirmedBooking?.dateLabel || selectedDateLabel} · ${selectedTime || "—"}`} />
+                <SummaryRow label="Cancellation rule" value="Free cancellation or reschedule up to 24 hours before the slot." />
+                <SummaryRow label="Next step after payment" value="Receipt, calendar, account, and document upload options." />
+                <div className="mt-3 border-t border-border pt-3">
+                  <SummaryRow label="Full payment due now" value={selectedConsultation ? `€${selectedConsultation.price}` : "—"} strong />
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-xl border border-sage/20 bg-sage/10 p-4">
+                <div className="flex items-start gap-3">
+                  <CreditCard className="mt-0.5 h-5 w-5 text-sage-foreground" />
+                  <div>
+                    <p className="text-sm font-bold text-foreground">Payment model: full first-consultation payment</p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      Card details are handled by Stripe Checkout. The reservation is not treated as paid until checkout completes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {!user ? (
+                <Button type="button" variant="outline" onClick={() => setAuthOpen(true)} className="mt-4 w-full rounded-xl font-bold">
+                  Sign in or create account to pay
+                </Button>
+              ) : null}
+
+              {paymentState.error ? (
+                <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive">
+                  {paymentState.error}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {currentStep === 4 ? (
             <div className="py-4 text-center">
               <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-sage/20 shadow-lg shadow-sage/10">
                 <Check className="h-9 w-9 text-sage-foreground" />
               </div>
-              <h1 className="mt-6 font-serif text-2xl tracking-tight text-foreground">Το ραντεβού σας κλείστηκε.</h1>
+              <h1 className="mt-6 font-serif text-2xl tracking-tight text-foreground">Reservation and payment confirmed.</h1>
               <p className="mt-2 text-sm font-medium text-muted-foreground">
-                Η ώρα δεσμεύτηκε και θα λάβετε επιβεβαίωση στα στοιχεία επικοινωνίας που δηλώσατε.
+                You will receive the booking confirmation, payment receipt, and preparation details at the contact information you provided.
               </p>
 
               <div className="mx-auto mt-6 max-w-sm rounded-2xl border border-border bg-card p-5 text-left shadow-md shadow-foreground/[0.03]">
                 <SummaryRow label="Κωδικός" value={confirmedBooking?.referenceId || "—"} strong />
-                <SummaryRow label="Δικηγόρος" value={lawyer.name} />
-                <SummaryRow label="Τύπος" value={selectedConsultation?.type || "—"} />
+                <SummaryRow label="Δικηγόρος" value={confirmedBooking?.lawyerName || lawyer.name} />
+                <SummaryRow label="Τύπος" value={confirmedBooking?.consultationType || selectedConsultation?.type || "—"} />
                 <SummaryRow label="Ημερομηνία" value={confirmedBooking?.dateLabel || (selectedDate !== null ? dates[selectedDate].full : "—")} />
-                <SummaryRow label="Ώρα" value={selectedTime || "—"} />
-                <SummaryRow label="Διάρκεια" value={selectedConsultation?.duration || "—"} />
+                <SummaryRow label="Ώρα" value={confirmedBooking?.time || selectedTime || "—"} />
+                <SummaryRow label="Διάρκεια" value={confirmedBooking?.duration || selectedConsultation?.duration || "—"} />
                 <div className="mt-3 border-t border-border pt-3">
-                  <SummaryRow label="Κόστος" value={selectedConsultation ? `€${selectedConsultation.price}` : "—"} strong />
+                  <SummaryRow label="Κόστος" value={confirmedBooking ? `€${confirmedBooking.price}` : selectedConsultation ? `€${selectedConsultation.price}` : "—"} strong />
                 </div>
               </div>
 
               <div className="mx-auto mt-6 max-w-sm space-y-2.5 text-left">
                 <p className="mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Τι ακολουθεί</p>
-                <NextStep icon={Mail}>Θα λάβετε μήνυμα επιβεβαίωσης με τις λεπτομέρειες της κράτησης.</NextStep>
-                <NextStep icon={MessageSquare}>Θα λάβετε SMS υπενθύμιση πριν από το ραντεβού.</NextStep>
-                <NextStep icon={ShieldCheck}>Μπορείτε να ακυρώσετε δωρεάν μέχρι 24 ώρες πριν.</NextStep>
+                <NextStep icon={ReceiptText}>Receipt and payment confirmation are available from your account payments area.</NextStep>
+                <NextStep icon={CalendarDays}>Add the consultation to your calendar from the confirmation email.</NextStep>
+                <NextStep icon={Upload}>Upload or send preparation documents before the consultation.</NextStep>
+                <NextStep icon={ShieldCheck}>Free cancellation or reschedule is available up to 24 hours before the slot.</NextStep>
                 {confirmedBooking?.persistenceSource === "local" ? (
                   <NextStep icon={ShieldCheck}>Η κράτηση αποθηκεύτηκε τοπικά μέχρι να συγχρονιστεί με την υποδομή.</NextStep>
                 ) : null}
               </div>
 
               <Button asChild className="mt-8 w-full max-w-sm rounded-xl font-bold">
-                <Link to="/">Επιστροφή στην αρχική</Link>
+                <a href={buildCalendarUrl(confirmedBooking, lawyer.name)} target="_blank" rel="noreferrer">Add to calendar</a>
+              </Button>
+              <Button asChild variant="outline" className="mt-3 w-full max-w-sm rounded-xl font-bold">
+                <Link to="/account?tab=documents">Upload or send documents</Link>
               </Button>
               {user ? (
                 <Button asChild variant="outline" className="mt-3 w-full max-w-sm rounded-xl font-bold">
@@ -577,7 +710,7 @@ const Booking = () => {
           ) : null}
         </section>
 
-        {currentStep < 3 ? (
+        {currentStep < 4 ? (
           <div className="mt-8 flex items-center justify-between border-t border-border pt-5">
             <Button
               variant="ghost"
@@ -590,10 +723,18 @@ const Booking = () => {
             </Button>
             <Button
               onClick={handleNext}
-              disabled={!canContinue || isSubmitting}
+              disabled={!canContinue || isSubmitting || paymentState.loading}
               className="rounded-xl px-8 text-sm font-bold shadow-lg shadow-primary/20 disabled:shadow-none"
             >
-              {isSubmitting ? "Γίνεται καταχώριση..." : currentStep === 2 ? "Ολοκλήρωση κράτησης" : "Συνέχεια"}
+              {isSubmitting
+                ? "Holding the slot..."
+                : paymentState.loading
+                  ? "Opening secure payment..."
+                  : currentStep === 2
+                    ? "Reserve slot and continue"
+                    : currentStep === 3
+                      ? "Continue to secure payment"
+                      : "Continue"}
               <ChevronRight className="ml-1 h-4 w-4" />
             </Button>
           </div>
@@ -601,7 +742,7 @@ const Booking = () => {
 
         {submitError ? <p className="mt-3 text-center text-sm font-semibold text-destructive">{submitError}</p> : null}
 
-        {currentStep < 3 ? (
+        {currentStep < 4 ? (
           <div className="mt-5 flex items-center justify-center gap-5 text-xs font-semibold text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <ShieldCheck className="h-3.5 w-3.5 text-sage" />
@@ -618,6 +759,7 @@ const Booking = () => {
           </div>
         ) : null}
       </main>
+      <AuthContainer open={authOpen} onClose={() => setAuthOpen(false)} />
     </div>
   );
 };

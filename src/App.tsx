@@ -11,16 +11,20 @@ import ScrollToHash from "./components/ScrollToHash";
 const AuthConfirm = lazy(() => import("./components/AuthConfirm"));
 const ResetPasswordPage = lazy(() => import("./components/ResetPasswordPage"));
 const Booking = lazy(() => import("./pages/Booking"));
+const DiscoveryPage = lazy(() => import("./pages/DiscoveryPage"));
 const ForLawyersLanding = lazy(() => import("./pages/ForLawyersLanding"));
 const Index = lazy(() => import("./pages/Index"));
 const LawyerProfile = lazy(() => import("./pages/LawyerProfile"));
 const LegalPage = lazy(() => import("./pages/LegalPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const OperationsCenter = lazy(() => import("./pages/OperationsCenter"));
 const PartnerApply = lazy(() => import("./pages/PartnerApply"));
 const PartnerLogin = lazy(() => import("./pages/PartnerLogin"));
 const PartnerPortal = lazy(() => import("./pages/PartnerPortal"));
 const PartnerVerification = lazy(() => import("./pages/PartnerVerification"));
 const SearchResults = lazy(() => import("./pages/SearchResults"));
+const SupportCenter = lazy(() => import("./pages/SupportCenter"));
+const TrustPage = lazy(() => import("./pages/TrustPage"));
 const UserProfile = lazy(() => import("./pages/UserProfile"));
 
 const queryClient = new QueryClient({
@@ -55,6 +59,8 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/search" element={<SearchResults />} />
               <Route path="/lawyer/:id" element={<LawyerProfile />} />
+              <Route path="/lawyers/:issueSlug" element={<DiscoveryPage />} />
+              <Route path="/lawyers/:issueSlug/:citySlug" element={<DiscoveryPage />} />
               <Route path="/booking/:id" element={<Booking />} />
               <Route path="/account" element={<AccountRoute />} />
               <Route path="/for-lawyers" element={<ForLawyersLanding />} />
@@ -69,6 +75,14 @@ const App = () => (
               <Route path="/terms" element={<LegalPage />} />
               <Route path="/privacy" element={<LegalPage />} />
               <Route path="/contact" element={<LegalPage />} />
+              <Route path="/help" element={<SupportCenter />} />
+              <Route path="/operations" element={<OperationsCenter />} />
+              <Route path="/trust/verification-standards" element={<TrustPage />} />
+              <Route path="/trust/reviews-policy" element={<TrustPage />} />
+              <Route path="/trust/payments-refunds" element={<TrustPage />} />
+              <Route path="/trust/privacy-documents" element={<TrustPage />} />
+              <Route path="/trust/support-complaints" element={<TrustPage />} />
+              <Route path="/trust/security" element={<TrustPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

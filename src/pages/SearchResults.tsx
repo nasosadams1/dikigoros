@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
+  CalendarDays,
   CheckCircle2,
   Clock,
   Heart,
@@ -23,12 +24,7 @@ import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/context/AuthContext";
-import {
-  consultationModeLabels,
-  lawyers,
-  specialtyOptions,
-  type ConsultationMode,
-} from "@/data/lawyers";
+import { consultationModeLabels, type ConsultationMode, type Lawyer } from "@/data/lawyers";
 import { areLawyerIdsEqual, fetchPartnerLawyerId, getStoredPartnerLawyerId } from "@/lib/partnerIdentity";
 import { getLawyers } from "@/lib/lawyerRepository";
 import { getPartnerSession } from "@/lib/platformRepository";
@@ -45,6 +41,12 @@ import {
   type LawyerSort,
   type PriceRange,
 } from "@/lib/lawyerSearch";
+import {
+  consultationModeNames,
+  formatCurrency,
+  type AvailabilityIntent,
+  type LanguageIntent,
+} from "@/lib/marketplace";
 import { cn } from "@/lib/utils";
 
 const appointmentTypeOptions: Array<{ value: ConsultationMode; label: string; icon: LucideIcon }> = [
@@ -54,23 +56,36 @@ const appointmentTypeOptions: Array<{ value: ConsultationMode; label: string; ic
 ];
 
 const priceOptions: Array<{ value: PriceRange; label: string }> = [
-  { value: "30-50", label: "€30 – €50" },
-  { value: "50-80", label: "€50 – €80" },
-  { value: "80-120", label: "€80 – €120" },
+  { value: "30-50", label: "€30 - €50" },
+  { value: "50-80", label: "€50 - €80" },
+  { value: "80-120", label: "€80 - €120" },
   { value: "120+", label: "€120+" },
 ];
 
+const sortTabs: Array<{ value: LawyerSort; label: string }> = [
+  { value: "recommended", label: "Recommended" },
+  { value: "response", label: "Fastest response" },
+  { value: "value", label: "Best value" },
+  { value: "available", label: "Available soon" },
+];
+
 const sortOptions: Array<{ value: LawyerSort; label: string }> = [
-  { value: "recommended", label: "Προτεινόμενοι" },
-  { value: "rating", label: "Υψηλότερη αξιολόγηση" },
-  { value: "price-low", label: "Χαμηλότερη τιμή" },
-  { value: "experience", label: "Περισσότερη εμπειρία" },
-  { value: "response", label: "Ταχύτερη απάντηση" },
+  ...sortTabs,
+  { value: "rating", label: "Highest rating" },
+  { value: "price-low", label: "Lowest price" },
+  { value: "experience", label: "Most experience" },
+];
+
+const languageOptions: Array<{ value: LanguageIntent; label: string }> = [
+  { value: "Greek", label: "Greek" },
+  { value: "English", label: "English" },
 ];
 
 const validAppointmentTypes = new Set<ConsultationMode>(appointmentTypeOptions.map((option) => option.value));
 const validPriceRanges = new Set<PriceRange>(["all", ...priceOptions.map((option) => option.value)]);
 const validSorts = new Set<LawyerSort>(sortOptions.map((option) => option.value));
+const validAvailability = new Set<AvailabilityIntent>(["any", "today", "tomorrow"]);
+const validLanguages = new Set<LanguageIntent>(languageOptions.map((option) => option.value));
 
 const readListParam = <T extends string>(value: string | null, validValues: Set<T>) =>
   (value || "")
@@ -84,30 +99,44 @@ const readTextListParam = (value: string | null) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const readNumberParam = (value: string | null) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
 const getFiltersFromParams = (params: URLSearchParams): LawyerSearchFilters => {
   const price = params.get("price") as PriceRange | null;
   const sort = params.get("sort") as LawyerSort | null;
+  const availability = params.get("availability") as AvailabilityIntent | null;
 
   return {
     query: params.get("q") || "",
     city: params.get("city") || "",
-    specialties: readTextListParam(params.get("specialty")).filter((specialty) => specialtyOptions.includes(specialty)),
+    specialties: readTextListParam(params.get("specialty")),
     appointmentTypes: readListParam(params.get("type"), validAppointmentTypes),
     priceRange: price && validPriceRanges.has(price) ? price : defaultLawyerSearchFilters.priceRange,
     sort: sort && validSorts.has(sort) ? sort : defaultLawyerSearchFilters.sort,
+    availability: availability && validAvailability.has(availability) ? availability : "any",
+    responseUnderMinutes: readNumberParam(params.get("responseUnder")),
+    minRating: readNumberParam(params.get("minRating")),
+    minReviews: readNumberParam(params.get("minReviews")),
+    languages: readListParam(params.get("language"), validLanguages),
   };
 };
 
 const writeFiltersToParams = (filters: LawyerSearchFilters) => {
   const params = new URLSearchParams();
-
   if (filters.query.trim()) params.set("q", filters.query.trim());
   if (filters.city.trim()) params.set("city", filters.city.trim());
   if (filters.specialties.length > 0) params.set("specialty", filters.specialties.join(","));
   if (filters.appointmentTypes.length > 0) params.set("type", filters.appointmentTypes.join(","));
   if (filters.priceRange !== "all") params.set("price", filters.priceRange);
   if (filters.sort !== "recommended") params.set("sort", filters.sort);
-
+  if (filters.availability && filters.availability !== "any") params.set("availability", filters.availability);
+  if (filters.responseUnderMinutes) params.set("responseUnder", String(filters.responseUnderMinutes));
+  if (filters.minRating) params.set("minRating", String(filters.minRating));
+  if (filters.minReviews) params.set("minReviews", String(filters.minReviews));
+  if (filters.languages?.length) params.set("language", filters.languages.join(","));
   return params;
 };
 
@@ -116,7 +145,12 @@ const getActiveFilterCount = (filters: LawyerSearchFilters) =>
   (filters.city.trim() ? 1 : 0) +
   filters.specialties.length +
   filters.appointmentTypes.length +
-  (filters.priceRange !== "all" ? 1 : 0);
+  (filters.priceRange !== "all" ? 1 : 0) +
+  (filters.availability && filters.availability !== "any" ? 1 : 0) +
+  (filters.responseUnderMinutes ? 1 : 0) +
+  (filters.minRating ? 1 : 0) +
+  (filters.minReviews ? 1 : 0) +
+  (filters.languages?.length || 0);
 
 const SearchResults = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -129,7 +163,7 @@ const SearchResults = () => {
   const [cityDraft, setCityDraft] = useState(filters.city);
   const [workspace, setWorkspace] = useState(() => getUserWorkspace(workspaceKey));
   const [currentPartnerLawyerId, setCurrentPartnerLawyerId] = useState<string | null>(() => getStoredPartnerLawyerId(partnerSession?.email));
-  const { data: lawyerDataset = lawyers, isFetching } = useQuery({
+  const { data: lawyerDataset = [], isFetching } = useQuery({
     queryKey: ["lawyers"],
     queryFn: getLawyers,
   });
@@ -151,7 +185,6 @@ const SearchResults = () => {
 
     let active = true;
     setCurrentPartnerLawyerId(getStoredPartnerLawyerId(partnerSession.email));
-
     void fetchPartnerLawyerId(partnerSession.email).then((lawyerId) => {
       if (active) setCurrentPartnerLawyerId(lawyerId);
     });
@@ -161,14 +194,18 @@ const SearchResults = () => {
     };
   }, [partnerSession?.email]);
 
-  const results = useMemo(() => searchLawyers(lawyerDataset, filters), [filters, lawyerDataset]);
   const availableSpecialtyOptions = useMemo(
-    () => Array.from(new Set(lawyerDataset.map((lawyer) => lawyer.specialty))).sort((a, b) => a.localeCompare(b, "el-GR")),
+    () => Array.from(new Set(lawyerDataset.flatMap((lawyer) => [lawyer.specialty, ...lawyer.specialties]))).filter(Boolean).sort((a, b) => a.localeCompare(b, "el-GR")),
     [lawyerDataset],
   );
   const availableCityOptions = useMemo(
     () => Array.from(new Set(lawyerDataset.map((lawyer) => lawyer.city))).sort((a, b) => a.localeCompare(b, "el-GR")),
     [lawyerDataset],
+  );
+  const results = useMemo(() => searchLawyers(lawyerDataset, filters), [filters, lawyerDataset]);
+  const selectedLawyers = useMemo(
+    () => workspace.comparedLawyerIds.map((id) => lawyerDataset.find((lawyer) => lawyer.id === id)).filter((lawyer): lawyer is Lawyer => Boolean(lawyer)),
+    [lawyerDataset, workspace.comparedLawyerIds],
   );
   const activeFilterCount = getActiveFilterCount(filters);
 
@@ -182,11 +219,16 @@ const SearchResults = () => {
     setShowFilters(false);
   };
 
+  const clearFilters = () => {
+    setQueryDraft("");
+    setCityDraft("");
+    updateFilters(defaultLawyerSearchFilters);
+  };
+
   const toggleSpecialty = (specialty: string) => {
     const specialties = filters.specialties.includes(specialty)
       ? filters.specialties.filter((item) => item !== specialty)
       : [...filters.specialties, specialty];
-
     updateFilters({ ...filters, specialties });
   };
 
@@ -194,22 +236,14 @@ const SearchResults = () => {
     const appointmentTypes = filters.appointmentTypes.includes(type)
       ? filters.appointmentTypes.filter((item) => item !== type)
       : [...filters.appointmentTypes, type];
-
     updateFilters({ ...filters, appointmentTypes });
   };
 
-  const clearFilters = () => {
-    setQueryDraft("");
-    setCityDraft("");
-    updateFilters(defaultLawyerSearchFilters);
-  };
-
-  const removeChip = (kind: "query" | "city" | "specialty" | "type" | "price", value?: string) => {
-    if (kind === "query") updateFilters({ ...filters, query: "" });
-    if (kind === "city") updateFilters({ ...filters, city: "" });
-    if (kind === "specialty") updateFilters({ ...filters, specialties: filters.specialties.filter((item) => item !== value) });
-    if (kind === "type") updateFilters({ ...filters, appointmentTypes: filters.appointmentTypes.filter((item) => item !== value) });
-    if (kind === "price") updateFilters({ ...filters, priceRange: "all" });
+  const toggleLanguage = (language: LanguageIntent) => {
+    const languages = filters.languages?.includes(language)
+      ? filters.languages.filter((item) => item !== language)
+      : [...(filters.languages || []), language];
+    updateFilters({ ...filters, languages });
   };
 
   const handleToggleSavedLawyer = (lawyerId: string) => {
@@ -224,6 +258,10 @@ const SearchResults = () => {
     void syncUserWorkspace(workspaceKey, nextWorkspace, user?.id);
   };
 
+  const removeComparedLawyer = (lawyerId: string) => {
+    if (workspace.comparedLawyerIds.includes(lawyerId)) handleToggleComparedLawyer(lawyerId);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -235,8 +273,8 @@ const SearchResults = () => {
             <input
               value={queryDraft}
               onChange={(event) => setQueryDraft(event.target.value)}
-              placeholder="Νομικό θέμα ή όνομα δικηγόρου"
-              className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+              placeholder="Legal issue or lawyer name"
+              className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
           <div className="relative hidden md:block md:w-56">
@@ -244,17 +282,17 @@ const SearchResults = () => {
             <input
               value={cityDraft}
               onChange={(event) => setCityDraft(event.target.value)}
-              placeholder="Πόλη ή περιοχή"
-              className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+              placeholder="City or area"
+              className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
-          <Button type="submit" className="h-11 rounded-xl px-6 text-sm font-bold">
-            Αναζήτηση
+          <Button type="submit" className="h-11 rounded-lg px-6 text-sm font-bold">
+            Search
           </Button>
           <button
             type="button"
             onClick={() => setShowFilters((current) => !current)}
-            className="relative flex h-11 items-center gap-2 rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground lg:hidden"
+            className="relative flex h-11 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground lg:hidden"
             aria-expanded={showFilters}
           >
             <SlidersHorizontal className="h-4 w-4" />
@@ -267,82 +305,80 @@ const SearchResults = () => {
         </form>
       </div>
 
-      <div className="mx-auto max-w-7xl px-5 py-6 lg:px-8 lg:py-8">
-        <div className="lg:flex lg:gap-8">
-          <aside className={cn(showFilters ? "block" : "hidden", "mb-6 shrink-0 lg:block lg:w-64")}>
-            <div className="sticky top-32 rounded-2xl border border-border bg-card p-5">
+      <div className="mx-auto max-w-7xl px-5 py-6 pb-28 lg:px-8 lg:py-8">
+        <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)_18rem]">
+          <aside className={cn(showFilters ? "block" : "hidden", "lg:block")}>
+            <div className="sticky top-32 rounded-lg border border-border bg-card p-5">
               <div className="flex items-center justify-between">
-                <h2 className="font-sans text-sm font-bold text-foreground">Φίλτρα</h2>
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary transition hover:text-primary/75"
-                >
+                <h2 className="text-sm font-bold text-foreground">Filters</h2>
+                <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Καθαρισμός
+                  Clear
                 </button>
               </div>
 
               <div className="mt-5 space-y-5">
                 <div className="md:hidden">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Πόλη</label>
-                  <div className="relative mt-2.5">
-                    <MapPin className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      value={cityDraft}
-                      onChange={(event) => setCityDraft(event.target.value)}
-                      onBlur={() => updateFilters({ ...filters, city: cityDraft })}
-                      placeholder="Πόλη ή περιοχή"
-                      className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">City</label>
+                  <input
+                    value={cityDraft}
+                    onChange={(event) => setCityDraft(event.target.value)}
+                    onBlur={() => updateFilters({ ...filters, city: cityDraft })}
+                    placeholder="City or area"
+                    className="mt-2 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
+                  />
                 </div>
 
-                <FilterGroup label="Ειδικότητα">
-                  {availableSpecialtyOptions.map((specialty) => (
-                    <CheckboxFilter
-                      key={specialty}
-                      label={specialty}
-                      checked={filters.specialties.includes(specialty)}
-                      onChange={() => toggleSpecialty(specialty)}
-                    />
+                <FilterGroup label="Booking intent">
+                  <RadioFilter name="availability" label="Available today" checked={filters.availability === "today"} onChange={() => updateFilters({ ...filters, availability: filters.availability === "today" ? "any" : "today" })} />
+                  <RadioFilter name="availability" label="Available tomorrow" checked={filters.availability === "tomorrow"} onChange={() => updateFilters({ ...filters, availability: filters.availability === "tomorrow" ? "any" : "tomorrow" })} />
+                  <CheckboxFilter label="Responds under 1h" checked={filters.responseUnderMinutes === 60} onChange={() => updateFilters({ ...filters, responseUnderMinutes: filters.responseUnderMinutes === 60 ? null : 60 })} />
+                  <CheckboxFilter label="Responds under 2h" checked={filters.responseUnderMinutes === 120} onChange={() => updateFilters({ ...filters, responseUnderMinutes: filters.responseUnderMinutes === 120 ? null : 120 })} />
+                  <CheckboxFilter label="4.8+ rating" checked={filters.minRating === 4.8} onChange={() => updateFilters({ ...filters, minRating: filters.minRating === 4.8 ? null : 4.8 })} />
+                  <CheckboxFilter label="10+ verified reviews" checked={filters.minReviews === 10} onChange={() => updateFilters({ ...filters, minReviews: filters.minReviews === 10 ? null : 10 })} />
+                </FilterGroup>
+
+                <FilterGroup label="Language">
+                  {languageOptions.map((option) => (
+                    <CheckboxFilter key={option.value} label={option.label} checked={Boolean(filters.languages?.includes(option.value))} onChange={() => toggleLanguage(option.value)} />
                   ))}
                 </FilterGroup>
 
-                <FilterGroup label="Τύπος ραντεβού">
+                <FilterGroup label="Consultation mode">
                   {appointmentTypeOptions.map((option) => (
-                    <CheckboxFilter
-                      key={option.value}
-                      label={option.label}
-                      checked={filters.appointmentTypes.includes(option.value)}
-                      onChange={() => toggleAppointmentType(option.value)}
-                    />
+                    <CheckboxFilter key={option.value} label={option.label} checked={filters.appointmentTypes.includes(option.value)} onChange={() => toggleAppointmentType(option.value)} />
                   ))}
                 </FilterGroup>
 
-                <FilterGroup label="Πόλη">
-                  {availableCityOptions.map((city) => (
+                <FilterGroup label="Specialty">
+                  {availableSpecialtyOptions.slice(0, 10).map((specialty) => (
+                    <CheckboxFilter key={specialty} label={specialty} checked={filters.specialties.includes(specialty)} onChange={() => toggleSpecialty(specialty)} />
+                  ))}
+                </FilterGroup>
+
+                <FilterGroup label="City">
+                  {availableCityOptions.map((item) => (
                     <RadioFilter
-                      key={city}
+                      key={item}
                       name="city-filter"
-                      label={city}
-                      checked={filters.city === city}
+                      label={item}
+                      checked={filters.city === item}
                       onChange={() => {
-                        setCityDraft(city);
-                        updateFilters({ ...filters, city });
+                        setCityDraft(item);
+                        updateFilters({ ...filters, city: filters.city === item ? "" : item });
                       }}
                     />
                   ))}
                 </FilterGroup>
 
-                <FilterGroup label="Τιμή">
+                <FilterGroup label="Starting price">
                   {priceOptions.map((option) => (
                     <RadioFilter
                       key={option.value}
                       name="price-filter"
                       label={option.label}
                       checked={filters.priceRange === option.value}
-                      onChange={() => updateFilters({ ...filters, priceRange: option.value })}
+                      onChange={() => updateFilters({ ...filters, priceRange: filters.priceRange === option.value ? "all" : option.value })}
                     />
                   ))}
                 </FilterGroup>
@@ -350,188 +386,187 @@ const SearchResults = () => {
             </div>
           </aside>
 
-          <main className="min-w-0 flex-1">
-            <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  <span className="font-bold text-foreground">{results.length}</span>{" "}
-                  {results.length === 1 ? "δικηγόρος βρέθηκε" : "δικηγόροι βρέθηκαν"}
-                </p>
-                <p className="mt-1 text-xs font-medium text-muted-foreground">
-                  Τα αποτελέσματα ενημερώνονται με βάση τα κριτήρια που επιλέγετε.
-                  {isFetching ? " Γίνεται συγχρονισμός με το διαθέσιμο μητρώο." : ""}
-                </p>
+          <main className="min-w-0">
+            <div className="mb-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-bold text-foreground">{results.length}</span>{" "}
+                    {results.length === 1 ? "lawyer found" : "lawyers found"}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">
+                    Proof-first comparison from public marketplace profiles.
+                    {isFetching ? " Refreshing live marketplace data." : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-foreground">
+                  <Scale className="h-4 w-4 text-primary" />
+                  {selectedLawyers.length}/3 selected for compare
+                </div>
               </div>
 
-              <select
-                value={filters.sort}
-                onChange={(event) => updateFilters({ ...filters, sort: event.target.value as LawyerSort })}
-                className="h-10 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                aria-label="Ταξινόμηση αποτελεσμάτων"
-              >
-                {sortOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
+              <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                {sortTabs.map((tab) => (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    onClick={() => updateFilters({ ...filters, sort: tab.value })}
+                    className={cn(
+                      "shrink-0 rounded-lg border px-3 py-2 text-xs font-bold transition",
+                      filters.sort === tab.value
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card text-foreground hover:border-primary/30",
+                    )}
+                  >
+                    {tab.label}
+                  </button>
                 ))}
-              </select>
+                <select
+                  value={filters.sort}
+                  onChange={(event) => updateFilters({ ...filters, sort: event.target.value as LawyerSort })}
+                  className="h-9 shrink-0 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground"
+                  aria-label="Secondary sort"
+                >
+                  {sortOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {activeFilterCount > 0 ? (
-              <div className="mb-5 flex flex-wrap gap-2">
-                {filters.query.trim() ? <FilterChip label={`Αναζήτηση: ${filters.query}`} onRemove={() => removeChip("query")} /> : null}
-                {filters.city.trim() ? <FilterChip label={`Πόλη: ${filters.city}`} onRemove={() => removeChip("city")} /> : null}
-                {filters.specialties.map((specialty) => (
-                  <FilterChip key={specialty} label={specialty} onRemove={() => removeChip("specialty", specialty)} />
-                ))}
-                {filters.appointmentTypes.map((type) => (
-                  <FilterChip key={type} label={consultationModeLabels[type]} onRemove={() => removeChip("type", type)} />
-                ))}
-                {filters.priceRange !== "all" ? (
-                  <FilterChip label={priceOptions.find((option) => option.value === filters.priceRange)?.label || "Τιμή"} onRemove={() => removeChip("price")} />
-                ) : null}
-              </div>
-            ) : null}
+            {activeFilterCount > 0 ? <ActiveFilterSummary filters={filters} onClear={clearFilters} /> : null}
 
             {results.length > 0 ? (
               <div className="space-y-4">
-                {results.map((lawyer) => (
-                  <article
-                    key={lawyer.id}
-                    className="group overflow-hidden rounded-2xl border border-border bg-card transition-all hover:border-border/80 hover:shadow-xl hover:shadow-foreground/[0.06]"
-                  >
-                    <div className="p-5 md:p-6">
-                      <div className="flex flex-col gap-5 md:flex-row md:items-start">
-                        <div className="relative shrink-0">
-                          <img
-                            src={lawyer.image}
-                            alt={lawyer.name}
-                            className="h-24 w-24 rounded-2xl object-cover shadow-lg ring-2 ring-background md:h-28 md:w-28"
-                          />
-                          <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-sage ring-2 ring-card">
-                            <CheckCircle2 className="h-3 w-3 text-white" />
-                          </div>
-                        </div>
+                {results.map((lawyer) => {
+                  const saved = workspace.savedLawyerIds.includes(lawyer.id);
+                  const compared = workspace.comparedLawyerIds.includes(lawyer.id);
+                  const isOwnLawyerProfile = areLawyerIdsEqual(currentPartnerLawyerId, lawyer.id);
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <h3 className="font-sans text-lg font-bold text-foreground">{lawyer.name}</h3>
-                              <p className="mt-0.5 text-sm font-semibold text-primary/80">{lawyer.specialty}</p>
-                              <p className="mt-0.5 text-xs font-medium text-muted-foreground">
-                                {lawyer.city} · {lawyer.experience} χρόνια εμπειρίας
-                              </p>
-                            </div>
-                            <div className="hidden text-right md:block">
-                              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Από</p>
-                              <p className="text-2xl font-bold text-foreground">€{lawyer.price}</p>
-                              <p className="text-xs text-muted-foreground">ανά συνεδρία</p>
+                  return (
+                    <article key={lawyer.id} className="overflow-hidden rounded-lg border border-border bg-card transition hover:border-primary/20 hover:shadow-xl hover:shadow-foreground/[0.05]">
+                      <div className="p-5 md:p-6">
+                        <div className="flex flex-col gap-5 md:flex-row md:items-start">
+                          <div className="relative shrink-0">
+                            <img src={lawyer.image} alt={lawyer.name} className="h-24 w-24 rounded-lg object-cover shadow-lg ring-2 ring-background md:h-28 md:w-28" />
+                            <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-sage ring-2 ring-card">
+                              <CheckCircle2 className="h-3 w-3 text-white" />
                             </div>
                           </div>
 
-                          <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                            {lawyer.bio}
-                          </p>
-
-                          <div className="mt-3 flex flex-wrap items-center gap-3">
-                            <span className="flex items-center gap-1.5 text-sm font-bold text-foreground">
-                              <Star className="h-4 w-4 fill-gold text-gold" />
-                              {lawyer.rating}
-                              <span className="text-xs font-normal text-muted-foreground">({lawyer.reviews})</span>
-                            </span>
-                            <span className="h-3.5 w-px bg-border" />
-                            <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                              <Clock className="h-3.5 w-3.5" />
-                              Απάντηση {lawyer.response}
-                            </span>
-                            <span className="h-3.5 w-px bg-border" />
-                            <span className="flex items-center gap-1.5 text-xs font-semibold text-sage-foreground">
-                              <ShieldCheck className="h-3.5 w-3.5" />
-                              Ελεγμένος φάκελος
-                            </span>
-                            <span className="h-3.5 w-px bg-border" />
-                            <div className="flex flex-wrap gap-1.5">
-                              {lawyer.consultationModes.map((mode) => {
-                                const Icon = appointmentTypeOptions.find((option) => option.value === mode)?.icon || Video;
-                                return (
-                                  <span key={mode} className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-[11px] font-semibold text-foreground/70">
-                                    <Icon className="h-3 w-3" />
-                                    {consultationModeLabels[mode]}
-                                  </span>
-                                );
-                              })}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-wider text-primary">{lawyer.specialty}</p>
+                                <h3 className="mt-1 text-xl font-bold text-foreground">{lawyer.name}</h3>
+                                <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-foreground/70">{lawyer.bestFor}</p>
+                              </div>
+                              <div className="rounded-lg border border-border bg-secondary/45 px-4 py-3 text-left md:text-right">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Starting price</p>
+                                <p className="text-2xl font-bold text-foreground">{formatCurrency(lawyer.price)}</p>
+                              </div>
                             </div>
+
+                            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              <ProofCell icon={MapPin} label="City" value={lawyer.city} />
+                              <ProofCell icon={ShieldCheck} label="Experience" value={`${lawyer.experience} years`} />
+                              <ProofCell icon={Star} label="Rating" value={`${lawyer.rating} (${lawyer.reviews} reviews)`} />
+                              <ProofCell icon={Clock} label="Response time" value={lawyer.response} />
+                              <ProofCell icon={CalendarDays} label="Next slot" value={lawyer.available} />
+                              <ProofCell icon={Video} label="Modes" value={lawyer.consultationModes.map((item) => consultationModeNames[item]).join(", ")} />
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <SpecificTrustCopy>Bar association verified</SpecificTrustCopy>
+                              <SpecificTrustCopy>Reviews after completed booking</SpecificTrustCopy>
+                              <SpecificTrustCopy>Readiness checks passed</SpecificTrustCopy>
+                            </div>
+
+                            <details className="mt-4 rounded-lg border border-border bg-background px-4 py-3">
+                              <summary className="cursor-pointer text-xs font-bold uppercase tracking-wider text-muted-foreground">Read profile summary</summary>
+                              <p className="mt-2 text-sm leading-6 text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{lawyer.bio}</p>
+                            </details>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex flex-col gap-3 border-t border-border bg-secondary/40 px-5 py-3.5 md:flex-row md:items-center md:justify-between md:px-6">
-                      <div className="flex items-center gap-3">
-                        <p className="text-lg font-bold text-foreground md:hidden">€{lawyer.price}</p>
-                        <div className="flex items-center gap-1.5 rounded-full bg-sage/15 px-3 py-1 text-xs font-semibold text-sage-foreground">
-                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sage" />
-                          Επόμενο: {lawyer.available}
+                      <div className="flex flex-col gap-3 border-t border-border bg-secondary/35 px-5 py-3.5 md:flex-row md:items-center md:justify-between md:px-6">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {lawyer.consultationModes.map((mode) => {
+                            const Icon = appointmentTypeOptions.find((option) => option.value === mode)?.icon || Video;
+                            return (
+                              <span key={mode} className="inline-flex items-center gap-1 rounded-md bg-card px-2 py-1 text-[11px] font-bold text-foreground">
+                                <Icon className="h-3 w-3" />
+                                {consultationModeLabels[mode]}
+                              </span>
+                            );
+                          })}
                         </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        <Button
-                          type="button"
-                          variant={workspace.savedLawyerIds.includes(lawyer.id) ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleToggleSavedLawyer(lawyer.id)}
-                          className="h-9 rounded-xl px-3 text-xs font-bold"
-                        >
-                          <Heart className={cn("h-3.5 w-3.5", workspace.savedLawyerIds.includes(lawyer.id) && "fill-current")} />
-                          {workspace.savedLawyerIds.includes(lawyer.id) ? "Αποθηκευμένος" : "Αποθήκευση"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant={workspace.comparedLawyerIds.includes(lawyer.id) ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleToggleComparedLawyer(lawyer.id)}
-                          className="h-9 rounded-xl px-3 text-xs font-bold"
-                        >
-                          <Scale className="h-3.5 w-3.5" />
-                          {workspace.comparedLawyerIds.includes(lawyer.id) ? "Σύγκριση" : "Σύγκρινε"}
-                        </Button>
-                        <Button asChild variant="outline" size="sm" className="h-9 rounded-xl px-4 text-xs font-bold">
-                          <Link to={`/lawyer/${lawyer.id}`}>Προφίλ</Link>
-                        </Button>
-                        {areLawyerIdsEqual(currentPartnerLawyerId, lawyer.id) ? (
-                          <Button type="button" size="sm" disabled className="h-9 rounded-xl px-5 text-xs font-bold">
-                            Δικό σας προφίλ
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button type="button" variant={saved ? "default" : "outline"} size="sm" onClick={() => handleToggleSavedLawyer(lawyer.id)} className="h-9 rounded-lg px-3 text-xs font-bold">
+                            <Heart className={cn("h-3.5 w-3.5", saved && "fill-current")} />
+                            {saved ? "Saved to account" : "Save"}
                           </Button>
-                        ) : (
-                        <Button asChild size="sm" className="h-9 rounded-xl px-5 text-xs font-bold">
-                          <Link to={`/booking/${lawyer.id}`}>
-                            Κλείσε ραντεβού
-                            <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                          </Link>
-                        </Button>
-                        )}
+                          <Button type="button" variant={compared ? "default" : "outline"} size="sm" onClick={() => handleToggleComparedLawyer(lawyer.id)} className="h-9 rounded-lg px-3 text-xs font-bold">
+                            <Scale className="h-3.5 w-3.5" />
+                            {compared ? "In compare" : "Compare"}
+                          </Button>
+                          <Button asChild variant="outline" size="sm" className="h-9 rounded-lg px-4 text-xs font-bold">
+                            <Link to={`/lawyer/${lawyer.id}`}>Decision page</Link>
+                          </Button>
+                          {isOwnLawyerProfile ? (
+                            <Button type="button" size="sm" disabled className="h-9 rounded-lg px-5 text-xs font-bold">Your profile</Button>
+                          ) : (
+                            <Button asChild size="sm" className="h-9 rounded-lg px-5 text-xs font-bold">
+                              <Link to={`/booking/${lawyer.id}`}>
+                                Book
+                                <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                ))}
+                    </article>
+                  );
+                })}
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-12 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary text-muted-foreground">
+              <div className="rounded-lg border border-dashed border-border bg-card px-6 py-12 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
                   <Search className="h-6 w-6" />
                 </div>
-                <h2 className="mt-5 font-serif text-2xl tracking-tight text-foreground">Δεν βρέθηκαν δικηγόροι</h2>
+                <h2 className="mt-5 font-serif text-2xl tracking-tight text-foreground">No lawyers matched those filters</h2>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                  Δοκιμάστε λιγότερα φίλτρα, διαφορετική πόλη ή πιο γενικό νομικό θέμα.
+                  Try a broader issue, a nearby city, or fewer booking-intent filters.
                 </p>
-                <Button onClick={clearFilters} variant="outline" className="mt-5 rounded-xl font-bold">
-                  Καθαρισμός φίλτρων
+                <Button onClick={clearFilters} variant="outline" className="mt-5 rounded-lg font-bold">
+                  Clear filters
                 </Button>
               </div>
             )}
           </main>
+
+          <aside className="hidden lg:block">
+            <CompareRail selectedLawyers={selectedLawyers} onRemove={removeComparedLawyer} />
+          </aside>
         </div>
       </div>
+
+      {selectedLawyers.length > 0 ? (
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card p-3 shadow-2xl lg:hidden">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold text-foreground">{selectedLawyers.length}/3 selected</p>
+              <p className="text-xs font-semibold text-muted-foreground">Compare price, proof, and next slot</p>
+            </div>
+            <Button asChild className="rounded-lg text-xs font-bold">
+              <Link to="/account?tab=saved">Open compare</Link>
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <Footer />
     </div>
@@ -569,15 +604,86 @@ const RadioFilter = ({
   </label>
 );
 
-const FilterChip = ({ label, onRemove }: { label: string; onRemove: () => void }) => (
-  <button
-    type="button"
-    onClick={onRemove}
-    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-foreground transition hover:border-primary/25"
-  >
-    {label}
-    <X className="h-3.5 w-3.5 text-muted-foreground" />
-  </button>
+const ProofCell = ({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) => (
+  <div className="rounded-lg border border-border bg-background p-3">
+    <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </p>
+    <p className="mt-1 text-sm font-bold text-foreground">{value}</p>
+  </div>
+);
+
+const SpecificTrustCopy = ({ children }: { children: React.ReactNode }) => (
+  <span className="inline-flex items-center gap-1 rounded-md bg-sage/10 px-2.5 py-1 text-[11px] font-bold text-sage-foreground">
+    <ShieldCheck className="h-3.5 w-3.5" />
+    {children}
+  </span>
+);
+
+const CompareRail = ({
+  selectedLawyers,
+  onRemove,
+}: {
+  selectedLawyers: Lawyer[];
+  onRemove: (lawyerId: string) => void;
+}) => (
+  <div id="compare" className="sticky top-32 rounded-lg border border-border bg-card p-5">
+    <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+      <Scale className="h-4 w-4 text-primary" />
+      Compare destination
+    </p>
+    <p className="mt-1 text-xs font-semibold text-muted-foreground">{selectedLawyers.length}/3 selected lawyers</p>
+
+    <div className="mt-4 space-y-3">
+      {selectedLawyers.length > 0 ? selectedLawyers.map((lawyer) => (
+        <div key={lawyer.id} className="rounded-lg border border-border bg-background p-3">
+          <div className="flex items-start gap-3">
+            <img src={lawyer.image} alt={lawyer.name} className="h-10 w-10 rounded-md object-cover" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold text-foreground">{lawyer.name}</p>
+              <p className="text-[11px] font-semibold text-muted-foreground">{lawyer.specialty}</p>
+            </div>
+            <button type="button" onClick={() => onRemove(lawyer.id)} className="rounded-md p-1 text-muted-foreground hover:text-foreground" aria-label={`Remove ${lawyer.name}`}>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] font-bold text-foreground">
+            <span>{formatCurrency(lawyer.price)}</span>
+            <span>{lawyer.rating} rating</span>
+            <span>{lawyer.response}</span>
+            <span>{lawyer.available}</span>
+          </div>
+        </div>
+      )) : (
+        <div className="rounded-lg border border-dashed border-border bg-background p-4 text-sm leading-6 text-muted-foreground">
+          Add up to three lawyers to compare proof, price, response, and next availability.
+        </div>
+      )}
+    </div>
+
+    <Button asChild className="mt-4 w-full rounded-lg text-xs font-bold">
+      <Link to="/account?tab=saved">Open account comparison</Link>
+    </Button>
+  </div>
+);
+
+const ActiveFilterSummary = ({ filters, onClear }: { filters: LawyerSearchFilters; onClear: () => void }) => (
+  <div className="mb-5 flex flex-wrap items-center gap-2">
+    <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground">Active filters</span>
+    {filters.query ? <FilterPill>{filters.query}</FilterPill> : null}
+    {filters.city ? <FilterPill>{filters.city}</FilterPill> : null}
+    {filters.availability && filters.availability !== "any" ? <FilterPill>{filters.availability}</FilterPill> : null}
+    {filters.responseUnderMinutes ? <FilterPill>{`under ${filters.responseUnderMinutes / 60}h`}</FilterPill> : null}
+    {filters.minRating ? <FilterPill>{`${filters.minRating}+ rating`}</FilterPill> : null}
+    {filters.minReviews ? <FilterPill>{`${filters.minReviews}+ reviews`}</FilterPill> : null}
+    {filters.languages?.map((language) => <FilterPill key={language}>{language}</FilterPill>)}
+    <button type="button" onClick={onClear} className="text-xs font-bold text-primary">Clear all</button>
+  </div>
+);
+
+const FilterPill = ({ children }: { children: React.ReactNode }) => (
+  <span className="rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-foreground">{children}</span>
 );
 
 export default SearchResults;
