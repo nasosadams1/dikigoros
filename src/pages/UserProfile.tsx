@@ -487,7 +487,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
       if (booking && getCanonicalPaymentState(payment) === "paid" && isVerifiedBooking(booking)) {
         const refund = await requestBookingRefund(booking);
         if (refund.status === "review_required") {
-          createOperationalCase({
+          void createOperationalCase({
             area: "payments",
             title: "Refund review after cancellation",
             summary: `A paid booking was cancelled and needs support review before the refund can be completed for ${booking.referenceId}.`,
@@ -683,7 +683,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
           userId,
           rating: draft.rating,
         });
-        createOperationalCase({
+        void createOperationalCase({
           area: "reviews",
           title: "Review moderation check",
           summary: `A completed-booking review was submitted for ${booking.lawyerName}. Confirm booking linkage, private-case detail safety, and publication status.`,
@@ -1165,7 +1165,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               onClick={() =>
                                 void removeUserDocumentPersisted(workspaceKey, document.id, userId).then((nextWorkspace) => {
                                   setWorkspace(nextWorkspace);
-                                  createOperationalCase({
+                                  void createOperationalCase({
                                     area: "privacyDocuments",
                                     title: "Document deletion record",
                                     summary: `Client removed ${document.name}. Confirm retention/deletion obligations and support visibility state.`,

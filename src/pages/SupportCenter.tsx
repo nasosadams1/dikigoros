@@ -110,6 +110,7 @@ const priorityByUrgency: Record<string, OperationalCasePriority> = {
 
 const SupportCenter = () => {
   const [caseReference, setCaseReference] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
     type: "booking",
     urgency: "normal",
@@ -118,25 +119,30 @@ const SupportCenter = () => {
     message: "",
   });
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setIsSubmitting(true);
     const area = areaBySupportType[form.type] || "support";
     const topicTitle = supportTopics.find((topic) => topic.type === form.type)?.title || "Υποστήριξη";
-    const supportCase = createOperationalCase({
-      area,
-      title: `${topicTitle} - αίτημα υποστήριξης`,
-      summary: form.message,
-      priority: priorityByUrgency[form.urgency] || "normal",
-      requesterEmail: form.email,
-      relatedReference: form.reference || undefined,
-      evidence: [
-        form.reference ? `Δόθηκε κωδικός: ${form.reference}` : "Δεν δόθηκε κωδικός κράτησης ή πληρωμής",
-        `Προτεραιότητα: ${form.urgency}`,
-      ],
-    });
+    try {
+      const supportCase = await createOperationalCase({
+        area,
+        title: `${topicTitle} - αίτημα υποστήριξης`,
+        summary: form.message,
+        priority: priorityByUrgency[form.urgency] || "normal",
+        requesterEmail: form.email,
+        relatedReference: form.reference || undefined,
+        evidence: [
+          form.reference ? `Δόθηκε κωδικός: ${form.reference}` : "Δεν δόθηκε κωδικός κράτησης ή πληρωμής",
+          `Προτεραιότητα: ${form.urgency}`,
+        ],
+      });
 
-    setCaseReference(supportCase.referenceId);
-    setForm((current) => ({ ...current, reference: "", message: "" }));
+      setCaseReference(supportCase.referenceId);
+      setForm((current) => ({ ...current, reference: "", message: "" }));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -245,7 +251,9 @@ const SupportCenter = () => {
             <textarea value={form.message} onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} required rows={4} placeholder="Περιγράψτε το θέμα και το επόμενο βήμα που χρειάζεστε." className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-3 text-sm font-medium text-foreground" />
           </label>
           <div className="md:col-span-2">
-            <Button type="submit" className="rounded-lg font-bold">Δημιουργία υπόθεσης</Button>
+            <Button type="submit" disabled={isSubmitting} className="rounded-lg font-bold">
+              {isSubmitting ? "Καταχώριση..." : "Δημιουργία υπόθεσης"}
+            </Button>
             {caseReference ? (
               <p className="mt-3 rounded-lg border border-sage/20 bg-sage/10 px-3 py-2 text-sm font-bold text-sage-foreground">
                 Η υπόθεση καταχωρίστηκε: {caseReference}

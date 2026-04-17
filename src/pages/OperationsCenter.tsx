@@ -31,8 +31,8 @@ import {
 import {
   assignOperationalCase,
   createOperationalCase,
+  fetchOperationalCases,
   getOperationalCaseMetrics,
-  getOperationalCases,
   getOperationalSlaState,
   operationalAreaLabels,
   operationalPriorityLabels,
@@ -75,17 +75,23 @@ const operationsQueues: Array<{ label: string; area: OperationalArea; priority: 
 
 const OperationsCenter = () => {
   const [activeArea, setActiveArea] = useState<OperationalArea>("payments");
-  const [caseVersion, setCaseVersion] = useState(0);
   const [funnelVersion, setFunnelVersion] = useState(0);
   const { data: lawyers = [] } = useQuery({ queryKey: ["lawyers"], queryFn: getLawyers });
   const { data: funnelEvents = [] } = useQuery({
     queryKey: ["funnel-events", funnelVersion],
     queryFn: fetchFunnelEvents,
   });
+  const {
+    data: operationalCases = [],
+    refetch: refetchOperationalCases,
+    isFetching: operationalCasesFetching,
+  } = useQuery({
+    queryKey: ["operational-cases"],
+    queryFn: () => fetchOperationalCases(),
+  });
   const supplyReadiness = useMemo(() => getSupplyReadiness(lawyers), [lawyers]);
   const rules = activeArea === "supply" ? [] : getOperationalRulesByArea(activeArea);
   const paymentReadinessChecks = useMemo(() => getPaymentReadinessChecks(), []);
-  const operationalCases = useMemo(() => getOperationalCases(), [caseVersion]);
   const activeCases = useMemo(
     () => operationalCases.filter((operationalCase) => operationalCase.area === activeArea),
     [activeArea, operationalCases],
@@ -106,33 +112,39 @@ const OperationsCenter = () => {
     return () => window.removeEventListener("dikigoros:funnel-event", refreshFunnel);
   }, []);
 
-  const refreshCases = () => setCaseVersion((version) => version + 1);
+  useEffect(() => {
+    const refreshCases = () => {
+      void refetchOperationalCases();
+    };
+    window.addEventListener("dikigoros:operational-case", refreshCases);
+    return () => window.removeEventListener("dikigoros:operational-case", refreshCases);
+  }, [refetchOperationalCases]);
 
-  const openOperationalCase = (
+  const openOperationalCase = async (
     area: OperationalArea,
     title?: string,
     summary?: string,
     priority: "urgent" | "high" | "normal" | "low" = area === "security" || area === "payments" ? "urgent" : "normal",
   ) => {
     const rule = getOperationalRulesByArea(area)[0];
-    createOperationalCase({
+    await createOperationalCase({
       area,
       title: title || `${operationalAreaLabels[area]} operations review`,
       summary: summary || rule?.trigger || "Operational review opened from the production control center.",
       priority,
       evidence: rule?.actions.slice(0, 2) || [],
     });
-    refreshCases();
+    await refetchOperationalCases();
   };
 
-  const updateCaseStatus = (caseId: string, status: OperationalCaseStatus, note?: string) => {
-    setOperationalCaseStatus(caseId, status, note);
-    refreshCases();
+  const updateCaseStatus = async (caseId: string, status: OperationalCaseStatus, note?: string) => {
+    await setOperationalCaseStatus(caseId, status, note);
+    await refetchOperationalCases();
   };
 
-  const assignCase = (caseId: string, owner: string) => {
-    assignOperationalCase(caseId, owner);
-    refreshCases();
+  const assignCase = async (caseId: string, owner: string) => {
+    await assignOperationalCase(caseId, owner);
+    await refetchOperationalCases();
   };
 
   return (
@@ -172,6 +184,7 @@ const OperationsCenter = () => {
               <ReadinessMetric label="Open ops cases" value={String(getOperationalCaseMetrics(operationalCases).open)} ready={getOperationalCaseMetrics(operationalCases).overdue === 0} />
               <ReadinessMetric label="Payment model" value="Full payment" ready={paymentReadinessChecks.every((check) => check.ready)} />
               <ReadinessMetric label="Funnel events" value={String(funnelMetrics.reduce((sum, metric) => sum + metric.count, 0))} ready={funnelMetrics.some((metric) => metric.count > 0)} notReadyLabel="No data" />
+              <ReadinessMetric label="Ops source" value={operationalCasesFetching ? "Syncing" : "Backend"} ready={!operationalCasesFetching} notReadyLabel="Syncing" />
             </div>
           </aside>
         </div>
@@ -250,7 +263,7 @@ const OperationsCenter = () => {
                           size="sm"
                           variant="outline"
                           onClick={() =>
-                            openOperationalCase(
+                            void openOperationalCase(
                               "supply",
                               `${city.label} ${category.label} supply gap`,
                               `Recruit and verify enough bookable ${category.label.toLowerCase()} lawyers in ${city.label}. Current coverage is ${category.count}/2.`,
@@ -337,7 +350,7 @@ const OperationsCenter = () => {
               ) : null}
               <Button
                 type="button"
-                onClick={() => openOperationalCase(activeArea)}
+                onClick={() => void openOperationalCase(activeArea)}
                 className="mt-5 w-full rounded-lg font-bold"
               >
                 Open {operationalAreaLabels[activeArea].toLowerCase()} case
@@ -359,7 +372,7 @@ const OperationsCenter = () => {
             <Button
               type="button"
               variant="outline"
-              onClick={() => openOperationalCase(activeArea)}
+              onClick={() => void openOperationalCase(activeArea)}
               className="mt-4 w-full rounded-lg font-bold"
             >
               New case
@@ -372,9 +385,9 @@ const OperationsCenter = () => {
                 <OperationalCaseCard
                   key={operationalCase.id}
                   operationalCase={operationalCase}
-                  onAssign={() => assignCase(operationalCase.id, operationalCase.owner || defaultQueueOwner(activeArea))}
+                  onAssign={() => void assignCase(operationalCase.id, operationalCase.owner || defaultQueueOwner(activeArea))}
                   onStatus={(status) =>
-                    updateCaseStatus(
+                    void updateCaseStatus(
                       operationalCase.id,
                       status,
                       status === "resolved" ? "Resolved from the operations center." : undefined,
@@ -410,7 +423,7 @@ const OperationsCenter = () => {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => openOperationalCase(queue.area, queue.label, queue.summary, queue.priority)}
+                  onClick={() => void openOperationalCase(queue.area, queue.label, queue.summary, queue.priority)}
                   className="mt-3 rounded-lg text-xs font-bold"
                 >
                   Open queue case
