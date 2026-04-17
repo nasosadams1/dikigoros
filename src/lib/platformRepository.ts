@@ -829,7 +829,7 @@ const persistLocalPayment = (payment: StoredPayment) => {
 
 export const recordLocalCheckoutReturn = (
   bookingId: string,
-  status: "paid" | "failed",
+  status: "paid" | "failed" | "pending",
   stripeCheckoutSessionId?: string | null,
 ) => {
   const booking = getStoredBookingById(bookingId);
@@ -837,11 +837,12 @@ export const recordLocalCheckoutReturn = (
 
   const existingPayment = getStoredPaymentForBooking(bookingId);
   const now = new Date().toISOString();
+  const nextStatus = existingPayment?.status === "paid" ? "paid" : status;
   const payment: StoredPayment = {
     ...(existingPayment || createPaymentRecordFromBooking(booking, booking.persistenceSource)),
-    status,
+    status: nextStatus,
     stripeCheckoutSessionId: stripeCheckoutSessionId || existingPayment?.stripeCheckoutSessionId,
-    paidAt: status === "paid" ? existingPayment?.paidAt || now : existingPayment?.paidAt,
+    paidAt: nextStatus === "paid" ? existingPayment?.paidAt || now : existingPayment?.paidAt,
     updatedAt: now,
   };
 

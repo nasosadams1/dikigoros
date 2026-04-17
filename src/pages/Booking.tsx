@@ -39,6 +39,7 @@ import {
   requestBookingCheckoutSession,
   type StoredBooking,
 } from "@/lib/platformRepository";
+import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
 const steps = ["Τύπος", "Ημερομηνία", "Στοιχεία", "Πληρωμή", "Επιβεβαίωση"];
@@ -144,6 +145,7 @@ const Booking = () => {
       ? getBookingSlotKey({ lawyerId: lawyer.id, dateLabel: selectedDateLabel, time: selectedTime })
       : "";
   const selectedSlotReserved = Boolean(selectedSlotKey && reservedSlots.has(selectedSlotKey));
+  const bookingStartSource = searchParams.get("source") || "direct";
   const profileName = profile?.name;
   const profileEmail = profile?.email;
   const profilePhone = profile?.phone;
@@ -203,12 +205,17 @@ const Booking = () => {
       setSelectedTime(storedBooking.time);
       recordLocalCheckoutReturn(
         bookingId,
-        checkout === "success" ? "paid" : "failed",
+        checkout === "success" ? "paid" : checkout === "cancelled" ? "pending" : "failed",
         searchParams.get("session_id"),
       );
     }
 
     if (checkout === "success") {
+      trackFunnelEvent("payment_completed", {
+        bookingId,
+        lawyerId: storedBooking?.lawyerId || id,
+        amount: storedBooking?.price,
+      });
       setPaymentState({ loading: false, error: "", action: "" });
       setCurrentStep(4);
       return;
@@ -216,11 +223,23 @@ const Booking = () => {
 
     setPaymentState({
       loading: false,
-      error: "Η πληρωμή δεν ολοκληρώθηκε. Η κάρτα δεν χρεώθηκε. Μπορείτε να δοκιμάσετε ξανά την ασφαλή πληρωμή.",
+      error:
+        checkout === "cancelled"
+          ? "Η πληρωμή διακόπηκε. Δεν έγινε χρέωση."
+          : "Η πληρωμή δεν ολοκληρώθηκε. Δεν έγινε χρέωση.",
       action: "retry-payment",
     });
     setCurrentStep(3);
-  }, [searchParams]);
+  }, [id, searchParams]);
+
+  useEffect(() => {
+    if (!lawyer?.id) return;
+    trackFunnelEvent("booking_start", {
+      lawyerId: lawyer.id,
+      specialty: lawyer.specialty,
+      source: bookingStartSource,
+    });
+  }, [bookingStartSource, lawyer?.id, lawyer?.specialty]);
 
   const detailErrors = useMemo(() => {
     const errors: Record<string, string> = {};
@@ -326,6 +345,12 @@ const Booking = () => {
 
         setConfirmedBooking(result.record);
         setReservedSlots(await fetchReservedBookingSlots(lawyer.id));
+        trackFunnelEvent("booking_created", {
+          bookingId: result.record.id,
+          lawyerId: lawyer.id,
+          amount: result.record.price,
+          source: result.source,
+        });
         setCurrentStep(3);
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
@@ -370,6 +395,11 @@ const Booking = () => {
             : undefined;
         const session = await requestBookingCheckoutSession(confirmedBooking, returnUrl);
         if (session.url && typeof window !== "undefined") {
+          trackFunnelEvent("payment_opened", {
+            bookingId: confirmedBooking.id,
+            lawyerId: confirmedBooking.lawyerId,
+            amount: confirmedBooking.price,
+          });
           window.location.assign(session.url);
           return;
         }
@@ -690,7 +720,7 @@ const Booking = () => {
               <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-sage/20 shadow-lg shadow-sage/10">
                 <Check className="h-9 w-9 text-sage-foreground" />
               </div>
-              <h1 className="mt-6 font-serif text-2xl tracking-tight text-foreground">Η κράτηση και η πληρωμή καταχωρίστηκαν.</h1>
+              <h1 className="mt-6 font-serif text-2xl tracking-tight text-foreground">Η κράτηση επιβεβαιώθηκε και η πληρωμή ολοκληρώθηκε.</h1>
               <p className="mt-2 text-sm font-medium text-muted-foreground">
                 Θα λάβετε επιβεβαίωση κράτησης, απόδειξη πληρωμής και οδηγίες προετοιμασίας στα στοιχεία επικοινωνίας που δηλώσατε.
               </p>
@@ -711,11 +741,11 @@ const Booking = () => {
                 <p className="mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Τι ακολουθεί</p>
                 <NextStep icon={ReceiptText}>Η απόδειξη και η κατάσταση πληρωμής εμφανίζονται στις πληρωμές του λογαριασμού σας.</NextStep>
                 <NextStep icon={CalendarDays}>Προσθέστε τη συμβουλευτική στο ημερολόγιό σας από την επιβεβαίωση.</NextStep>
-                <NextStep icon={Mail}>Ο δικηγόρος βλέπει τα στοιχεία του ραντεβού και ακολουθεί η επόμενη επικοινωνία από την πλατφόρμα ή το γραφείο.</NextStep>
+                <NextStep icon={Mail}>Ο δικηγόρος βλέπει τα στοιχεία του ραντεβού και ακολουθεί η επόμενη επικοινωνία από το Dikigoros ή το γραφείο.</NextStep>
                 <NextStep icon={Upload}>Ανεβάστε ή στείλτε έγγραφα προετοιμασίας πριν από το ραντεβού.</NextStep>
                 <NextStep icon={ShieldCheck}>Δωρεάν ακύρωση ή αλλαγή έως 24 ώρες πριν από την ώρα.</NextStep>
                 {confirmedBooking?.persistenceSource === "local" ? (
-                  <NextStep icon={ShieldCheck}>Η κράτηση χρειάζεται ακόμη τελική επιβεβαίωση πλατφόρμας. Αν δεν λάβετε email, ανοίξτε υποστήριξη.</NextStep>
+                  <NextStep icon={ShieldCheck}>Η επιβεβαίωση της κράτησης ολοκληρώνεται. Αν δεν λάβετε email, ανοίξτε υποστήριξη.</NextStep>
                 ) : null}
               </div>
 

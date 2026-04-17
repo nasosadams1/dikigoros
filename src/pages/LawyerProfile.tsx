@@ -42,6 +42,7 @@ import {
   toggleComparedLawyer,
   toggleSavedLawyer,
 } from "@/lib/userWorkspace";
+import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 
 const LawyerProfile = () => {
   const { id } = useParams();
@@ -265,7 +266,12 @@ const LawyerProfile = () => {
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {nextSlots.length > 0 ? nextSlots.map((slot) => (
-                  <Link key={`${slot.dateLabel}-${slot.time}`} to={`/booking/${lawyer.id}`} className="rounded-xl border border-border bg-background p-3 transition hover:border-primary/25">
+                  <Link
+                    key={`${slot.dateLabel}-${slot.time}`}
+                    to={`/booking/${lawyer.id}?source=profile_slot`}
+                    onClick={() => trackFunnelEvent("profile_booking_start", { lawyerId: lawyer.id, source: "profile_slot" })}
+                    className="rounded-xl border border-border bg-background p-3 transition hover:border-primary/25"
+                  >
                     <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{slot.shortDateLabel}</p>
                     <p className="mt-1 text-sm font-bold text-foreground">{slot.dateLabel}</p>
                     <p className="mt-1 inline-flex items-center gap-1 text-sm font-bold text-primary">
@@ -473,7 +479,10 @@ const LawyerProfile = () => {
                 </Button>
               ) : (
               <Button asChild className="mt-4 h-12 w-full rounded-xl text-[15px] font-bold">
-                <Link to={`/booking/${lawyer.id}`}>
+                <Link
+                  to={`/booking/${lawyer.id}?source=profile`}
+                  onClick={() => trackFunnelEvent("profile_booking_start", { lawyerId: lawyer.id, specialty: lawyer.specialty })}
+                >
                   Κλείσε ραντεβού
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>

@@ -59,6 +59,25 @@ const pricingRules = [
   "Τα πακέτα Ανάπτυξη και Ομάδα μειώνουν την τριβή για γραφεία με μεγαλύτερο όγκο, περισσότερες θέσεις ή ανάγκη εμπορικής αναφοράς.",
 ];
 
+const commercialProof = [
+  {
+    title: "Τι μετρά ως ολοκληρωμένη πρώτη συμβουλευτική",
+    text: "Κράτηση με επιβεβαιωμένη ώρα, ολοκληρωμένη πληρωμή ή εγκεκριμένη πληρωτική κατάσταση, και σήμανση ολοκλήρωσης από τον δικηγόρο μετά τη συμβουλευτική.",
+  },
+  {
+    title: "Τι δεν μετρά",
+    text: "Ακύρωση πριν γίνει συμβουλευτική, αποτυχία ή εγκατάλειψη πληρωμής, μη εμφάνιση που βρίσκεται σε έλεγχο, δοκιμαστική κράτηση ή υπόθεση που ακυρώθηκε από τον δικηγόρο.",
+  },
+  {
+    title: "Τι ελέγχει ο δικηγόρος",
+    text: "Δημόσιες ειδικεύσεις, τρόπους συμβουλευτικής, τιμές, διαθέσιμες ώρες, κενά ασφαλείας, απαντήσεις σε κριτικές και βασική προετοιμασία πελάτη.",
+  },
+  {
+    title: "Τι δείχνει η αναφορά",
+    text: "Αιτήματα ανά ειδίκευση, κρατήσεις, πληρωμένες πρώτες συμβουλευτικές, ολοκληρωμένες συνεδρίες, κριτικές, ακυρώσεις και σημεία που χάνουν ζήτηση.",
+  },
+];
+
 const plans = [
   {
     name: "Ατομικό",
@@ -180,6 +199,23 @@ const ForLawyersLanding = () => {
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--partner-navy-soft))]">{module.signal}</p>
                 <h3 className="mt-3 text-[20px] font-semibold leading-snug tracking-[-0.02em] text-[hsl(var(--partner-ink))]">{module.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{module.text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="partner-panel p-7 lg:p-8">
+          <div className="max-w-[760px]">
+            <p className="partner-kicker">Οικονομική απόδειξη</p>
+            <h2 className="mt-3 font-sans text-[30px] font-semibold leading-tight tracking-[-0.02em] text-[hsl(var(--partner-ink))]">
+              Ο δικηγόρος πρέπει να ξέρει πότε πληρώνει, τι ελέγχει και τι κερδίζει.
+            </h2>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {commercialProof.map((item) => (
+              <article key={item.title} className="partner-soft-card p-5">
+                <h3 className="text-[20px] font-semibold leading-snug tracking-[-0.02em] text-[hsl(var(--partner-ink))]">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.text}</p>
               </article>
             ))}
           </div>

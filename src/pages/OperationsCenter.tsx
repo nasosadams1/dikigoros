@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -39,6 +39,7 @@ import {
   type OperationalCase,
   type OperationalCaseStatus,
 } from "@/lib/operationsRepository";
+import { getFunnelMetrics } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
 const areaTabs: Array<{ area: OperationalArea; label: string; icon: LucideIcon }> = [
@@ -63,6 +64,7 @@ const paymentChecklist = [
 const OperationsCenter = () => {
   const [activeArea, setActiveArea] = useState<OperationalArea>("payments");
   const [caseVersion, setCaseVersion] = useState(0);
+  const [funnelVersion, setFunnelVersion] = useState(0);
   const { data: lawyers = [] } = useQuery({ queryKey: ["lawyers"], queryFn: getLawyers });
   const supplyReadiness = useMemo(() => getSupplyReadiness(lawyers), [lawyers]);
   const rules = activeArea === "supply" ? [] : getOperationalRulesByArea(activeArea);
@@ -73,6 +75,20 @@ const OperationsCenter = () => {
     [activeArea, operationalCases],
   );
   const activeMetrics = useMemo(() => getOperationalCaseMetrics(activeCases), [activeCases]);
+  const funnelMetrics = useMemo(() => getFunnelMetrics(), [funnelVersion]);
+  const funnelBottleneck = useMemo(
+    () =>
+      funnelMetrics
+        .filter((metric) => metric.conversionFromPrevious !== null)
+        .sort((first, second) => (first.conversionFromPrevious || 0) - (second.conversionFromPrevious || 0))[0],
+    [funnelMetrics],
+  );
+
+  useEffect(() => {
+    const refreshFunnel = () => setFunnelVersion((version) => version + 1);
+    window.addEventListener("dikigoros:funnel-event", refreshFunnel);
+    return () => window.removeEventListener("dikigoros:funnel-event", refreshFunnel);
+  }, []);
 
   const refreshCases = () => setCaseVersion((version) => version + 1);
 
@@ -139,9 +155,36 @@ const OperationsCenter = () => {
               <ReadinessMetric label="Core cities ready" value={`${supplyReadiness.filter((city) => city.ready).length}/${supplyReadiness.length}`} ready={supplyReadiness.some((city) => city.ready)} notReadyLabel="Needs supply" />
               <ReadinessMetric label="Open ops cases" value={String(getOperationalCaseMetrics(operationalCases).open)} ready={getOperationalCaseMetrics(operationalCases).overdue === 0} />
               <ReadinessMetric label="Payment model" value="Full payment" ready={paymentReadinessChecks.every((check) => check.ready)} />
+              <ReadinessMetric label="Funnel events" value={String(funnelMetrics.reduce((sum, metric) => sum + metric.count, 0))} ready={funnelMetrics.some((metric) => metric.count > 0)} notReadyLabel="No data" />
             </div>
           </aside>
         </div>
+
+        <section className="mt-10 rounded-lg border border-border bg-card p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-primary">Marketplace funnel</p>
+              <h2 className="mt-2 text-xl font-bold text-foreground">Where demand is being won or lost</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                First-party events from the public journey, booking flow, reviews, and lawyer onboarding.
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 text-sm font-bold text-foreground">
+              Bottleneck: {funnelBottleneck ? `${funnelBottleneck.label} (${funnelBottleneck.conversionFromPrevious}%)` : "waiting for data"}
+            </div>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            {funnelMetrics.map((metric) => (
+              <div key={metric.name} className="rounded-lg border border-border bg-background p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{metric.label}</p>
+                <p className="mt-2 text-2xl font-bold text-foreground">{metric.count}</p>
+                <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                  {metric.conversionFromPrevious === null ? "Αφετηρία ή χωρίς προηγούμενο βήμα" : `${metric.conversionFromPrevious}% από το προηγούμενο βήμα`}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <div className="mt-10 flex gap-2 overflow-x-auto pb-1">
           {areaTabs.map(({ area, label, icon: Icon }) => (
@@ -224,6 +267,11 @@ const OperationsCenter = () => {
                   <p className="mt-4 rounded-lg bg-secondary/50 px-3 py-2 text-sm font-semibold text-foreground">
                     Trigger: {rule.trigger}
                   </p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <RuleDetail title="Evidence" items={rule.evidenceNeeded} />
+                    <RuleDetail title="User outcome" items={[rule.userOutcome]} />
+                    <RuleDetail title="Escalation" items={[rule.escalation]} />
+                  </div>
                   <ul className="mt-4 space-y-2">
                     {rule.actions.map((action) => (
                       <li key={action} className="flex items-start gap-2 text-sm leading-6 text-muted-foreground">
@@ -335,6 +383,17 @@ const ReadinessMetric = ({ label, value, ready, notReadyLabel = "Needs work" }: 
     <div className="mt-2">
       <StatusBadge ready={ready} notReadyLabel={notReadyLabel} />
     </div>
+  </div>
+);
+
+const RuleDetail = ({ title, items }: { title: string; items: string[] }) => (
+  <div className="rounded-lg border border-border bg-background p-3">
+    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
+    <ul className="mt-2 space-y-1.5">
+      {items.map((item) => (
+        <li key={item} className="text-xs font-semibold leading-5 text-muted-foreground">{item}</li>
+      ))}
+    </ul>
   </div>
 );
 

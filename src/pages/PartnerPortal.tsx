@@ -45,6 +45,7 @@ import {
   type PartnerAvailabilitySlot,
   type PartnerWorkspace,
 } from "@/lib/partnerWorkspace";
+import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 
 const navItems = [
   { id: "appointments", label: "Ραντεβού", icon: CalendarDays },
@@ -472,7 +473,20 @@ const PartnerPortal = () => {
           },
     }));
 
-    if (result.synced) setBookingsVersion((version) => version + 1);
+    if (result.synced) {
+      trackFunnelEvent("consultation_completed", {
+        bookingId: booking.id,
+        lawyerId: booking.lawyerId,
+        amount: booking.price,
+      });
+      if (!completedBookings.some((completedBooking) => completedBooking.lawyerId === booking.lawyerId)) {
+        trackFunnelEvent("approved_lawyer_first_completed_consultation", {
+          lawyerId: booking.lawyerId,
+          bookingId: booking.id,
+        });
+      }
+      setBookingsVersion((version) => version + 1);
+    }
   };
 
   const handleSignOut = () => {

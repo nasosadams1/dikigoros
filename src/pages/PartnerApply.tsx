@@ -20,6 +20,7 @@ import {
   createPartnerApplication,
   type StoredPartnerApplication,
 } from "@/lib/platformRepository";
+import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
 const specialtiesOptions = [
@@ -369,6 +370,12 @@ const PartnerApply = () => {
       });
 
       setSubmittedApplication(result.record);
+      trackFunnelEvent("lawyer_application_submitted", {
+        applicationId: result.record.id,
+        referenceId: result.record.referenceId,
+        city: result.record.city,
+        specialties: result.record.specialties.length,
+      });
       setSubmitted(true);
     } catch {
       setSubmitError("Δεν ήταν δυνατή η υποβολή της αίτησης. Προσπαθήστε ξανά.");

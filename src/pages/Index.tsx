@@ -33,6 +33,7 @@ import {
   type FeaturedGroupKey,
   type LanguageIntent,
 } from "@/lib/marketplace";
+import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
 const modeOptions: Array<{ value: "any" | ConsultationMode; label: string }> = [
@@ -104,6 +105,12 @@ const Index = () => {
     if (mode !== "any") params.set("type", mode);
     if (language !== "any") params.set("language", language);
 
+    trackFunnelEvent("homepage_search", {
+      query: query || undefined,
+      city: city.trim() || undefined,
+      mode,
+      language,
+    });
     navigate({ pathname: "/search", search: params.toString() });
   };
 

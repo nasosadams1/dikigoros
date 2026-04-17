@@ -50,6 +50,7 @@ import {
   type AvailabilityIntent,
   type LanguageIntent,
 } from "@/lib/marketplace";
+import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
 const appointmentTypeOptions: Array<{ value: ConsultationMode; label: string; icon: LucideIcon }> = [
@@ -531,13 +532,21 @@ const SearchResults = () => {
                             {compared ? "Στη σύγκριση" : "Σύγκριση"}
                           </Button>
                           <Button asChild variant="outline" size="sm" className="h-9 rounded-lg px-4 text-xs font-bold">
-                            <Link to={`/lawyer/${lawyer.id}`}>Προφίλ απόφασης</Link>
+                            <Link
+                              to={`/lawyer/${lawyer.id}`}
+                              onClick={() => trackFunnelEvent("search_profile_opened", { lawyerId: lawyer.id, resultCount: results.length })}
+                            >
+                              Προφίλ απόφασης
+                            </Link>
                           </Button>
                           {isOwnLawyerProfile ? (
                             <Button type="button" size="sm" disabled className="h-9 rounded-lg px-5 text-xs font-bold">Το προφίλ σας</Button>
                           ) : (
                             <Button asChild size="sm" className="h-9 rounded-lg px-5 text-xs font-bold">
-                              <Link to={`/booking/${lawyer.id}`}>
+                              <Link
+                                to={`/booking/${lawyer.id}?source=search`}
+                                onClick={() => trackFunnelEvent("profile_booking_start", { lawyerId: lawyer.id, source: "search_direct" })}
+                              >
                                 Κράτηση
                                 <ArrowRight className="ml-1 h-3.5 w-3.5" />
                               </Link>

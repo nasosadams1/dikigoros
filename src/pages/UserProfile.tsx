@@ -45,6 +45,7 @@ import {
 } from "@/lib/platformRepository";
 import { getPartnerWorkspace } from "@/lib/partnerWorkspace";
 import { getLawyers } from "@/lib/lawyerRepository";
+import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import {
   addUserDocuments,
   createUserDocumentDownloadUrl,
@@ -123,6 +124,25 @@ const paymentStatusLabels: Record<StoredPayment["status"], string> = {
   paid: "Πληρωμένο",
   refunded: "Επιστροφή",
   failed: "Απέτυχε",
+};
+
+const getPaymentSituation = (booking: StoredBooking, payment?: StoredPayment) => {
+  if (!isVerifiedBooking(booking)) return "Η κράτηση επιβεβαιώνεται ακόμη. Δεν χρειάζεται πληρωμή από εσάς τώρα.";
+  if (booking.status === "cancelled" && payment?.status === "refunded") return "Η κράτηση ακυρώθηκε και η επιστροφή έχει δρομολογηθεί.";
+  if (booking.status === "cancelled") return "Η κράτηση ακυρώθηκε χωρίς χρέωση.";
+  if (payment?.status === "paid") return "Η πληρωμή έχει ολοκληρωθεί. Η απόδειξη εμφανίζεται εδώ.";
+  if (payment?.status === "failed") return "Η πληρωμή δεν ολοκληρώθηκε. Μπορείτε να δοκιμάσετε ξανά.";
+  if (booking.status === "completed") return "Η συμβουλευτική ολοκληρώθηκε, αλλά δεν υπάρχει επιβεβαιωμένη πληρωμή.";
+  return "Η κράτηση υπάρχει, αλλά η πληρωμή δεν έχει ανοίξει ή δεν έχει ολοκληρωθεί ακόμη.";
+};
+
+const getBookingNextStep = (booking: StoredBooking, payment?: StoredPayment) => {
+  if (!isVerifiedBooking(booking)) return "Περιμένετε την επιβεβαίωση της κράτησης.";
+  if (booking.status === "cancelled") return payment?.status === "refunded" ? "Παρακολουθήστε την επιστροφή." : "Δεν χρειάζεται άλλη ενέργεια.";
+  if (payment?.status === "failed") return "Δοκιμάστε ξανά την πληρωμή ή ανοίξτε υποστήριξη.";
+  if (payment?.status !== "paid") return "Ολοκληρώστε την πληρωμή για να κλειδώσει η απόδειξη.";
+  if (booking.status === "completed") return "Αφήστε κριτική όταν ανοίξει η φόρμα.";
+  return "Ανεβάστε έγγραφα και ελέγξτε την επόμενη επικοινωνία.";
 };
 
 const getCompletionItems = (workspace: UserWorkspace, profileEmail?: string, phone?: string, city?: string) => [
@@ -249,6 +269,12 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
       message: notice.message,
       tone: notice.tone,
     });
+    if (searchParams.get("checkout") === "success") {
+      trackFunnelEvent("payment_completed", {
+        bookingId: searchParams.get("bookingId") || undefined,
+        surface: "account",
+      });
+    }
     setBookingVersion((version) => version + 1);
     setSearchParams(clearPaymentReturnParams(searchParams), { replace: true });
   }, [searchParams, setSearchParams]);
@@ -500,6 +526,12 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
             tone: "success",
           });
         }
+      } else {
+        setPaymentSetupState({
+          loading: false,
+          message: "Η ακύρωση καταχωρίστηκε. Δεν έγινε χρέωση για αυτή την κράτηση.",
+          tone: "success",
+        });
       }
 
       setBookingVersion((version) => version + 1);
@@ -562,7 +594,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     if (!isVerifiedBooking(booking)) {
       setPaymentSetupState({
         loading: false,
-        message: "Αυτό το ραντεβού δεν έχει πλήρη επιβεβαίωση πλατφόρμας ακόμη. Η πληρωμή θα ανοίξει μόλις ολοκληρωθεί η επιβεβαίωση.",
+        message: "Η κράτηση επιβεβαιώνεται ακόμη. Η πληρωμή θα ανοίξει μόλις ολοκληρωθεί η επιβεβαίωση της κράτησης.",
         tone: "error",
       });
       return;
@@ -581,6 +613,12 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
       });
 
       if (session.url && typeof window !== "undefined") {
+        trackFunnelEvent("payment_opened", {
+          bookingId: booking.id,
+          lawyerId: booking.lawyerId,
+          amount: booking.price,
+          surface: "account",
+        });
         window.location.assign(session.url);
       }
     } catch {
@@ -649,6 +687,11 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     }, userId).then((result) => {
       setWorkspace(result.workspace);
       if (result.persisted) {
+        trackFunnelEvent("review_submitted", {
+          bookingId: booking.id,
+          lawyerId: booking.lawyerId,
+          rating: draft.rating,
+        });
         createOperationalCase({
           area: "reviews",
           title: "Review moderation check",
@@ -940,6 +983,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               <p className="mt-1 text-sm font-bold text-foreground">
                                 {payment ? paymentStatusLabels[payment.status] : "Σε αναμονή"}
                               </p>
+                              <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">{getPaymentSituation(booking, payment)}</p>
                             </div>
                             <div className="rounded-lg bg-secondary/45 p-3">
                               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Έγγραφα</p>
@@ -947,9 +991,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                             </div>
                             <div className="rounded-lg bg-secondary/45 p-3">
                               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Επόμενο βήμα</p>
-                              <p className="mt-1 text-sm font-bold text-foreground">
-                                {booking.status === "completed" ? "Αφήστε αξιολόγηση" : "Προετοιμάστε έγγραφα"}
-                              </p>
+                              <p className="mt-1 text-sm font-bold text-foreground">{getBookingNextStep(booking, payment)}</p>
                             </div>
                           </div>
 
@@ -1398,7 +1440,7 @@ const BookingCard = ({
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{booking.issueSummary || booking.consultationType}</p>
         {!verified ? (
           <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-semibold leading-5 text-destructive">
-            Η κράτηση χρειάζεται πλήρη επιβεβαίωση πλατφόρμας πριν ανοίξουν πληρωμές, αποδείξεις ή κριτικές.
+            Η κράτηση επιβεβαιώνεται ακόμη. Η πληρωμή, η απόδειξη και η κριτική ανοίγουν μόλις ολοκληρωθεί η επιβεβαίωση της κράτησης.
           </p>
         ) : null}
         <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold text-muted-foreground">
@@ -1493,7 +1535,7 @@ const InvoiceCard = ({
   const paymentStatus = payment?.status || "pending";
   const statusText =
     !verified
-      ? "Η κράτηση χρειάζεται πλήρη επιβεβαίωση πριν ανοίξει πληρωμή ή απόδειξη"
+      ? "Η κράτηση επιβεβαιώνεται ακόμη · η πληρωμή και η απόδειξη θα ανοίξουν μετά την επιβεβαίωση"
       : paymentStatus === "paid"
       ? "Πληρωμένο · η απόδειξη εμφανίζεται μετά την επιβεβαίωση πληρωμής"
       : paymentStatus === "refunded"

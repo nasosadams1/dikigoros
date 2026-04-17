@@ -11,6 +11,7 @@ import { Link, useNavigate } from "react-router-dom";
 import PartnerShell from "@/components/partner/PartnerShell";
 import { Button } from "@/components/ui/button";
 import { getPartnerSession, requestPartnerAccessCode, verifyApprovedPartner } from "@/lib/platformRepository";
+import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
 const accessSteps = [
@@ -66,6 +67,9 @@ const PartnerLogin = () => {
         setLoginError("Ο λογαριασμός δεν έχει ενεργό έλεγχο ένταξης συνεργάτη.");
         return;
       }
+      trackFunnelEvent("lawyer_application_approved", {
+        email: normalizedEmail,
+      });
 
       const codeRequested = await requestPartnerAccessCode(normalizedEmail);
       if (!codeRequested) {
