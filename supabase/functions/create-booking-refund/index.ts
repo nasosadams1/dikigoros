@@ -40,7 +40,7 @@ interface PaymentRow {
   user_id: string | null;
   lawyer_id: string;
   amount: number;
-  status: "pending" | "paid" | "refunded" | "failed";
+  status: "not_opened" | "checkout_opened" | "paid" | "failed" | "refund_requested" | "refunded" | "pending";
   stripe_payment_intent_id: string | null;
   provider_payload?: Record<string, unknown> | null;
 }
@@ -156,9 +156,19 @@ Deno.serve(async (request) => {
     if (!payment) return json(request, { error: "Payment not found" }, 404);
     if (payment.user_id !== user.id) return json(request, { error: "Payment does not belong to this user" }, 403);
     if (payment.status === "refunded") return json(request, { status: "refunded" });
+    if (payment.status === "refund_requested") return json(request, { status: "pending" });
     if (payment.status !== "paid" || !payment.stripe_payment_intent_id) {
       return json(request, { error: "Refund is available only after payment has completed." }, 400);
     }
+
+    await patchPayment(supabaseUrl, serviceRoleKey, String(bookingId), {
+      status: "refund_requested",
+      provider_payload: {
+        ...(payment.provider_payload || {}),
+        refundRequestedAt: new Date().toISOString(),
+        refundReason: reason,
+      },
+    });
 
     const form = new URLSearchParams();
     form.set("payment_intent", payment.stripe_payment_intent_id);
@@ -184,7 +194,7 @@ Deno.serve(async (request) => {
     }
 
     await patchPayment(supabaseUrl, serviceRoleKey, String(bookingId), {
-      status: payload.status === "succeeded" ? "refunded" : "paid",
+      status: payload.status === "succeeded" ? "refunded" : "refund_requested",
       provider_payload: {
         ...(payment.provider_payload || {}),
         refundRequestedAt: new Date().toISOString(),
@@ -204,4 +214,3 @@ Deno.serve(async (request) => {
     return json(request, { error: message }, 500);
   }
 });
-

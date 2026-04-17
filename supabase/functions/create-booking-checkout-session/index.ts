@@ -38,7 +38,7 @@ interface BookingRow {
   lawyer_name: string;
   consultation_type: string;
   price: number;
-  status: "confirmed" | "cancelled" | "completed";
+  status: "pending_confirmation" | "confirmed_unpaid" | "confirmed_paid" | "completed" | "cancelled" | "confirmed";
 }
 
 interface AuthUser {
@@ -182,7 +182,9 @@ Deno.serve(async (request) => {
     const booking = await fetchBooking(supabaseUrl, serviceRoleKey, String(bookingId));
     if (!booking) return json(request, { error: "Booking not found" }, 404);
     if (booking.user_id !== user.id) return json(request, { error: "Booking does not belong to this user" }, 403);
-    if (booking.status !== "confirmed") return json(request, { error: "Only confirmed bookings can be paid" }, 400);
+    if (!["confirmed_unpaid", "confirmed"].includes(booking.status)) {
+      return json(request, { error: "Only confirmed unpaid bookings can be paid" }, 400);
+    }
 
     const amountInCents = Math.round(Number(booking.price || 0) * 100);
     if (amountInCents <= 0) return json(request, { error: "Booking amount must be positive" }, 400);
@@ -230,7 +232,7 @@ Deno.serve(async (request) => {
     await patchPaymentRecord(supabaseUrl, serviceRoleKey, booking, {
       stripe_checkout_session_id: payload.id,
       checkout_session_url: payload.url,
-      status: "pending",
+      status: "checkout_opened",
     });
 
     return json(request, {

@@ -1,4 +1,5 @@
 import { operatingRules, type OperationalArea } from "@/lib/operations";
+import { supabase } from "@/lib/supabase";
 
 export type OperationalCaseStatus =
   | "new"
@@ -119,6 +120,25 @@ const writeStoredCases = (cases: OperationalCase[]) => {
   const storage = getStorage();
   if (!storage) return;
   storage.setItem(operationsStorageKey, JSON.stringify(cases));
+};
+
+const persistOperationalCase = async (operationalCase: OperationalCase) => {
+  await supabase.from("operational_cases").insert({
+    reference_id: operationalCase.referenceId,
+    area: operationalCase.area,
+    title: operationalCase.title,
+    summary: operationalCase.summary,
+    status: operationalCase.status,
+    priority: operationalCase.priority,
+    owner: operationalCase.owner,
+    requester_email: operationalCase.requesterEmail || null,
+    related_reference: operationalCase.relatedReference || null,
+    evidence: operationalCase.evidence,
+    timeline: operationalCase.timeline,
+    sla_due_at: operationalCase.slaDueAt,
+    created_at: operationalCase.createdAt,
+    updated_at: operationalCase.updatedAt,
+  });
 };
 
 const getRandomSegment = () => {
@@ -342,6 +362,9 @@ export const getOperationalCases = (area?: OperationalArea) => {
 export const createOperationalCase = (input: CreateOperationalCaseInput) => {
   const nextCase = createCase(input);
   writeStoredCases([nextCase, ...ensureOperationalCases()]);
+  void persistOperationalCase(nextCase).catch(() => {
+    // Local case remains available; authenticated ops sessions persist remotely.
+  });
   return nextCase;
 };
 
@@ -416,4 +439,3 @@ export const getOperationalCaseMetrics = (cases: OperationalCase[]) => {
     closed: cases.length - openCases.length,
   };
 };
-

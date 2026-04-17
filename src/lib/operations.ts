@@ -1,5 +1,5 @@
 import type { Lawyer } from "@/data/lawyers";
-import { includesMarketplaceText } from "@/lib/marketplace";
+import { getLawyerMarketplaceSignals, includesMarketplaceText, isAvailableToday, isAvailableTomorrow } from "@/lib/marketplace";
 
 export type OperationalArea =
   | "payments"
@@ -21,7 +21,27 @@ export interface OperatingRule {
   actions: string[];
   userOutcome: string;
   escalation: string;
+  closeCondition: string;
   clientCopy: string;
+}
+
+export interface SupportWorkflow {
+  id: string;
+  label: string;
+  area: OperationalArea;
+  owner: string;
+  sla: string;
+  requiredEvidence: string[];
+  escalationRule: string;
+  userFacingResponse: string;
+  closeCondition: string;
+}
+
+export interface LaunchGate {
+  label: string;
+  owner: string;
+  ready: boolean;
+  evidence: string;
 }
 
 export interface PaymentReadinessCheck {
@@ -43,6 +63,14 @@ export const highIntentCategories = [
   { label: "Ποινικό", queries: ["criminal", "ποιν"] },
 ];
 
+export const discoveryDensityThresholds = {
+  minimumVerifiedLawyers: 3,
+  minimumWithPrice: 3,
+  minimumAvailableSoon: 2,
+  minimumReviewed: 2,
+  minimumBookable: 3,
+};
+
 export const operatingRules: OperatingRule[] = [
   {
     area: "payments",
@@ -60,6 +88,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "The user sees paid, failed, refunded, or pending with one retry/support action.",
     escalation: "Escalate to the payments operator immediately for duplicate charge, missing receipt after success, or webhook mismatch.",
+    closeCondition: "Stripe session, payment row, booking state, user-facing message, and receipt/refund state agree.",
     clientCopy: "Payment did not complete. Your card was not charged. Try again or contact support.",
   },
   {
@@ -77,6 +106,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "The user sees whether the refund started, is pending review, or is not eligible with a support path.",
     escalation: "Escalate to support lead when cancellation facts conflict; escalate to security/privacy lead for suspicious payment activity.",
+    closeCondition: "Refund is paid, explicitly rejected with reason, or waiting on processor with user-facing tracking.",
     clientCopy: "The cancellation was recorded. Support is reviewing whether a refund applies.",
   },
   {
@@ -94,6 +124,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "The lawyer sees approved, under review, needs changes, or rejected with a concrete reason.",
     escalation: "Escalate stale or disputed verification to the verification reviewer before public profile changes stay live.",
+    closeCondition: "Profile is approved, rejected, suspended, or returned with exact missing evidence.",
     clientCopy: "This profile is visible only after identity, license, professional details, and readiness checks.",
   },
   {
@@ -112,6 +143,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "The client sees whether the review is submitted, held, published, or removed; the lawyer sees reply/dispute options.",
     escalation: "Escalate fraud, abuse, or confidential case-detail exposure to trust reviewer immediately.",
+    closeCondition: "Review is published, rejected, or held with a documented moderation reason and reply/dispute path.",
     clientCopy: "Reviews are published only after completed bookings and moderation checks.",
   },
   {
@@ -129,6 +161,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "Both sides see whether the review is live, held for review, edited, removed, or open for reply.",
     escalation: "Escalate repeated abuse, fraud signals, or threats to security/privacy lead.",
+    closeCondition: "Disputed review has a final publication state, removal reason, or permitted public reply.",
     clientCopy: "The review is being checked before any public change is made.",
   },
   {
@@ -146,6 +179,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "The user sees choose another time, retry payment, track refund, or support case opened.",
     escalation: "Escalate paid cancellations, lawyer cancellation, and no-shows to booking support with payments copied when money moved.",
+    closeCondition: "Booking is rescheduled, cancelled without charge, refund-reviewed, or closed with a written reason.",
     clientCopy: "We are checking the booking details and will confirm the next step by email.",
   },
   {
@@ -163,6 +197,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "The client sees reschedule, refund review, or support follow-up without needing to diagnose the issue.",
     escalation: "Escalate repeated or last-minute lawyer cancellations to verification reviewer and support lead.",
+    closeCondition: "Client selected reschedule, comparable alternative, refund review, or cancellation closure.",
     clientCopy: "The lawyer cannot attend this time. We will help you reschedule or review the refund path.",
   },
   {
@@ -180,6 +215,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "The requester receives a case reference and a clear next step.",
     escalation: "Escalate privacy/security immediately; escalate booking/payment blockers when a consultation or charge is at risk.",
+    closeCondition: "Requester has the case outcome, owner notes, and no unresolved urgent blocker remains.",
     clientCopy: "Support has received your request and will route it to the right team.",
   },
   {
@@ -197,6 +233,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "The user sees how to regain access or which exact record support is checking.",
     escalation: "Escalate immediately for suspected account takeover or sensitive document exposure.",
+    closeCondition: "Access is restored, identity is verified with next steps, or security escalation owns the case.",
     clientCopy: "We are checking account access and will only discuss private records after email verification.",
   },
   {
@@ -214,6 +251,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "The user sees whether the document is private, visible to the booked lawyer, deleted, or retained for a stated reason.",
     escalation: "Escalate accidental exposure, unauthorized access, or legal deletion conflict to privacy/security lead.",
+    closeCondition: "Visibility, deletion request, retention reason, and audit entry are recorded and explained to the user.",
     clientCopy: "Your documents are visible to the booked lawyer only when you allow access.",
   },
   {
@@ -231,12 +269,235 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "Affected users receive confirmed information, containment status, and next steps when facts are verified.",
     escalation: "Escalate immediately to security/privacy lead; do not leave in normal support queue.",
+    closeCondition: "Incident is contained, affected scope is known, notifications are decided, and corrective controls are recorded.",
     clientCopy: "We are reviewing a security concern and will contact affected users with confirmed information.",
+  },
+];
+
+export const supportWorkflows: SupportWorkflow[] = [
+  {
+    id: "booking_failure",
+    label: "Booking failure",
+    area: "bookingDisputes",
+    owner: "Booking support",
+    sla: "Same business day",
+    requiredEvidence: ["Booking reference", "selected slot", "client email", "visible error"],
+    escalationRule: "Escalate if the slot is within 24 hours or payment moved.",
+    userFacingResponse: "We are checking the booking and will confirm whether to retry, choose another time, or open support.",
+    closeCondition: "User has a confirmed booking, a different available slot, or written no-charge closure.",
+  },
+  {
+    id: "lawyer_cancellation",
+    label: "Lawyer cancellation",
+    area: "bookingDisputes",
+    owner: "Booking support",
+    sla: "Same business day; urgent within 24 hours",
+    requiredEvidence: ["Booking reference", "lawyer id", "reason", "payment state"],
+    escalationRule: "Escalate repeated or last-minute cancellations to verification.",
+    userFacingResponse: "The lawyer cannot attend this time. We will help you reschedule or review the refund path.",
+    closeCondition: "Client chose reschedule, alternative, refund review, or cancellation closure.",
+  },
+  {
+    id: "slot_conflict",
+    label: "Slot conflict",
+    area: "bookingDisputes",
+    owner: "Booking support",
+    sla: "Same business day",
+    requiredEvidence: ["Lawyer id", "date", "time", "booking attempt"],
+    escalationRule: "Escalate repeated conflicts on the same lawyer to availability review.",
+    userFacingResponse: "Η ώρα δεν είναι πλέον διαθέσιμη. Επιλέξτε άλλη ώρα.",
+    closeCondition: "Conflicting slot is released or blocked and the user has a new path.",
+  },
+  {
+    id: "payment_failure",
+    label: "Payment failure",
+    area: "payments",
+    owner: "Payments operator",
+    sla: "Same business day; immediate for duplicate charge concern",
+    requiredEvidence: ["Booking reference", "Checkout session", "payment row", "user email"],
+    escalationRule: "Escalate duplicate charge, webhook mismatch, or missing receipt immediately.",
+    userFacingResponse: "Η πληρωμή δεν ολοκληρώθηκε. Δεν έγινε χρέωση.",
+    closeCondition: "Payment is paid, failed with retry path, or escalated with processor evidence.",
+  },
+  {
+    id: "refund_request",
+    label: "Refund request",
+    area: "payments",
+    owner: "Payments operator",
+    sla: "Same business day for eligible cancellation",
+    requiredEvidence: ["Booking", "payment", "cancellation time", "reason"],
+    escalationRule: "Escalate unclear policy facts to support lead.",
+    userFacingResponse: "Η ακύρωση καταχωρίστηκε. Ελέγχουμε αν προβλέπεται επιστροφή.",
+    closeCondition: "Refund is executed, rejected with reason, or waiting on processor.",
+  },
+  {
+    id: "refund_review",
+    label: "Refund review",
+    area: "payments",
+    owner: "Payments operator",
+    sla: "2 business days",
+    requiredEvidence: ["Booking timeline", "payment state", "messages", "cancellation reason"],
+    escalationRule: "Escalate disputes or repeated partner issues to support lead.",
+    userFacingResponse: "Η επιστροφή εξετάζεται από την υποστήριξη.",
+    closeCondition: "Review decision and user-facing explanation are recorded.",
+  },
+  {
+    id: "account_access",
+    label: "Account access issue",
+    area: "support",
+    owner: "Support lead",
+    sla: "2 business days; same day if it blocks paid consultation",
+    requiredEvidence: ["Account email", "booking/payment reference", "access symptom"],
+    escalationRule: "Escalate suspected takeover to security/privacy lead.",
+    userFacingResponse: "Ελέγχουμε την πρόσβαση και θα μιλήσουμε για ιδιωτικά στοιχεία μόνο μετά την επαλήθευση email.",
+    closeCondition: "Access is restored, verified, or security owns the unresolved case.",
+  },
+  {
+    id: "document_request",
+    label: "Document deletion/visibility request",
+    area: "privacyDocuments",
+    owner: "Privacy operator",
+    sla: "2 business days; same day for exposure concern",
+    requiredEvidence: ["Document id/name", "account email", "booking reference", "request type"],
+    escalationRule: "Escalate unauthorized access or legal retention conflict.",
+    userFacingResponse: "Ελέγχουμε ποιος μπορεί να δει το αρχείο και τι μπορεί να διαγραφεί.",
+    closeCondition: "Visibility, deletion request, retention reason, and audit event are recorded.",
+  },
+  {
+    id: "privacy_request",
+    label: "Privacy request",
+    area: "privacyDocuments",
+    owner: "Privacy operator",
+    sla: "2 business days",
+    requiredEvidence: ["Account email", "request scope", "affected record"],
+    escalationRule: "Escalate legal conflict or suspected exposure to security/privacy lead.",
+    userFacingResponse: "Το αίτημα απορρήτου δρομολογήθηκε για έλεγχο.",
+    closeCondition: "User receives access, deletion, retention reason, or escalation notice.",
+  },
+  {
+    id: "lawyer_complaint",
+    label: "Complaint against lawyer",
+    area: "bookingDisputes",
+    owner: "Support lead",
+    sla: "2 business days; same day for abuse/safety",
+    requiredEvidence: ["Booking/profile reference", "complaint reason", "messages or facts"],
+    escalationRule: "Escalate repeated behavior to verification reviewer.",
+    userFacingResponse: "Το παράπονο καταχωρίστηκε και θα ελεγχθεί με βάση τα στοιχεία.",
+    closeCondition: "Complaint is resolved, profile action is recorded, or verification owns follow-up.",
+  },
+  {
+    id: "review_dispute",
+    label: "Review dispute",
+    area: "reviews",
+    owner: "Trust reviewer",
+    sla: "48 hours; same day for abuse/private details",
+    requiredEvidence: ["Review id", "booking reference", "dispute reason"],
+    escalationRule: "Escalate threats, fraud, or confidential detail exposure.",
+    userFacingResponse: "Η κριτική κρατήθηκε για έλεγχο πριν αλλάξει δημόσια.",
+    closeCondition: "Review is published, rejected, edited, or open for lawyer reply.",
+  },
+  {
+    id: "security_incident",
+    label: "Security incident",
+    area: "security",
+    owner: "Security/privacy lead",
+    sla: "Immediate triage",
+    requiredEvidence: ["Reporter email", "affected record", "incident time", "data possibly exposed"],
+    escalationRule: "Do not leave in normal support; contain first.",
+    userFacingResponse: "Ελέγχουμε θέμα ασφάλειας και θα ενημερώσουμε με επιβεβαιωμένα στοιχεία.",
+    closeCondition: "Containment, affected scope, notification decision, and corrective action are recorded.",
+  },
+];
+
+export const launchGates: LaunchGate[] = [
+  {
+    label: "Booking and payment exception flows tested end to end",
+    owner: "Payments operator",
+    ready: false,
+    evidence: "Slot conflict, checkout fail/open/success, cancellation, refund, and receipt paths have passing end-to-end evidence.",
+  },
+  {
+    label: "Webhook/payment reconciliation working",
+    owner: "Payments operator",
+    ready: true,
+    evidence: "Stripe webhook writes paid, failed, refunded, provider event, receipt, and booking payment state.",
+  },
+  {
+    label: "Account statuses match backend truth",
+    owner: "Support lead",
+    ready: true,
+    evidence: "Account reads canonical booking/payment states and does not imply booked equals paid.",
+  },
+  {
+    label: "Support workflows owned with SLA",
+    owner: "Operations lead",
+    ready: true,
+    evidence: "Every support category has owner, SLA, evidence, escalation, response, and close condition.",
+  },
+  {
+    label: "Review publication workflow enforced",
+    owner: "Trust reviewer",
+    ready: true,
+    evidence: "Reviews start under moderation and require completed confirmed consultation before publication.",
+  },
+  {
+    label: "Partner verification workflow enforced",
+    owner: "Verification reviewer",
+    ready: true,
+    evidence: "Applications remain under review until identity, license, bar association, and profile readiness pass.",
+  },
+  {
+    label: "Backend funnel analytics live",
+    owner: "Growth operations",
+    ready: true,
+    evidence: "Funnel events write to Supabase funnel_events with session, user, lawyer, booking, city, category, and source fields.",
+  },
+  {
+    label: "Core city/category density achieved",
+    owner: "Marketplace supply lead",
+    ready: false,
+    evidence: "Athens and Thessaloniki category pages meet verified, price, availability, review, and bookable thresholds.",
+  },
+  {
+    label: "Lawyer dashboard shows ROI clearly",
+    owner: "Partner success",
+    ready: true,
+    evidence: "Partner portal shows views/appearances proxies, booking starts, paid bookings, completion, reviews, availability, and profile proof gaps.",
   },
 ];
 
 const categoryText = (lawyer: Lawyer) =>
   [lawyer.specialty, lawyer.specialtyShort, lawyer.bestFor, lawyer.bio, ...lawyer.specialties, ...lawyer.specialtyKeywords].join(" ");
+
+export const getDiscoveryDensityState = (lawyers: Lawyer[]) => {
+  const withSignals = lawyers.map((lawyer) => ({
+    lawyer,
+    signals: getLawyerMarketplaceSignals(lawyer),
+  }));
+  const verified = withSignals.filter(({ signals }) => signals.verified).length;
+  const withPrice = withSignals.filter(({ signals }) => signals.priceFrom > 0).length;
+  const availableSoon = withSignals.filter(({ lawyer }) => isAvailableToday(lawyer) || isAvailableTomorrow(lawyer)).length;
+  const reviewed = withSignals.filter(({ signals }) => signals.reviewed).length;
+  const bookable = withSignals.filter(({ signals }) => signals.bookable).length;
+
+  const checks = [
+    { label: "επαληθευμένοι δικηγόροι", count: verified, minimum: discoveryDensityThresholds.minimumVerifiedLawyers },
+    { label: "εμφανείς τιμές", count: withPrice, minimum: discoveryDensityThresholds.minimumWithPrice },
+    { label: "κοντινή διαθεσιμότητα", count: availableSoon, minimum: discoveryDensityThresholds.minimumAvailableSoon },
+    { label: "κριτικές", count: reviewed, minimum: discoveryDensityThresholds.minimumReviewed },
+    { label: "κρατήσιμα προφίλ", count: bookable, minimum: discoveryDensityThresholds.minimumBookable },
+  ];
+
+  return {
+    verified,
+    withPrice,
+    availableSoon,
+    reviewed,
+    bookable,
+    ready: checks.every((check) => check.count >= check.minimum),
+    checks,
+  };
+};
 
 export const getSupplyReadiness = (lawyers: Lawyer[]) =>
   coreLaunchCities.map((city) => {

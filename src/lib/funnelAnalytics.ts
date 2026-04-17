@@ -1,3 +1,5 @@
+import { supabase } from "@/lib/supabase";
+
 export type FunnelEventName =
   | "homepage_search"
   | "search_profile_opened"
@@ -17,6 +19,12 @@ export interface FunnelEvent {
   name: FunnelEventName;
   occurredAt: string;
   sessionId: string;
+  userId?: string | null;
+  lawyerId?: string | null;
+  bookingId?: string | null;
+  city?: string | null;
+  category?: string | null;
+  source?: string | null;
   metadata?: Record<string, string | number | boolean | null | undefined>;
 }
 
@@ -27,7 +35,7 @@ export interface FunnelMetric {
   conversionFromPrevious: number | null;
 }
 
-const funnelStorageKey = "dikigoros.funnelEvents.v1";
+const pendingFunnelStorageKey = "dikigoros.funnelEvents.pending.v1";
 const funnelSessionKey = "dikigoros.funnelSession.v1";
 const maxStoredEvents = 600;
 
@@ -47,20 +55,20 @@ export const funnelSteps: Array<{ name: FunnelEventName; label: string }> = [
 
 const canUseStorage = () => typeof window !== "undefined" && Boolean(window.localStorage);
 
-const readStoredEvents = (): FunnelEvent[] => {
+const readPendingEvents = (): FunnelEvent[] => {
   if (!canUseStorage()) return [];
 
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(funnelStorageKey) || "[]");
+    const parsed = JSON.parse(window.localStorage.getItem(pendingFunnelStorageKey) || "[]");
     return Array.isArray(parsed) ? parsed.filter((event): event is FunnelEvent => Boolean(event?.name && event?.occurredAt)) : [];
   } catch {
     return [];
   }
 };
 
-const writeStoredEvents = (events: FunnelEvent[]) => {
+const writePendingEvents = (events: FunnelEvent[]) => {
   if (!canUseStorage()) return;
-  window.localStorage.setItem(funnelStorageKey, JSON.stringify(events.slice(0, maxStoredEvents)));
+  window.localStorage.setItem(pendingFunnelStorageKey, JSON.stringify(events.slice(0, maxStoredEvents)));
 };
 
 const getFunnelSessionId = () => {
@@ -72,20 +80,76 @@ const getFunnelSessionId = () => {
   return sessionId;
 };
 
-export const trackFunnelEvent = (
-  name: FunnelEventName,
-  metadata?: FunnelEvent["metadata"],
-) => {
+const getStringMetadata = (metadata: FunnelEvent["metadata"], key: string) => {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+};
+
+const funnelEventToRow = (event: FunnelEvent) => ({
+  event_name: event.name,
+  occurred_at: event.occurredAt,
+  session_id: event.sessionId,
+  user_id: event.userId || getStringMetadata(event.metadata, "userId"),
+  lawyer_id: event.lawyerId || getStringMetadata(event.metadata, "lawyerId"),
+  booking_id: event.bookingId || getStringMetadata(event.metadata, "bookingId"),
+  city: event.city || getStringMetadata(event.metadata, "city"),
+  category: event.category || getStringMetadata(event.metadata, "category") || getStringMetadata(event.metadata, "specialty"),
+  source: event.source || getStringMetadata(event.metadata, "source") || getStringMetadata(event.metadata, "surface"),
+  metadata: event.metadata || {},
+});
+
+const rowToFunnelEvent = (row: Record<string, unknown>): FunnelEvent => ({
+  id: String(row.id || `remote-${row.event_name}-${row.occurred_at}`),
+  name: row.event_name as FunnelEventName,
+  occurredAt: String(row.occurred_at),
+  sessionId: String(row.session_id || "backend"),
+  userId: typeof row.user_id === "string" ? row.user_id : null,
+  lawyerId: typeof row.lawyer_id === "string" ? row.lawyer_id : null,
+  bookingId: typeof row.booking_id === "string" ? row.booking_id : null,
+  city: typeof row.city === "string" ? row.city : null,
+  category: typeof row.category === "string" ? row.category : null,
+  source: typeof row.source === "string" ? row.source : null,
+  metadata: typeof row.metadata === "object" && row.metadata ? (row.metadata as FunnelEvent["metadata"]) : {},
+});
+
+const persistFunnelEvent = async (event: FunnelEvent) => {
+  const { error } = await supabase.from("funnel_events").insert(funnelEventToRow(event));
+  if (error) throw error;
+};
+
+const flushPendingFunnelEvents = async () => {
+  const pendingEvents = readPendingEvents();
+  if (pendingEvents.length === 0) return;
+
+  const remaining: FunnelEvent[] = [];
+  for (const event of pendingEvents) {
+    try {
+      await persistFunnelEvent(event);
+    } catch {
+      remaining.push(event);
+    }
+  }
+  writePendingEvents(remaining);
+};
+
+export const trackFunnelEvent = (name: FunnelEventName, metadata?: FunnelEvent["metadata"]) => {
   const event: FunnelEvent = {
     id: `fe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     name,
     occurredAt: new Date().toISOString(),
     sessionId: getFunnelSessionId(),
+    userId: getStringMetadata(metadata, "userId"),
+    lawyerId: getStringMetadata(metadata, "lawyerId"),
+    bookingId: getStringMetadata(metadata, "bookingId"),
+    city: getStringMetadata(metadata, "city"),
+    category: getStringMetadata(metadata, "category") || getStringMetadata(metadata, "specialty"),
+    source: getStringMetadata(metadata, "source") || getStringMetadata(metadata, "surface"),
     metadata,
   };
 
-  const nextEvents = [event, ...readStoredEvents()];
-  writeStoredEvents(nextEvents);
+  void persistFunnelEvent(event)
+    .then(flushPendingFunnelEvents)
+    .catch(() => writePendingEvents([event, ...readPendingEvents()]));
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("dikigoros:funnel-event", { detail: event }));
@@ -94,7 +158,22 @@ export const trackFunnelEvent = (
   return event;
 };
 
-export const getFunnelEvents = () => readStoredEvents();
+export const getFunnelEvents = () => readPendingEvents();
+
+export const fetchFunnelEvents = async (): Promise<FunnelEvent[]> => {
+  try {
+    const { data, error } = await supabase
+      .from("funnel_events")
+      .select("id,event_name,occurred_at,session_id,user_id,lawyer_id,booking_id,city,category,source,metadata")
+      .order("occurred_at", { ascending: false })
+      .limit(2000);
+
+    if (error) throw error;
+    return (data || []).map((row) => rowToFunnelEvent(row as Record<string, unknown>));
+  } catch {
+    return readPendingEvents();
+  }
+};
 
 export const getFunnelMetrics = (events: FunnelEvent[] = getFunnelEvents()): FunnelMetric[] => {
   const counts = events.reduce<Record<string, number>>((accumulator, event) => {
@@ -116,5 +195,5 @@ export const getFunnelMetrics = (events: FunnelEvent[] = getFunnelEvents()): Fun
 
 export const clearFunnelEvents = () => {
   if (!canUseStorage()) return;
-  window.localStorage.removeItem(funnelStorageKey);
+  window.localStorage.removeItem(pendingFunnelStorageKey);
 };

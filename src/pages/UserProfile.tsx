@@ -47,10 +47,23 @@ import { getPartnerWorkspace } from "@/lib/partnerWorkspace";
 import { getLawyers } from "@/lib/lawyerRepository";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import {
+  bookingStateLabels,
+  canCancelBooking,
+  canOpenCheckout,
+  canSubmitReview,
+  getBookingNextStepCopy,
+  getCanonicalBookingState,
+  getCanonicalPaymentState,
+  getPaymentSituationCopy,
+  paymentStateLabels,
+  reviewPublicationStateLabels,
+} from "@/lib/bookingState";
+import {
   addUserDocuments,
   createUserDocumentDownloadUrl,
   fetchUserWorkspace,
   formatFileSize,
+  getDocumentVisibilityExplanation,
   getUserWorkspace,
   saveUserWorkspace,
   removeUserDocumentPersisted,
@@ -107,43 +120,17 @@ const consultationOptions: Array<{ value: PreferredConsultationMode; label: stri
 const budgetOptions = ["έως €50", "€50 - €80", "€80 - €120", "€120+"];
 const urgencyOptions = ["Σήμερα", "Μέσα σε 3 ημέρες", "Αυτή την εβδομάδα", "Δεν είναι επείγον"];
 
-const statusLabels: Record<StoredBooking["status"], string> = {
-  confirmed: "Επιβεβαιωμένο",
-  cancelled: "Ακυρωμένο",
-  completed: "Ολοκληρωμένο",
-};
-
 const paymentMethodStatusLabels: Record<UserWorkspace["paymentMethod"]["status"], string> = {
   not_configured: "Δεν έχει συνδεθεί",
   setup_required: "Χρειάζεται σύνδεση",
   ready: "Έτοιμη",
 };
 
-const paymentStatusLabels: Record<StoredPayment["status"], string> = {
-  pending: "Σε αναμονή",
-  paid: "Πληρωμένο",
-  refunded: "Επιστροφή",
-  failed: "Απέτυχε",
-};
+const getPaymentSituation = (booking: StoredBooking, payment?: StoredPayment) =>
+  getPaymentSituationCopy(booking, payment);
 
-const getPaymentSituation = (booking: StoredBooking, payment?: StoredPayment) => {
-  if (!isVerifiedBooking(booking)) return "Η κράτηση επιβεβαιώνεται ακόμη. Δεν χρειάζεται πληρωμή από εσάς τώρα.";
-  if (booking.status === "cancelled" && payment?.status === "refunded") return "Η κράτηση ακυρώθηκε και η επιστροφή έχει δρομολογηθεί.";
-  if (booking.status === "cancelled") return "Η κράτηση ακυρώθηκε χωρίς χρέωση.";
-  if (payment?.status === "paid") return "Η πληρωμή έχει ολοκληρωθεί. Η απόδειξη εμφανίζεται εδώ.";
-  if (payment?.status === "failed") return "Η πληρωμή δεν ολοκληρώθηκε. Μπορείτε να δοκιμάσετε ξανά.";
-  if (booking.status === "completed") return "Η συμβουλευτική ολοκληρώθηκε, αλλά δεν υπάρχει επιβεβαιωμένη πληρωμή.";
-  return "Η κράτηση υπάρχει, αλλά η πληρωμή δεν έχει ανοίξει ή δεν έχει ολοκληρωθεί ακόμη.";
-};
-
-const getBookingNextStep = (booking: StoredBooking, payment?: StoredPayment) => {
-  if (!isVerifiedBooking(booking)) return "Περιμένετε την επιβεβαίωση της κράτησης.";
-  if (booking.status === "cancelled") return payment?.status === "refunded" ? "Παρακολουθήστε την επιστροφή." : "Δεν χρειάζεται άλλη ενέργεια.";
-  if (payment?.status === "failed") return "Δοκιμάστε ξανά την πληρωμή ή ανοίξτε υποστήριξη.";
-  if (payment?.status !== "paid") return "Ολοκληρώστε την πληρωμή για να κλειδώσει η απόδειξη.";
-  if (booking.status === "completed") return "Αφήστε κριτική όταν ανοίξει η φόρμα.";
-  return "Ανεβάστε έγγραφα και ελέγξτε την επόμενη επικοινωνία.";
-};
+const getBookingNextStep = (booking: StoredBooking, payment?: StoredPayment) =>
+  getBookingNextStepCopy(booking, payment);
 
 const getCompletionItems = (workspace: UserWorkspace, profileEmail?: string, phone?: string, city?: string) => [
   Boolean(profileEmail),
@@ -272,12 +259,13 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     if (searchParams.get("checkout") === "success") {
       trackFunnelEvent("payment_completed", {
         bookingId: searchParams.get("bookingId") || undefined,
+        userId,
         surface: "account",
       });
     }
     setBookingVersion((version) => version + 1);
     setSearchParams(clearPaymentReturnParams(searchParams), { replace: true });
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, userId]);
 
   useEffect(() => {
     let active = true;
@@ -307,9 +295,10 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     };
   }, [workspace.savedLawyerIds, workspace.comparedLawyerIds]);
 
-  const activeBookings = bookings.filter((booking) => booking.status === "confirmed");
+  const paymentForBooking = (bookingId: string) => payments.find((payment) => payment.bookingId === bookingId);
+  const activeBookings = bookings.filter((booking) => canCancelBooking(booking, paymentForBooking(booking.id)));
   const completedBookings = bookings.filter((booking) => booking.status === "completed");
-  const reviewableBookings = completedBookings.filter(isVerifiedBooking);
+  const reviewableBookings = completedBookings.filter(canSubmitReview);
   const completionPendingBookings = completedBookings.filter((booking) => !isVerifiedBooking(booking));
   const nextBooking = activeBookings[0];
   const nextBookingPayment = nextBooking ? payments.find((payment) => payment.bookingId === nextBooking.id) : undefined;
@@ -495,7 +484,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     void (async () => {
       await cancelBooking(bookingId);
 
-      if (booking && payment?.status === "paid" && isVerifiedBooking(booking)) {
+      if (booking && getCanonicalPaymentState(payment) === "paid" && isVerifiedBooking(booking)) {
         const refund = await requestBookingRefund(booking);
         if (refund.status === "review_required") {
           createOperationalCase({
@@ -594,7 +583,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     if (!isVerifiedBooking(booking)) {
       setPaymentSetupState({
         loading: false,
-        message: "Η κράτηση επιβεβαιώνεται ακόμη. Η πληρωμή θα ανοίξει μόλις ολοκληρωθεί η επιβεβαίωση της κράτησης.",
+        message: "Το ραντεβού σας ελέγχεται από την ομάδα. Δεν χρειάζεται ενέργεια από εσάς τώρα. Η πληρωμή θα ανοίξει μόλις ολοκληρωθεί αυτός ο έλεγχος.",
         tone: "error",
       });
       return;
@@ -616,6 +605,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
         trackFunnelEvent("payment_opened", {
           bookingId: booking.id,
           lawyerId: booking.lawyerId,
+          userId,
           amount: booking.price,
           surface: "account",
         });
@@ -690,6 +680,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
         trackFunnelEvent("review_submitted", {
           bookingId: booking.id,
           lawyerId: booking.lawyerId,
+          userId,
           rating: draft.rating,
         });
         createOperationalCase({
@@ -711,7 +702,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
         [booking.id]: result.persisted
           ? {
               loading: false,
-              message: "Η κριτική δημοσιεύτηκε στο προφίλ του δικηγόρου.",
+              message: "Η κριτική υποβλήθηκε και περνά έλεγχο πριν δημοσιευτεί.",
               tone: "success",
             }
           : {
@@ -838,7 +829,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
               <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
                 <Panel title="Συνέχεια υπόθεσης" eyebrow="Επόμενη κίνηση">
                   {nextBooking ? (
-                    <BookingCard booking={nextBooking} onCancel={handleCancelBookingWithRefund} featured />
+                    <BookingCard booking={nextBooking} payment={nextBookingPayment} onCancel={handleCancelBookingWithRefund} featured />
                   ) : (
                     <EmptyState
                       icon={CalendarDays}
@@ -940,7 +931,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                 <div className="grid gap-4">
                   {bookings.length > 0 ? (
                     bookings.map((booking) => (
-                      <BookingCard key={booking.id} booking={booking} onCancel={handleCancelBookingWithRefund} />
+                      <BookingCard key={booking.id} booking={booking} payment={payments.find((payment) => payment.bookingId === booking.id)} onCancel={handleCancelBookingWithRefund} />
                     ))
                   ) : (
                     <EmptyState
@@ -973,7 +964,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               </p>
                             </div>
                             <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground">
-                              {statusLabels[booking.status]}
+                              {bookingStateLabels[getCanonicalBookingState(booking, payment)]}
                             </span>
                           </div>
 
@@ -981,7 +972,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                             <div className="rounded-lg bg-secondary/45 p-3">
                               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Πληρωμή</p>
                               <p className="mt-1 text-sm font-bold text-foreground">
-                                {payment ? paymentStatusLabels[payment.status] : "Σε αναμονή"}
+                                {paymentStateLabels[getCanonicalPaymentState(payment)]}
                               </p>
                               <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">{getPaymentSituation(booking, payment)}</p>
                             </div>
@@ -1069,6 +1060,11 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                         </div>
                       ))}
                     </div>
+                    <Button asChild className="mt-4 rounded-lg font-bold">
+                      <Link to={`/compare?lawyers=${comparedLawyers.map((lawyer) => lawyer?.id).filter(Boolean).join(",")}`}>
+                        Άνοιγμα πλήρους σύγκρισης
+                      </Link>
+                    </Button>
                   </Panel>
                 ) : null}
               </div>
@@ -1119,13 +1115,24 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                             <p className="mt-1 text-xs font-semibold text-muted-foreground">
                               {document.category} · {formatFileSize(document.size)} · {new Date(document.uploadedAt).toLocaleDateString("el-GR")}
                             </p>
+                            <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">
+                              {getDocumentVisibilityExplanation(document)}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
+                              Διατήρηση έως {new Date(document.retentionUntil || document.uploadedAt).toLocaleDateString("el-GR")} · Κατάσταση διαγραφής: {document.deletionStatus === "deletion_requested" ? "ζητήθηκε διαγραφή" : document.deletionStatus === "deleted" ? "διαγράφηκε" : document.deletionStatus === "retained_for_legal_reason" ? "κρατείται με αιτιολογία" : "ενεργό"}
+                            </p>
+                            {document.visibilityHistory?.[0] ? (
+                              <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
+                                Τελευταία αλλαγή ορατότητας: {new Date(document.visibilityHistory[0].at).toLocaleString("el-GR")}
+                              </p>
+                            ) : null}
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              disabled={!document.storagePath && !document.downloadUrl}
+                              disabled={document.deletionStatus === "deletion_requested" || (!document.storagePath && !document.downloadUrl)}
                               onClick={() =>
                                 void createUserDocumentDownloadUrl(document).then((url) => {
                                   if (url && typeof window !== "undefined") {
@@ -1144,6 +1151,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               size="sm"
                               onClick={() => void setUserDocumentVisibilityPersisted(workspaceKey, document.id, !document.visibleToLawyer, userId).then(setWorkspace)}
                               aria-pressed={document.visibleToLawyer}
+                              disabled={document.deletionStatus === "deletion_requested"}
                               className="rounded-xl font-bold"
                             >
                               {document.visibleToLawyer ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -1153,6 +1161,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               type="button"
                               variant="outline"
                               size="sm"
+                              disabled={document.deletionStatus === "deletion_requested"}
                               onClick={() =>
                                 void removeUserDocumentPersisted(workspaceKey, document.id, userId).then((nextWorkspace) => {
                                   setWorkspace(nextWorkspace);
@@ -1237,6 +1246,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                           booking={booking}
                           draft={draft}
                           submitted={Boolean(existingReview)}
+                          status={existingReview?.status}
                           submitState={reviewSubmitState[booking.id]}
                           onChange={(updates) => handleReviewDraftChange(booking.id, updates)}
                           onSubmit={() => handleSubmitReview(booking)}
@@ -1412,14 +1422,17 @@ const WorkspaceAction = ({
 
 const BookingCard = ({
   booking,
+  payment,
   onCancel,
   featured = false,
 }: {
   booking: StoredBooking;
+  payment?: StoredPayment;
   onCancel: (bookingId: string) => void;
   featured?: boolean;
 }) => {
   const verified = isVerifiedBooking(booking);
+  const bookingState = getCanonicalBookingState(booking, payment);
 
   return (
   <article className={cn("rounded-xl border border-border bg-card p-4", featured && "border-sage/25 bg-sage/10")}>
@@ -1427,7 +1440,7 @@ const BookingCard = ({
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-primary px-2.5 py-1 text-[11px] font-bold text-primary-foreground">
-            {statusLabels[booking.status]}
+            {bookingStateLabels[bookingState]}
           </span>
           {!verified ? (
             <span className="rounded-full border border-destructive/20 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive">
@@ -1440,7 +1453,7 @@ const BookingCard = ({
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{booking.issueSummary || booking.consultationType}</p>
         {!verified ? (
           <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-semibold leading-5 text-destructive">
-            Η κράτηση επιβεβαιώνεται ακόμη. Η πληρωμή, η απόδειξη και η κριτική ανοίγουν μόλις ολοκληρωθεί η επιβεβαίωση της κράτησης.
+            Το ραντεβού σας ελέγχεται από την ομάδα. Δεν χρειάζεται ενέργεια από εσάς τώρα. Η πληρωμή, η απόδειξη και η κριτική ανοίγουν μετά τον έλεγχο και την ολοκλήρωση της συμβουλευτικής.
           </p>
         ) : null}
         <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold text-muted-foreground">
@@ -1453,7 +1466,7 @@ const BookingCard = ({
         <Button asChild variant="outline" size="sm" className="rounded-xl font-bold">
           <Link to={`/lawyer/${booking.lawyerId}`}>Προφίλ</Link>
         </Button>
-        {booking.status === "confirmed" ? (
+        {canCancelBooking(booking, payment) ? (
           <>
             <Button asChild size="sm" className="rounded-xl font-bold">
               <Link to={`/booking/${booking.lawyerId}`}>Αλλαγή ώρας</Link>
@@ -1531,22 +1544,25 @@ const InvoiceCard = ({
 }) => {
   const canOpenReceipt = Boolean(payment?.receiptUrl);
   const verified = isVerifiedBooking(booking);
-  const canCheckout = verified && booking.status === "confirmed" && payment?.status !== "paid";
-  const paymentStatus = payment?.status || "pending";
+  const bookingState = getCanonicalBookingState(booking, payment);
+  const paymentStatus = getCanonicalPaymentState(payment);
+  const canCheckout = verified && canOpenCheckout(booking, payment);
   const statusText =
     !verified
-      ? "Η κράτηση επιβεβαιώνεται ακόμη · η πληρωμή και η απόδειξη θα ανοίξουν μετά την επιβεβαίωση"
+      ? "Το ραντεβού ελέγχεται · δεν χρειάζεται ενέργεια τώρα"
       : paymentStatus === "paid"
-      ? "Πληρωμένο · η απόδειξη εμφανίζεται μετά την επιβεβαίωση πληρωμής"
+      ? "Πληρωμένο · η απόδειξη ανοίγει από εδώ"
       : paymentStatus === "refunded"
-      ? "Ακυρωμένο · η επιστροφή έχει δρομολογηθεί"
+      ? "Επιστράφηκε · η χρέωση έχει γυρίσει στην αρχική μέθοδο"
+      : paymentStatus === "refund_requested"
+      ? "Η επιστροφή ελέγχεται από την υποστήριξη"
       : paymentStatus === "failed"
-      ? "Η πληρωμή απέτυχε · μπορείτε να δοκιμάσετε ξανά"
-      : booking.status === "cancelled"
+      ? "Η πληρωμή δεν ολοκληρώθηκε · δεν έγινε χρέωση"
+      : bookingState === "cancelled"
       ? "Ακυρωμένο χωρίς χρέωση"
-      : booking.status === "completed"
-        ? "Το ραντεβού ολοκληρώθηκε · η πληρωμή δεν έχει επιβεβαιωθεί ακόμη"
-        : "Πληρωμή σε αναμονή · η απόδειξη εμφανίζεται μετά την επιβεβαίωση";
+      : bookingState === "completed"
+        ? "Η συμβουλευτική ολοκληρώθηκε · δεν υπάρχει ολοκληρωμένη πληρωμή εδώ"
+        : "Η πληρωμή δεν έχει ολοκληρωθεί · η απόδειξη ανοίγει μετά την πληρωμή";
 
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -1584,6 +1600,7 @@ const ReviewComposer = ({
   booking,
   draft,
   submitted,
+  status,
   submitState,
   onChange,
   onSubmit,
@@ -1591,6 +1608,7 @@ const ReviewComposer = ({
   booking: StoredBooking;
   draft: { rating: number; clarityRating: number; responsivenessRating: number; text: string };
   submitted: boolean;
+  status?: UserWorkspace["reviews"][number]["status"];
   submitState?: ReviewSubmitState;
   onChange: (updates: Partial<typeof draft>) => void;
   onSubmit: () => void;
@@ -1602,7 +1620,9 @@ const ReviewComposer = ({
         <p className="mt-1 text-sm text-muted-foreground">{booking.referenceId} · {booking.consultationType}</p>
       </div>
       {submitted ? (
-        <span className="rounded-full bg-sage/15 px-3 py-1 text-xs font-bold text-sage-foreground">Δημοσιευμένη</span>
+        <span className="rounded-full bg-sage/15 px-3 py-1 text-xs font-bold text-sage-foreground">
+          {reviewPublicationStateLabels[status || "under_moderation"]}
+        </span>
       ) : null}
     </div>
     <div className="mt-4 grid gap-3 md:grid-cols-3">

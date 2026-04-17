@@ -1,4 +1,5 @@
 import type { ConsultationMode } from "@/data/lawyers";
+import { normalizeReviewPublicationState, type ReviewPublicationState } from "@/lib/bookingState";
 import { validateLegalDocumentUpload } from "@/lib/documentPolicy";
 import { supabase } from "@/lib/supabase";
 
@@ -34,6 +35,10 @@ export interface UserDocument {
   linkedBookingId?: string;
   visibleToLawyer: boolean;
   uploadedAt: string;
+  retentionUntil?: string;
+  deletionStatus?: "active" | "deletion_requested" | "deleted" | "retained_for_legal_reason";
+  accessAudit?: Array<{ at: string; actor: string; action: string }>;
+  visibilityHistory?: Array<{ at: string; visibleToLawyer: boolean; actor: string }>;
   storagePath?: string;
   downloadUrl?: string;
   persistenceSource?: "supabase" | "local";
@@ -56,7 +61,7 @@ export interface UserReview {
   responsivenessRating: number;
   text: string;
   submittedAt: string;
-  status: "published" | "pending_review";
+  status: ReviewPublicationState;
 }
 
 export interface UserReviewSubmissionResult {
@@ -146,6 +151,10 @@ interface UserDocumentRow {
   category: string;
   booking_id: string | null;
   visible_to_lawyer: boolean;
+  retention_until?: string | null;
+  deletion_status?: string | null;
+  access_audit?: Array<{ at: string; actor: string; action: string }> | null;
+  visibility_history?: Array<{ at: string; visibleToLawyer: boolean; actor: string }> | null;
   storage_path: string | null;
   created_at: string;
 }
@@ -242,6 +251,12 @@ const documentFromRow = (row: UserDocumentRow): UserDocument => ({
   linkedBookingId: row.booking_id || undefined,
   visibleToLawyer: row.visible_to_lawyer,
   uploadedAt: row.created_at,
+  retentionUntil: row.retention_until || getDocumentRetentionUntil(row.category, row.created_at),
+  deletionStatus: (row.deletion_status as UserDocument["deletionStatus"]) || "active",
+  accessAudit: row.access_audit || [],
+  visibilityHistory: row.visibility_history || [
+    { at: row.created_at, visibleToLawyer: row.visible_to_lawyer, actor: "Client" },
+  ],
   storagePath: row.storage_path || undefined,
   persistenceSource: "supabase",
 });
@@ -255,8 +270,22 @@ const reviewFromRow = (row: UserReviewRow): UserReview => ({
   responsivenessRating: Number(row.responsiveness_rating),
   text: row.review_text,
   submittedAt: row.created_at,
-  status: row.status === "published" ? "published" : "pending_review",
+  status: normalizeReviewPublicationState(row.status),
 });
+
+export const getDocumentRetentionUntil = (category: string, fromDate = new Date().toISOString()) => {
+  const years = category.toLowerCase().includes("ταυτό") || category.toLowerCase().includes("identity") ? 1 : 5;
+  const date = new Date(fromDate);
+  date.setFullYear(date.getFullYear() + years);
+  return date.toISOString();
+};
+
+export const getDocumentVisibilityExplanation = (document: Pick<UserDocument, "visibleToLawyer" | "linkedBookingId">) =>
+  document.visibleToLawyer && document.linkedBookingId
+    ? "Ο δικηγόρος του συνδεδεμένου ραντεβού μπορεί να το δει επειδή το αφήσατε ορατό."
+    : document.visibleToLawyer
+      ? "Το αρχείο είναι διαθέσιμο για σύνδεση με ραντεβού, αλλά δεν έχει ακόμη συνδεθεί με συγκεκριμένη συμβουλευτική."
+      : "Μόνο εσείς και η υποστήριξη απορρήτου μπορούν να το ελέγξουν αν ανοίξετε σχετικό αίτημα.";
 
 const createSignedDocumentUrl = async (storagePath?: string | null) => {
   if (!storagePath) return undefined;
@@ -435,6 +464,10 @@ export const addUserDocuments = (
           linkedBookingId,
           visibleToLawyer: true,
           uploadedAt: new Date().toISOString(),
+          retentionUntil: getDocumentRetentionUntil(category),
+          deletionStatus: "active" as const,
+          accessAudit: [{ at: new Date().toISOString(), actor: "Client", action: "Uploaded" }],
+          visibilityHistory: [{ at: new Date().toISOString(), visibleToLawyer: true, actor: "Client" }],
           persistenceSource: "local" as const,
         })),
         ...workspace.documents,
@@ -468,6 +501,10 @@ export const uploadUserDocuments = async (
       linkedBookingId,
       visibleToLawyer: true,
       uploadedAt: new Date().toISOString(),
+      retentionUntil: getDocumentRetentionUntil(category),
+      deletionStatus: "active",
+      accessAudit: [{ at: new Date().toISOString(), actor: "Client", action: "Uploaded" }],
+      visibilityHistory: [{ at: new Date().toISOString(), visibleToLawyer: true, actor: "Client" }],
       storagePath,
       persistenceSource: "local",
     };
@@ -489,6 +526,10 @@ export const uploadUserDocuments = async (
         category,
         storage_path: storagePath,
         visible_to_lawyer: true,
+        retention_until: document.retentionUntil,
+        deletion_status: "active",
+        access_audit: document.accessAudit,
+        visibility_history: document.visibilityHistory,
       });
       if (metadataError) throw metadataError;
 
@@ -518,7 +559,19 @@ export const uploadUserDocuments = async (
 export const removeUserDocument = (userId: string | null | undefined, documentId: string) =>
   updateUserWorkspace(userId, (workspace) => ({
     ...workspace,
-    documents: workspace.documents.filter((document) => document.id !== documentId),
+    documents: workspace.documents.map((document) =>
+      document.id === documentId
+        ? {
+            ...document,
+            visibleToLawyer: false,
+            deletionStatus: "deletion_requested" as const,
+            accessAudit: [
+              { at: new Date().toISOString(), actor: "Client", action: "Deletion requested" },
+              ...(document.accessAudit || []),
+            ],
+          }
+        : document,
+    ),
   }));
 
 export const createUserDocumentDownloadUrl = async (document: UserDocument) =>
@@ -535,10 +588,18 @@ export const removeUserDocumentPersisted = async (
 
   if (resolvedRemoteUserId && existingDocument?.persistenceSource === "supabase") {
     try {
-      await supabase.from("user_documents").delete().eq("id", documentId).eq("user_id", resolvedRemoteUserId);
-      if (existingDocument.storagePath) {
-        await supabase.storage.from(documentsBucket).remove([existingDocument.storagePath]);
-      }
+      await supabase
+        .from("user_documents")
+        .update({
+          visible_to_lawyer: false,
+          deletion_status: "deletion_requested",
+          access_audit: [
+            { at: new Date().toISOString(), actor: "Client", action: "Deletion requested" },
+            ...(existingDocument.accessAudit || []),
+          ],
+        })
+        .eq("id", documentId)
+        .eq("user_id", resolvedRemoteUserId);
     } catch {
       // Keep optimistic local deletion; backend retry can be added by the job queue later.
     }
@@ -555,7 +616,16 @@ export const setUserDocumentVisibility = (
   updateUserWorkspace(userId, (workspace) => ({
     ...workspace,
     documents: workspace.documents.map((document) =>
-      document.id === documentId ? { ...document, visibleToLawyer } : document,
+      document.id === documentId
+        ? {
+            ...document,
+            visibleToLawyer,
+            visibilityHistory: [
+              { at: new Date().toISOString(), visibleToLawyer, actor: "Client" },
+              ...(document.visibilityHistory || []),
+            ],
+          }
+        : document,
     ),
   }));
 
@@ -571,7 +641,13 @@ export const setUserDocumentVisibilityPersisted = async (
     try {
       await supabase
         .from("user_documents")
-        .update({ visible_to_lawyer: visibleToLawyer })
+        .update({
+          visible_to_lawyer: visibleToLawyer,
+          visibility_history: [
+            { at: new Date().toISOString(), visibleToLawyer, actor: "Client" },
+            ...(nextWorkspace.documents.find((document) => document.id === documentId)?.visibilityHistory?.slice(1) || []),
+          ],
+        })
         .eq("id", documentId)
         .eq("user_id", resolvedRemoteUserId);
     } catch {
@@ -601,7 +677,7 @@ export const upsertUserReview = (
       {
         ...review,
         submittedAt: new Date().toISOString(),
-        status: "published",
+        status: "under_moderation",
       },
       ...workspace.reviews.filter((item) => item.bookingId !== review.bookingId),
     ],

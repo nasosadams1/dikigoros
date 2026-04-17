@@ -85,6 +85,33 @@ const patchPayment = async (bookingId: string, updates: Record<string, unknown>)
   }
 };
 
+const patchBooking = async (bookingId: string, updates: Record<string, unknown>) => {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) throw new Error("Missing Supabase service credentials");
+
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/booking_requests?id=eq.${encodeURIComponent(bookingId)}&status=in.(confirmed_unpaid,confirmed_paid,confirmed)`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Booking update failed: ${await response.text()}`);
+  }
+};
+
 const recordPaymentEvent = async (bookingId: string, event: Record<string, unknown>, type: string, object: Record<string, unknown>) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -237,6 +264,9 @@ Deno.serve(async (request) => {
         eventId: event.id,
         paymentStatus: object.payment_status,
       },
+    });
+    await patchBooking(bookingId, {
+      status: "confirmed_paid",
     });
   }
 

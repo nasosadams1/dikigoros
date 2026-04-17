@@ -1417,6 +1417,81 @@ create policy "Users can read own support cases" on public.operational_cases
   );
 grant select,insert on public.operational_cases to authenticated;
 
+-- Production stage-4 hardening overlay: canonical states and backend funnel analytics.
+create table if not exists public.funnel_events (
+  id uuid primary key default gen_random_uuid(),
+  event_name text not null check (event_name in (
+    'homepage_search',
+    'search_profile_opened',
+    'profile_booking_start',
+    'booking_start',
+    'booking_created',
+    'payment_opened',
+    'payment_completed',
+    'consultation_completed',
+    'review_submitted',
+    'lawyer_application_submitted',
+    'lawyer_application_approved',
+    'approved_lawyer_first_completed_consultation'
+  )),
+  occurred_at timestamptz not null default now(),
+  session_id text not null,
+  user_id uuid references auth.users (id) on delete set null,
+  lawyer_id text,
+  booking_id uuid references public.booking_requests (id) on delete set null,
+  city text,
+  category text,
+  source text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists funnel_events_name_time_idx on public.funnel_events (event_name, occurred_at desc);
+create index if not exists funnel_events_session_idx on public.funnel_events (session_id, occurred_at desc);
+create index if not exists funnel_events_lawyer_idx on public.funnel_events (lawyer_id, occurred_at desc) where lawyer_id is not null;
+create index if not exists funnel_events_booking_idx on public.funnel_events (booking_id, occurred_at desc) where booking_id is not null;
+create index if not exists funnel_events_city_category_idx on public.funnel_events (city, category, occurred_at desc);
+
+alter table public.funnel_events enable row level security;
+
+drop policy if exists "Anyone can create funnel events" on public.funnel_events;
+create policy "Anyone can create funnel events" on public.funnel_events for insert
+  to anon, authenticated
+  with check (user_id is null or user_id = auth.uid());
+
+drop policy if exists "Authenticated users can read funnel events" on public.funnel_events;
+create policy "Authenticated users can read funnel events" on public.funnel_events for select
+  to authenticated
+  using (true);
+
+grant insert on public.funnel_events to anon, authenticated;
+grant select on public.funnel_events to authenticated;
+
+alter table public.booking_requests add column if not exists consultation_status text not null default 'scheduled';
+alter table public.booking_requests add column if not exists updated_at timestamptz not null default now();
+alter table public.booking_requests drop constraint if exists booking_requests_status_check;
+alter table public.booking_requests alter column status set default 'pending_confirmation';
+alter table public.booking_requests add constraint booking_requests_status_check
+  check (status in ('pending_confirmation','confirmed_unpaid','confirmed_paid','completed','cancelled'));
+alter table public.booking_requests drop constraint if exists booking_requests_consultation_status_check;
+alter table public.booking_requests add constraint booking_requests_consultation_status_check
+  check (consultation_status in ('scheduled','completed_pending_partner_confirmation','completed_confirmed'));
+
+alter table public.booking_payments drop constraint if exists booking_payments_status_check;
+alter table public.booking_payments alter column status set default 'not_opened';
+alter table public.booking_payments add constraint booking_payments_status_check
+  check (status in ('not_opened','checkout_opened','paid','failed','refund_requested','refunded'));
+
+alter table public.booking_reviews drop constraint if exists booking_reviews_status_check;
+alter table public.booking_reviews alter column status set default 'under_moderation';
+alter table public.booking_reviews add constraint booking_reviews_status_check
+  check (status in ('draft','submitted','under_moderation','published','rejected'));
+
+alter table public.user_documents add column if not exists retention_until timestamptz;
+alter table public.user_documents add column if not exists deletion_status text not null default 'active';
+alter table public.user_documents add column if not exists access_audit jsonb not null default '[]'::jsonb;
+alter table public.user_documents add column if not exists visibility_history jsonb not null default '[]'::jsonb;
+
 notify pgrst, 'reload schema';
 
 commit;
@@ -1437,6 +1512,7 @@ from (
     ('partner_applications', to_regclass('public.partner_applications') is not null),
     ('operational_cases', to_regclass('public.operational_cases') is not null),
     ('booking_payment_events', to_regclass('public.booking_payment_events') is not null),
+    ('funnel_events', to_regclass('public.funnel_events') is not null),
     ('submit_booking_review_rpc', to_regprocedure('public.submit_booking_review(uuid,text,integer,integer,integer,text)') is not null),
     ('save_partner_workspace_rpc', to_regprocedure('public.save_partner_workspace_as_partner(text,text,jsonb,jsonb,jsonb,jsonb)') is not null),
     ('cancel_booking_rpc', to_regprocedure('public.cancel_booking_as_user(uuid)') is not null),

@@ -205,7 +205,7 @@ const Booking = () => {
       setSelectedTime(storedBooking.time);
       recordLocalCheckoutReturn(
         bookingId,
-        checkout === "success" ? "paid" : checkout === "cancelled" ? "pending" : "failed",
+        checkout === "success" ? "paid" : checkout === "cancelled" ? "checkout_opened" : "failed",
         searchParams.get("session_id"),
       );
     }
@@ -214,6 +214,7 @@ const Booking = () => {
       trackFunnelEvent("payment_completed", {
         bookingId,
         lawyerId: storedBooking?.lawyerId || id,
+        userId: user?.id,
         amount: storedBooking?.price,
       });
       setPaymentState({ loading: false, error: "", action: "" });
@@ -230,16 +231,17 @@ const Booking = () => {
       action: "retry-payment",
     });
     setCurrentStep(3);
-  }, [id, searchParams]);
+  }, [id, searchParams, user?.id]);
 
   useEffect(() => {
     if (!lawyer?.id) return;
     trackFunnelEvent("booking_start", {
       lawyerId: lawyer.id,
+      userId: user?.id,
       specialty: lawyer.specialty,
       source: bookingStartSource,
     });
-  }, [bookingStartSource, lawyer?.id, lawyer?.specialty]);
+  }, [bookingStartSource, lawyer?.id, lawyer?.specialty, user?.id]);
 
   const detailErrors = useMemo(() => {
     const errors: Record<string, string> = {};
@@ -348,6 +350,7 @@ const Booking = () => {
         trackFunnelEvent("booking_created", {
           bookingId: result.record.id,
           lawyerId: lawyer.id,
+          userId: user?.id,
           amount: result.record.price,
           source: result.source,
         });
@@ -398,6 +401,7 @@ const Booking = () => {
           trackFunnelEvent("payment_opened", {
             bookingId: confirmedBooking.id,
             lawyerId: confirmedBooking.lawyerId,
+            userId: user?.id,
             amount: confirmedBooking.price,
           });
           window.location.assign(session.url);
@@ -745,7 +749,7 @@ const Booking = () => {
                 <NextStep icon={Upload}>Ανεβάστε ή στείλτε έγγραφα προετοιμασίας πριν από το ραντεβού.</NextStep>
                 <NextStep icon={ShieldCheck}>Δωρεάν ακύρωση ή αλλαγή έως 24 ώρες πριν από την ώρα.</NextStep>
                 {confirmedBooking?.persistenceSource === "local" ? (
-                  <NextStep icon={ShieldCheck}>Η επιβεβαίωση της κράτησης ολοκληρώνεται. Αν δεν λάβετε email, ανοίξτε υποστήριξη.</NextStep>
+                  <NextStep icon={ShieldCheck}>Το ραντεβού σας ελέγχεται από την ομάδα. Αν δεν λάβετε email, ανοίξτε υποστήριξη.</NextStep>
                 ) : null}
               </div>
 

@@ -9,6 +9,7 @@ import SEO from "@/components/SEO";
 import { getLawyers } from "@/lib/lawyerRepository";
 import { defaultLawyerSearchFilters, searchLawyers } from "@/lib/lawyerSearch";
 import { cityDirectory, formatCurrency, getDiscoveryConfig, getPriceFrom, isAvailableToday, issueDirectory } from "@/lib/marketplace";
+import { getDiscoveryDensityState } from "@/lib/operations";
 import { getDiscoverySeo } from "@/lib/seo";
 
 const DiscoveryPage = () => {
@@ -26,6 +27,10 @@ const DiscoveryPage = () => {
     [config.city?.query, config.issue.query, marketplaceLawyers],
   );
   const lawyers = useMemo(() => matchingLawyers.slice(0, 6), [matchingLawyers]);
+  const densityState = useMemo(() => getDiscoveryDensityState(matchingLawyers), [matchingLawyers]);
+  const isCityCategoryRoute = Boolean(config.city);
+  const readyForAcquisition = !isCityCategoryRoute || densityState.ready;
+  const broaderSearchPath = `/search?q=${encodeURIComponent(config.issue.query)}`;
   const routeStats = useMemo(() => {
     const prices = matchingLawyers.map(getPriceFrom).filter((price) => Number.isFinite(price) && price > 0);
     const fastResponses = matchingLawyers.filter((lawyer) => lawyer.responseMinutes <= 60).length;
@@ -56,8 +61,8 @@ const DiscoveryPage = () => {
             </div>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Button asChild className="rounded-lg font-bold">
-                <Link to={config.searchPath}>
-                  Σύγκριση δικηγόρων
+                <Link to={readyForAcquisition ? config.searchPath : broaderSearchPath}>
+                  {readyForAcquisition ? "Σύγκριση δικηγόρων" : "Άνοιγμα ευρύτερης αναζήτησης"}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
@@ -104,12 +109,26 @@ const DiscoveryPage = () => {
         </section>
 
         <section className="mt-10">
-          <h2 className="font-serif text-2xl tracking-tight text-foreground">Δικηγόροι με δυνατότητα κράτησης για αυτή τη διαδρομή</h2>
+          <h2 className="font-serif text-2xl tracking-tight text-foreground">
+            {readyForAcquisition ? "Δικηγόροι με δυνατότητα κράτησης για αυτή τη διαδρομή" : "Αυτή η διαδρομή δεν έχει ακόμη αρκετή πυκνότητα"}
+          </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Η λίστα προέρχεται από τα ίδια δεδομένα αγοράς με την αναζήτηση: τιμή από, επόμενη ώρα, απάντηση, αξιολογήσεις και τρόποι συμβουλευτικής.
+            {readyForAcquisition
+              ? "Η λίστα προέρχεται από τα ίδια δεδομένα αγοράς με την αναζήτηση: τιμή από, επόμενη ώρα, απάντηση, αξιολογήσεις και τρόποι συμβουλευτικής."
+              : "Δεν παρουσιάζουμε μια λεπτή σελίδα ως ώριμη αγορά. Σας στέλνουμε σε ευρύτερη αναζήτηση μέχρι να υπάρχουν αρκετοί ελεγμένοι, κρατήσιμοι δικηγόροι."}
           </p>
+          {isCityCategoryRoute ? (
+            <div className="mt-4 grid gap-2 md:grid-cols-5">
+              {densityState.checks.map((check) => (
+                <div key={check.label} className="rounded-lg border border-border bg-card p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{check.label}</p>
+                  <p className="mt-1 text-sm font-bold text-foreground">{check.count}/{check.minimum}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {lawyers.length > 0 ? lawyers.map((lawyer) => (
+            {readyForAcquisition && lawyers.length > 0 ? lawyers.map((lawyer) => (
               <Link key={lawyer.id} to={`/lawyer/${lawyer.id}`} className="rounded-lg border border-border bg-card p-5 transition hover:border-primary/25 hover:shadow-xl hover:shadow-foreground/[0.05]">
                 <div className="flex items-start gap-4">
                   <img src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-lg object-cover" />
@@ -129,14 +148,14 @@ const DiscoveryPage = () => {
               </Link>
             )) : (
               <div className="rounded-lg border border-dashed border-border bg-card p-6 text-sm leading-6 text-muted-foreground md:col-span-2 lg:col-span-3">
-                Δεν υπάρχει άμεση αντιστοίχιση ακόμη. Ανοίξτε την αναζήτηση για πιο γενικό θέμα ή κοντινή πόλη.
+                Δεν υπάρχει αρκετή άμεση αντιστοίχιση ακόμη. Ανοίξτε την αναζήτηση για πιο γενικό θέμα ή κοντινή πόλη.
               </div>
             )}
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Button asChild className="rounded-lg font-bold">
-              <Link to={config.searchPath}>
-                Σύγκριση όλων των σχετικών δικηγόρων
+              <Link to={readyForAcquisition ? config.searchPath : broaderSearchPath}>
+                {readyForAcquisition ? "Σύγκριση όλων των σχετικών δικηγόρων" : "Συνέχεια σε ευρύτερη αναζήτηση"}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>

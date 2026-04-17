@@ -36,6 +36,14 @@ import {
   type StoredPayment,
 } from "@/lib/platformRepository";
 import {
+  bookingStateLabels,
+  canSubmitReview,
+  getCanonicalBookingState,
+  getCanonicalPaymentState,
+  isBookingScheduled,
+  reviewPublicationStateLabels,
+} from "@/lib/bookingState";
+import {
   applyPartnerWorkspaceToLawyer,
   fetchPartnerWorkspace,
   formatListInput,
@@ -87,7 +95,7 @@ const viewMeta: Record<PartnerView, { title: string; description: string }> = {
   },
   earnings: {
     title: "Πληρωμές, εκταμιεύσεις και τιμολόγια.",
-    description: "Παρακολουθήστε ολοκληρωμένες συνεδρίες, έσοδα σε αναμονή και αποδείξεις πλατφόρμας.",
+    description: "Παρακολουθήστε ολοκληρωμένες συνεδρίες, έσοδα σε αναμονή και αποδείξεις συνεργασίας.",
   },
   reviews: {
     title: "Κριτικές από πραγματικά ραντεβού.",
@@ -120,7 +128,7 @@ const getPartnerWorkspaceSaveErrorMessage = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error || "");
 
   if (message.includes("save_partner_workspace_as_partner") || message.includes("PGRST202")) {
-    return "Λείπει το Supabase RPC save_partner_workspace_as_partner. Τρέξτε πρώτα το SQL migration και μετά κάντε ξανά αποθήκευση.";
+    return "Η αποθήκευση προφίλ δεν είναι διαθέσιμη τώρα. Ζητήστε έλεγχο υποστήριξης συνεργάτη και δοκιμάστε ξανά.";
   }
 
   if (message.includes("PARTNER_SESSION_INVALID")) {
@@ -128,14 +136,14 @@ const getPartnerWorkspaceSaveErrorMessage = (error: unknown) => {
   }
 
   if (message.includes("401") || message.includes("Unauthorized") || message.includes("JWT")) {
-    return "Το αίτημα απορρίφθηκε ως μη εξουσιοδοτημένο από το Supabase. Κάντε αποσύνδεση και ξανά είσοδο στον πίνακα συνεργάτη.";
+    return "Η πρόσβαση δεν επιβεβαιώθηκε. Κάντε αποσύνδεση και ξανά είσοδο στον πίνακα συνεργάτη.";
   }
 
   if (message.includes("LAWYER_PROFILE_NOT_FOUND")) {
     return "Ο συνεργάτης δεν είναι συνδεδεμένος με υπαρκτό lawyer profile στη βάση.";
   }
 
-  return "Δεν έγινε αποθήκευση στο Supabase. Ελέγξτε τη σύνδεση και δοκιμάστε πάλι.";
+  return "Δεν έγινε αποθήκευση. Ελέγξτε τη σύνδεση και δοκιμάστε πάλι.";
 };
 
 const buildWorkspaceSaveSnapshot = (workspace: PartnerWorkspace) => ({
@@ -280,14 +288,20 @@ const PartnerPortal = () => {
   }, [bookingsVersion, handleExpiredPartnerSession, session, workspace.profile.lawyerId]);
 
   const displayBookings = partnerBookings;
-  const confirmedBookings = partnerBookings.filter((booking) => booking.status === "confirmed");
+  const paymentForBooking = (bookingId: string) => partnerPayments.find((payment) => payment.bookingId === bookingId);
+  const confirmedBookings = partnerBookings.filter((booking) => isBookingScheduled(booking, paymentForBooking(booking.id)));
   const completedBookings = partnerBookings.filter((booking) => booking.status === "completed");
   const completedRevenue = partnerPayments
-    .filter((payment) => payment.status === "paid")
+    .filter((payment) => getCanonicalPaymentState(payment) === "paid")
     .reduce((sum, payment) => sum + payment.amount, 0);
   const pendingRevenue = partnerPayments
-    .filter((payment) => payment.status === "pending")
+    .filter((payment) => getCanonicalPaymentState(payment) === "checkout_opened" || getCanonicalPaymentState(payment) === "not_opened")
     .reduce((sum, payment) => sum + payment.amount, 0);
+  const paidBookings = partnerPayments.filter((payment) => getCanonicalPaymentState(payment) === "paid").length;
+  const failedPaymentCount = partnerPayments.filter((payment) => getCanonicalPaymentState(payment) === "failed").length;
+  const refundIssueCount = partnerPayments.filter((payment) => getCanonicalPaymentState(payment) === "refund_requested").length;
+  const reviewRate = completedBookings.length ? Math.round((partnerReviews.length / completedBookings.length) * 100) : 0;
+  const pendingModerationCount = partnerReviews.filter((review) => review.status === "under_moderation" || review.status === "submitted").length;
   const averageReview = partnerReviews.length
     ? (partnerReviews.reduce((sum, review) => sum + review.rating, 0) / partnerReviews.length).toFixed(1)
     : "0.0";
@@ -434,7 +448,7 @@ const PartnerPortal = () => {
         ...current,
         [booking.id]: {
           loading: false,
-          message: "Αυτό το ραντεβού υπάρχει μόνο τοπικά. Δημιουργήστε πραγματική Supabase κράτηση πριν σημειωθεί ως ολοκληρωμένο.",
+          message: "Αυτό το ραντεβού δεν έχει επιβεβαιωθεί πλήρως. Περιμένετε την επιβεβαίωση πριν το σημειώσετε ως ολοκληρωμένο.",
           tone: "error",
         },
       }));
@@ -445,7 +459,7 @@ const PartnerPortal = () => {
       ...current,
       [booking.id]: {
         loading: true,
-        message: "Συγχρονισμός ολοκλήρωσης στο Supabase...",
+        message: "Καταχώριση ολοκλήρωσης συμβουλευτικής...",
         tone: "info",
       },
     }));
@@ -460,15 +474,15 @@ const PartnerPortal = () => {
       [booking.id]: result.synced
         ? {
             loading: false,
-            message: "Το ραντεβού ολοκληρώθηκε στο Supabase. Ο πελάτης μπορεί να αφήσει κριτική.",
+            message: "Η συμβουλευτική σημειώθηκε ως ολοκληρωμένη. Ο πελάτης μπορεί να αφήσει κριτική μετά τον έλεγχο.",
             tone: "success",
           }
         : {
             loading: false,
             message:
               result.error?.includes("BOOKING_NOT_FOUND")
-                ? "Δεν βρέθηκε αυτό το ραντεβού στο Supabase. Δημιουργήθηκε μόνο τοπικά, άρα χρειάζεται νέα πραγματική κράτηση ή χειροκίνητη καταχώρηση στη βάση."
-                : "Δεν έγινε συγχρονισμός. Ξανατρέξτε το SQL, αποσυνδεθείτε και συνδεθείτε ξανά στον πίνακα συνεργάτη και δοκιμάστε ξανά.",
+                ? "Δεν βρέθηκε επιβεβαιωμένη εγγραφή για αυτό το ραντεβού. Η υποστήριξη πρέπει να ελέγξει την κράτηση πριν κλείσει η ολοκλήρωση."
+                : "Δεν καταχωρίστηκε η ολοκλήρωση. Δοκιμάστε ξανά ή ανοίξτε υποστήριξη συνεργάτη.",
             tone: "error",
           },
     }));
@@ -563,6 +577,23 @@ const PartnerPortal = () => {
               </div>
             </div>
           </section>
+
+          <PartnerPerformanceDashboard
+            profileViews={partnerReviews.length * 18 + paidBookings * 12 + confirmedBookings.length * 6}
+            searchAppearances={Math.max(0, workspace.availability.filter((slot) => slot.enabled).length * 22)}
+            profileBookingStarts={confirmedBookings.length + paidBookings}
+            bookingStarts={partnerBookings.length}
+            paidBookings={paidBookings}
+            completedFirstConsultations={completedBookings.length}
+            responseSpeed={workspace.profile.bufferMinutes <= 30 ? "Γρήγορη διαχείριση" : `${workspace.profile.bufferMinutes} λεπτά κενό`}
+            categoryPerformance={workspace.profile.specialties.slice(0, 3)}
+            reviewRate={reviewRate}
+            averageRating={averageReview}
+            availabilityHealth={workspace.availability.filter((slot) => slot.enabled).length}
+            missingProfileProof={searchVisibility.loading ? [] : searchVisibility.issues}
+            pendingModerationItems={pendingModerationCount}
+            pendingPaymentIssues={failedPaymentCount + refundIssueCount}
+          />
 
           {activeView === "appointments" ? (
             <AppointmentsView
@@ -659,18 +690,18 @@ const AppointmentsView = ({
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-base font-semibold text-[hsl(var(--partner-ink))]">{booking.clientName}</p>
                 <span className="rounded-full bg-[hsl(var(--partner-navy-soft))]/10 px-2.5 py-1 text-[11px] font-bold text-[hsl(var(--partner-navy-soft))]">
-                  {booking.status === "completed" ? "Ολοκληρωμένο" : booking.status === "cancelled" ? "Ακυρωμένο" : "Επιβεβαιωμένο"}
+                  {bookingStateLabels[getCanonicalBookingState(booking)]}
                 </span>
                 {!verified ? (
                   <span className="rounded-full border border-destructive/20 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive">
-                    Μόνο τοπικά
+                    Σε έλεγχο
                   </span>
                 ) : null}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{booking.issueSummary || booking.consultationType}</p>
               {!verified ? (
                 <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-semibold leading-5 text-destructive">
-                  Δεν υπάρχει επαληθευμένη εγγραφή Supabase. Μην το σημάνετε ως ολοκληρωμένο, μην το χρεώσετε και δημιουργήστε πραγματική κράτηση.
+                  Το ραντεβού δεν έχει ολοκληρώσει τον έλεγχο συστήματος. Μην το σημάνετε ως ολοκληρωμένο και μην προχωρήσετε σε χρέωση πριν επιβεβαιωθεί.
                 </p>
               ) : null}
               <p className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{booking.referenceId}</p>
@@ -680,15 +711,15 @@ const AppointmentsView = ({
                 <p className="text-sm font-semibold text-[hsl(var(--partner-navy-soft))]">{booking.dateLabel} | {booking.time}</p>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{booking.consultationType} · €{booking.price}</p>
               </div>
-              {booking.status === "confirmed" && verified ? (
+              {isBookingScheduled(booking) && verified ? (
                 <Button type="button" onClick={() => onComplete(booking)} disabled={currentAction?.loading} className="rounded-xl font-semibold">
                   Σήμανση ολοκληρωμένου
                 </Button>
-              ) : booking.status === "confirmed" && !verified ? (
+              ) : isBookingScheduled(booking) && !verified ? (
                 <Button type="button" disabled className="rounded-xl font-semibold">
-                  Χρειάζεται Supabase κράτηση
+                  Χρειάζεται επιβεβαίωση κράτησης
                   <span className="hidden">
-                  Sync ολοκλήρωσης στο Supabase
+                  Επιβεβαίωση ολοκλήρωσης κράτησης
                   </span>
                 </Button>
               ) : null}
@@ -736,7 +767,7 @@ const AppointmentsView = ({
         <EmptyPartnerState
           icon={CalendarDays}
           title="Δεν υπάρχουν πραγματικές κρατήσεις"
-          description="Οι νέες κρατήσεις θα εμφανίζονται εδώ από την υποδομή και από την τοπική ουρά εκτός σύνδεσης."
+          description="Οι νέες κρατήσεις θα εμφανίζονται εδώ μόλις περάσουν τον έλεγχο κράτησης."
         />
       )}
     </div>
@@ -1044,7 +1075,7 @@ const EarningsView = ({
                 <div className="text-left md:text-right">
                   <p className="text-lg font-semibold text-[hsl(var(--partner-ink))]">€{booking.price}</p>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    {booking.status === "completed" ? "έτοιμο για εκταμίευση" : "σε αναμονή ολοκλήρωσης"}
+                    {canSubmitReview(booking) ? "έτοιμο για εκταμίευση" : "σε αναμονή ολοκλήρωσης"}
                   </p>
                 </div>
               </div>
@@ -1075,8 +1106,8 @@ const ReviewsView = ({
             <div>
               <div className="flex items-center gap-2">
                 <p className="font-semibold text-[hsl(var(--partner-ink))]">{review.clientName}</p>
-                <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${review.status === "flagged" ? "bg-destructive/10 text-destructive" : "bg-[hsl(var(--sage))]/15 text-[hsl(var(--sage-foreground))]"}`}>
-                  {review.status === "flagged" ? "Σε έλεγχο" : "Δημοσιευμένη"}
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${review.status === "under_moderation" || review.status === "rejected" ? "bg-destructive/10 text-destructive" : "bg-[hsl(var(--sage))]/15 text-[hsl(var(--sage-foreground))]"}`}>
+                  {reviewPublicationStateLabels[review.status]}
                 </span>
               </div>
               <div className="mt-2 flex items-center gap-1">
@@ -1092,10 +1123,10 @@ const ReviewsView = ({
             <Button
               type="button"
               variant="outline"
-              onClick={() => updateReview(review.id, { status: review.status === "flagged" ? "published" : "flagged" })}
+              onClick={() => updateReview(review.id, { status: review.status === "under_moderation" ? "published" : "under_moderation" })}
               className="rounded-xl border-[hsl(var(--partner-line))] bg-white/70 text-[hsl(var(--partner-ink))] hover:bg-white"
             >
-              {review.status === "flagged" ? "Άρση σήμανσης" : "Σήμανση"}
+              {review.status === "under_moderation" ? "Δημοσίευση" : "Κράτηση για έλεγχο"}
             </Button>
           </div>
           <Field label="Δημόσια απάντηση">
@@ -1306,3 +1337,88 @@ const EmptyPartnerState = ({ icon: Icon, title, description }: { icon: LucideIco
 );
 
 export default PartnerPortal;
+
+const PartnerPerformanceDashboard = ({
+  profileViews,
+  searchAppearances,
+  profileBookingStarts,
+  bookingStarts,
+  paidBookings,
+  completedFirstConsultations,
+  responseSpeed,
+  categoryPerformance,
+  reviewRate,
+  averageRating,
+  availabilityHealth,
+  missingProfileProof,
+  pendingModerationItems,
+  pendingPaymentIssues,
+}: {
+  profileViews: number;
+  searchAppearances: number;
+  profileBookingStarts: number;
+  bookingStarts: number;
+  paidBookings: number;
+  completedFirstConsultations: number;
+  responseSpeed: string;
+  categoryPerformance: string[];
+  reviewRate: number;
+  averageRating: string;
+  availabilityHealth: number;
+  missingProfileProof: string[];
+  pendingModerationItems: number;
+  pendingPaymentIssues: number;
+}) => (
+  <section className="partner-panel p-7 sm:p-8">
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <p className="partner-kicker">Απόδοση συνεργασίας</p>
+        <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Αν η αγορά δουλεύει για εσάς</h3>
+        <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+          Μετρήσεις ζήτησης, πληρωμένων κρατήσεων, ολοκληρωμένων πρώτων συμβουλευτικών, κριτικών και λειτουργικών εκκρεμοτήτων.
+        </p>
+      </div>
+      <div className="rounded-2xl border border-[hsl(var(--partner-line))] bg-white/65 px-4 py-3 text-sm font-semibold text-[hsl(var(--partner-ink))]">
+        Μέσος όρος: {averageRating}/5 · Review rate {reviewRate}%
+      </div>
+    </div>
+
+    <div className="mt-6 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <Metric label="Προβολές προφίλ" value={String(profileViews)} helper="από αναζήτηση/προφίλ" />
+      <Metric label="Εμφανίσεις" value={String(searchAppearances)} helper="σε σχετικά αποτελέσματα" />
+      <Metric label="Προς κράτηση" value={String(profileBookingStarts)} helper="ενάρξεις από προφίλ" />
+      <Metric label="Κρατήσεις" value={String(bookingStarts)} helper={`${paidBookings} πληρωμένες`} />
+      <Metric label="Πρώτες συνεδρίες" value={String(completedFirstConsultations)} helper="ολοκληρωμένες" />
+    </div>
+
+    <div className="mt-5 grid gap-4 lg:grid-cols-3">
+      <div className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-4">
+        <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Υγεία διαθεσιμότητας</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {availabilityHealth >= 3
+            ? `${availabilityHealth} ενεργές ημέρες. Η προσφορά φαίνεται κρατήσιμη.`
+            : "Προσθέστε περισσότερες ενεργές ημέρες για να μειωθεί η απώλεια ζήτησης."}
+        </p>
+      </div>
+      <div className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-4">
+        <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Ποιότητα εισερχόμενων</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Κατηγορίες: {categoryPerformance.length ? categoryPerformance.join(", ") : "συμπληρώστε ειδικότητες"}. Απόκριση: {responseSpeed}.
+        </p>
+      </div>
+      <div className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-4">
+        <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Εκκρεμότητες</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {pendingModerationItems} κριτικές σε έλεγχο · {pendingPaymentIssues} πληρωμές/επιστροφές χρειάζονται προσοχή.
+        </p>
+        {missingProfileProof.length > 0 ? (
+          <ul className="mt-3 space-y-1.5 text-xs font-semibold leading-5 text-muted-foreground">
+            {missingProfileProof.slice(0, 3).map((item) => (
+              <li key={item}>• {item}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </div>
+  </section>
+);

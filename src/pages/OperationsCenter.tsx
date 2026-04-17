@@ -24,6 +24,8 @@ import {
   getOperationalRulesByArea,
   getPaymentReadinessChecks,
   getSupplyReadiness,
+  launchGates,
+  supportWorkflows,
   type OperationalArea,
 } from "@/lib/operations";
 import {
@@ -39,7 +41,7 @@ import {
   type OperationalCase,
   type OperationalCaseStatus,
 } from "@/lib/operationsRepository";
-import { getFunnelMetrics } from "@/lib/funnelAnalytics";
+import { fetchFunnelEvents, getFunnelMetrics } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
 const areaTabs: Array<{ area: OperationalArea; label: string; icon: LucideIcon }> = [
@@ -61,11 +63,25 @@ const paymentChecklist = [
   "Refund decisions follow support policy before processor action.",
 ];
 
+const operationsQueues: Array<{ label: string; area: OperationalArea; priority: "urgent" | "high" | "normal" | "low"; summary: string }> = [
+  { label: "Urgent bookings", area: "bookingDisputes", priority: "urgent", summary: "Slot conflict, booking failure, lawyer cancellation, or no-show within 24 hours." },
+  { label: "Failed payments", area: "payments", priority: "urgent", summary: "Checkout failed, payment abandoned with confusion, duplicate-charge concern, or missing receipt." },
+  { label: "Refund reviews", area: "payments", priority: "high", summary: "Paid cancellation, lawyer cancellation, no-show dispute, or processor refund issue." },
+  { label: "Review moderation", area: "reviews", priority: "normal", summary: "Submitted review needs completion proof, private-detail screening, publication, rejection, or lawyer reply handling." },
+  { label: "Verification pending", area: "verification", priority: "normal", summary: "Partner application or profile change needs identity, license, bar association, and readiness check." },
+  { label: "Complaints pending", area: "bookingDisputes", priority: "high", summary: "Complaint against lawyer, profile accuracy issue, booking disagreement, or behavior report." },
+  { label: "Privacy/security pending", area: "security", priority: "urgent", summary: "Document exposure, account access concern, privacy request, or security incident." },
+];
+
 const OperationsCenter = () => {
   const [activeArea, setActiveArea] = useState<OperationalArea>("payments");
   const [caseVersion, setCaseVersion] = useState(0);
   const [funnelVersion, setFunnelVersion] = useState(0);
   const { data: lawyers = [] } = useQuery({ queryKey: ["lawyers"], queryFn: getLawyers });
+  const { data: funnelEvents = [] } = useQuery({
+    queryKey: ["funnel-events", funnelVersion],
+    queryFn: fetchFunnelEvents,
+  });
   const supplyReadiness = useMemo(() => getSupplyReadiness(lawyers), [lawyers]);
   const rules = activeArea === "supply" ? [] : getOperationalRulesByArea(activeArea);
   const paymentReadinessChecks = useMemo(() => getPaymentReadinessChecks(), []);
@@ -75,7 +91,7 @@ const OperationsCenter = () => {
     [activeArea, operationalCases],
   );
   const activeMetrics = useMemo(() => getOperationalCaseMetrics(activeCases), [activeCases]);
-  const funnelMetrics = useMemo(() => getFunnelMetrics(), [funnelVersion]);
+  const funnelMetrics = useMemo(() => getFunnelMetrics(funnelEvents), [funnelEvents]);
   const funnelBottleneck = useMemo(
     () =>
       funnelMetrics
@@ -272,6 +288,9 @@ const OperationsCenter = () => {
                     <RuleDetail title="User outcome" items={[rule.userOutcome]} />
                     <RuleDetail title="Escalation" items={[rule.escalation]} />
                   </div>
+                  <p className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground">
+                    Close condition: {rule.closeCondition}
+                  </p>
                   <ul className="mt-4 space-y-2">
                     {rule.actions.map((action) => (
                       <li key={action} className="flex items-start gap-2 text-sm leading-6 text-muted-foreground">
@@ -368,6 +387,71 @@ const OperationsCenter = () => {
                 No active cases for this area. Open one when a launch gate, support request, dispute, verification issue, review flag, privacy request, or security concern needs ownership.
               </div>
             )}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-lg border border-border bg-card p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-primary">Production queues</p>
+              <h2 className="mt-2 text-xl font-bold text-foreground">Work that cannot be improvised</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Refunds, moderation, verification, complaints, privacy, and booking exceptions have dedicated queues with owners and SLAs.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {operationsQueues.map((queue) => (
+              <article key={queue.label} className="rounded-lg border border-border bg-background p-4">
+                <p className="text-sm font-bold text-foreground">{queue.label}</p>
+                <p className="mt-1 text-xs font-semibold text-muted-foreground">{operationalAreaLabels[queue.area]} · {operationalPriorityLabels[queue.priority]}</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{queue.summary}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openOperationalCase(queue.area, queue.label, queue.summary, queue.priority)}
+                  className="mt-3 rounded-lg text-xs font-bold"
+                >
+                  Open queue case
+                </Button>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-lg border border-border bg-card p-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">Support workflows</p>
+          <h2 className="mt-2 text-xl font-bold text-foreground">Owner, SLA, evidence, escalation, close condition</h2>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {supportWorkflows.map((workflow) => (
+              <article key={workflow.id} className="rounded-lg border border-border bg-background p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <h3 className="text-sm font-bold text-foreground">{workflow.label}</h3>
+                  <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-bold text-muted-foreground">{workflow.owner}</span>
+                </div>
+                <p className="mt-2 text-xs font-bold uppercase tracking-wider text-primary">{workflow.sla}</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{workflow.userFacingResponse}</p>
+                <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Evidence: {workflow.requiredEvidence.join(", ")}</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">Escalation: {workflow.escalationRule}</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">Close: {workflow.closeCondition}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-lg border border-border bg-card p-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">Hard launch gates</p>
+          <h2 className="mt-2 text-xl font-bold text-foreground">Ready is a checklist, not a feeling</h2>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {launchGates.map((gate) => (
+              <article key={gate.label} className="rounded-lg border border-border bg-background p-4">
+                <StatusBadge ready={gate.ready} notReadyLabel="Gate open" />
+                <h3 className="mt-3 text-sm font-bold text-foreground">{gate.label}</h3>
+                <p className="mt-1 text-xs font-semibold text-muted-foreground">Owner: {gate.owner}</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{gate.evidence}</p>
+              </article>
+            ))}
           </div>
         </section>
       </main>

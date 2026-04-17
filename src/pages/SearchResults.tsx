@@ -589,7 +589,7 @@ const SearchResults = () => {
                 <p className="text-xs font-semibold text-muted-foreground">Τιμή · εμπιστοσύνη · διαθεσιμότητα</p>
               </div>
               <Button asChild className="rounded-lg text-xs font-bold">
-                <Link to="/account?tab=saved">Σύγκριση τώρα</Link>
+                <Link to={`/compare?lawyers=${selectedLawyers.map((lawyer) => lawyer.id).join(",")}`}>Σύγκριση τώρα</Link>
               </Button>
             </div>
             <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
@@ -736,7 +736,9 @@ const CompareRail = ({
       </div>
 
       <Button asChild className="mt-4 w-full rounded-lg text-xs font-bold">
-        <Link to="/account?tab=saved">Άνοιγμα σύγκρισης λογαριασμού</Link>
+        <Link to={`/compare?lawyers=${selectedLawyers.map((lawyer) => lawyer.id).join(",")}`}>
+          Άνοιγμα πλήρους σύγκρισης
+        </Link>
       </Button>
     </div>
   );

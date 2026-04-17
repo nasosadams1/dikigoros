@@ -9,7 +9,7 @@ import {
   createOperationalCase,
   type OperationalCasePriority,
 } from "@/lib/operationsRepository";
-import type { OperationalArea } from "@/lib/operations";
+import { supportWorkflows, type OperationalArea } from "@/lib/operations";
 
 const supportTopics = [
   { type: "booking", icon: CalendarX, title: "Αποτυχίες κράτησης", text: "Σύγκρουση ώρας, ακύρωση δικηγόρου, αλλαγή ραντεβού, μη εμφάνιση και επείγουσες αλλαγές συμβουλευτικής." },
@@ -182,16 +182,17 @@ const SupportCenter = () => {
           Κάθε κατηγορία έχει υπεύθυνο, χρόνο απόκρισης, στοιχεία που χρειάζονται, αποτέλεσμα για τον χρήστη και κανόνα κλιμάκωσης.
         </p>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {visibleOperatingRules.map((rule) => (
-            <article key={rule.title} className="rounded-lg border border-border bg-secondary/35 p-4">
+          {supportWorkflows.map((rule) => (
+            <article key={rule.id} className="rounded-lg border border-border bg-secondary/35 p-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <h3 className="text-sm font-bold text-foreground">{rule.title}</h3>
+                <h3 className="text-sm font-bold text-foreground">{rule.label}</h3>
                 <span className="rounded-full bg-card px-2.5 py-1 text-[11px] font-bold text-muted-foreground">{rule.owner}</span>
               </div>
               <p className="mt-2 text-xs font-bold uppercase tracking-wider text-primary">{rule.sla}</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{rule.userOutcome}</p>
-              <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Στοιχεία: {rule.evidenceNeeded.join(", ")}</p>
-              <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Κλιμάκωση: {rule.escalation}</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{rule.userFacingResponse}</p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Στοιχεία: {rule.requiredEvidence.join(", ")}</p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Κλιμάκωση: {rule.escalationRule}</p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Κλείνει όταν: {rule.closeCondition}</p>
             </article>
           ))}
         </div>

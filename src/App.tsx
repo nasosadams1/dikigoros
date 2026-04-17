@@ -11,6 +11,7 @@ import ScrollToHash from "./components/ScrollToHash";
 const AuthConfirm = lazy(() => import("./components/AuthConfirm"));
 const ResetPasswordPage = lazy(() => import("./components/ResetPasswordPage"));
 const Booking = lazy(() => import("./pages/Booking"));
+const ComparePage = lazy(() => import("./pages/ComparePage"));
 const DiscoveryPage = lazy(() => import("./pages/DiscoveryPage"));
 const ForLawyersLanding = lazy(() => import("./pages/ForLawyersLanding"));
 const Index = lazy(() => import("./pages/Index"));
@@ -58,6 +59,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/search" element={<SearchResults />} />
+              <Route path="/compare" element={<ComparePage />} />
               <Route path="/lawyer/:id" element={<LawyerProfile />} />
               <Route path="/lawyers/:issueSlug" element={<DiscoveryPage />} />
               <Route path="/lawyers/:issueSlug/:citySlug" element={<DiscoveryPage />} />

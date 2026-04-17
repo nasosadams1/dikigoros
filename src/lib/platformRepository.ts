@@ -1,4 +1,12 @@
 import { publicSupabase, supabase } from "@/lib/supabase";
+import {
+  normalizeBookingState,
+  normalizePaymentState,
+  normalizeReviewPublicationState,
+  type BookingState,
+  type PaymentState,
+  type ReviewPublicationState,
+} from "@/lib/bookingState";
 
 export type PersistenceSource = "supabase" | "local";
 
@@ -21,7 +29,7 @@ export interface BookingPayload {
 export interface StoredBooking extends BookingPayload {
   id: string;
   referenceId: string;
-  status: "confirmed" | "cancelled" | "completed";
+  status: BookingState;
   createdAt: string;
   persistenceSource: PersistenceSource;
 }
@@ -33,7 +41,7 @@ export interface StoredPayment {
   lawyerId: string;
   amount: number;
   currency: "EUR";
-  status: "pending" | "paid" | "refunded" | "failed";
+  status: PaymentState;
   invoiceNumber: string;
   provider: "stripe";
   stripeCheckoutSessionId?: string;
@@ -57,7 +65,7 @@ export interface StoredLawyerReview {
   text: string;
   consultationType: string;
   date: string;
-  status: "published" | "pending_review" | "flagged" | "hidden";
+  status: ReviewPublicationState;
   reply: string;
   persistenceSource: PersistenceSource;
 }
@@ -339,9 +347,20 @@ export const createReferenceId = (prefix: "BK" | "PA") => {
   return `${prefix}-${datePart}-${getRandomSegment()}`;
 };
 
-export const getStoredBookings = () => readStoredList<StoredBooking>(bookingStorageKey);
+export const getStoredBookings = () =>
+  readStoredList<StoredBooking>(bookingStorageKey).map((booking) => ({
+    ...booking,
+    status: normalizeBookingState(booking.status),
+  }));
 
-export const getStoredPayments = () => readStoredList<StoredPayment>(paymentStorageKey);
+export const getStoredPayments = () =>
+  readStoredList<StoredPayment>(paymentStorageKey).map((payment) => ({
+    ...payment,
+    status: normalizePaymentState(payment.status, {
+      checkoutSessionId: payment.stripeCheckoutSessionId,
+      checkoutSessionUrl: payment.checkoutSessionUrl,
+    }),
+  }));
 
 export const getStoredBookingById = (bookingId?: string | null) =>
   bookingId ? getStoredBookings().find((booking) => booking.id === bookingId) || null : null;
@@ -395,7 +414,7 @@ interface BookingRequestRow {
   client_email: string;
   client_phone: string;
   issue_summary: string | null;
-  status: StoredBooking["status"];
+  status: string;
   created_at: string;
 }
 
@@ -406,7 +425,7 @@ interface PaymentRow {
   lawyer_id: string;
   amount: number;
   currency: "EUR";
-  status: StoredPayment["status"];
+  status: string;
   invoice_number: string;
   stripe_checkout_session_id?: string | null;
   stripe_payment_intent_id?: string | null;
@@ -427,7 +446,7 @@ interface ReviewRow {
   responsiveness_rating: number;
   review_text: string;
   lawyer_reply?: string | null;
-  status: StoredLawyerReview["status"];
+  status: string;
   created_at: string;
   client_name?: string | null;
   consultation_type?: string | null;
@@ -471,7 +490,7 @@ const bookingFromRow = (row: BookingRequestRow): StoredBooking => ({
   clientEmail: row.client_email,
   clientPhone: row.client_phone,
   issueSummary: row.issue_summary || undefined,
-  status: row.status,
+  status: normalizeBookingState(row.status),
   createdAt: row.created_at,
   persistenceSource: "supabase",
 });
@@ -483,7 +502,10 @@ const paymentFromRow = (row: PaymentRow): StoredPayment => ({
   lawyerId: row.lawyer_id,
   amount: Number(row.amount),
   currency: row.currency || "EUR",
-  status: row.status,
+  status: normalizePaymentState(row.status, {
+    checkoutSessionId: row.stripe_checkout_session_id,
+    checkoutSessionUrl: row.checkout_session_url,
+  }),
   invoiceNumber: row.invoice_number,
   provider: "stripe",
   stripeCheckoutSessionId: row.stripe_checkout_session_id || undefined,
@@ -507,7 +529,7 @@ const reviewFromRow = (row: ReviewRow): StoredLawyerReview => ({
   text: row.review_text,
   consultationType: row.booking_requests?.consultation_type || row.consultation_type || "Συνεδρία",
   date: row.created_at,
-  status: row.status,
+  status: normalizeReviewPublicationState(row.status),
   reply: row.lawyer_reply || "",
   persistenceSource: "supabase",
 });
@@ -764,7 +786,10 @@ export const getBookingSlotKey = (booking: Pick<BookingPayload, "lawyerId" | "da
 export const getReservedBookingSlots = (lawyerId: string) =>
   new Set(
     getStoredBookings()
-      .filter((booking) => booking.lawyerId === lawyerId && booking.status === "confirmed")
+      .filter((booking) =>
+        booking.lawyerId === lawyerId &&
+        ["pending_confirmation", "confirmed_unpaid", "confirmed_paid"].includes(booking.status),
+      )
       .map(getBookingSlotKey),
   );
 
@@ -774,7 +799,7 @@ export const fetchReservedBookingSlots = async (lawyerId: string) => {
       .from(bookingTableName)
       .select("lawyer_id,date_label,time")
       .eq("lawyer_id", lawyerId)
-      .eq("status", "confirmed");
+      .in("status", ["pending_confirmation", "confirmed_unpaid", "confirmed_paid", "confirmed"]);
 
     if (error) throw error;
 
@@ -815,7 +840,7 @@ const createPaymentRecordFromBooking = (
   lawyerId: booking.lawyerId,
   amount: booking.price,
   currency: "EUR",
-  status: "pending",
+  status: "not_opened",
   invoiceNumber: buildInvoiceNumber(booking),
   provider: "stripe",
   createdAt: new Date().toISOString(),
@@ -829,7 +854,7 @@ const persistLocalPayment = (payment: StoredPayment) => {
 
 export const recordLocalCheckoutReturn = (
   bookingId: string,
-  status: "paid" | "failed" | "pending",
+  status: Extract<PaymentState, "paid" | "failed" | "checkout_opened">,
   stripeCheckoutSessionId?: string | null,
 ) => {
   const booking = getStoredBookingById(bookingId);
@@ -863,9 +888,18 @@ export const cancelStoredBooking = (bookingId: string) => {
   writeStoredList(bookingStorageKey, nextBookings);
   const existingPayment = getStoredPayments().find((payment) => payment.bookingId === bookingId);
   if (existingPayment) {
+    const nextStatus: PaymentState =
+      existingPayment.status === "paid" || existingPayment.status === "refund_requested"
+        ? "refund_requested"
+        : existingPayment.status === "refunded"
+          ? "refunded"
+          : existingPayment.status === "checkout_opened"
+            ? "failed"
+            : existingPayment.status;
     persistLocalPayment({
       ...existingPayment,
-      status: existingPayment.status === "paid" ? "refunded" : "failed",
+      status: nextStatus,
+      updatedAt: new Date().toISOString(),
     });
   }
   return nextBookings.find((booking) => booking.id === bookingId) || null;
@@ -891,13 +925,11 @@ export const completeStoredBooking = (bookingId: string) => {
   );
   writeStoredList(bookingStorageKey, nextBookings);
   const completedBooking = nextBookings.find((booking) => booking.id === bookingId);
-  if (completedBooking) {
+  if (completedBooking && !getStoredPayments().some((payment) => payment.bookingId === bookingId)) {
     const existingPayment = getStoredPayments().find((payment) => payment.bookingId === bookingId);
-    const paymentStatus = existingPayment?.status === "paid" ? "paid" : "pending";
     persistLocalPayment({
       ...(existingPayment || createPaymentRecordFromBooking(completedBooking)),
-      status: paymentStatus,
-      paidAt: paymentStatus === "paid" ? existingPayment?.paidAt || new Date().toISOString() : undefined,
+      status: existingPayment?.status || "not_opened",
     });
   }
   return nextBookings.find((booking) => booking.id === bookingId) || null;
@@ -970,7 +1002,7 @@ export const createBooking = async (payload: BookingPayload): Promise<Submission
     ...payload,
     id: createRecordId(),
     referenceId: createReferenceId("BK"),
-    status: "confirmed",
+    status: "pending_confirmation",
     createdAt,
     persistenceSource: "local",
   };
@@ -996,7 +1028,7 @@ export const createBooking = async (payload: BookingPayload): Promise<Submission
 
     if (error) throw error;
 
-    const syncedBooking = { ...booking, persistenceSource: "supabase" as const };
+    const syncedBooking = { ...booking, status: "confirmed_unpaid" as const, persistenceSource: "supabase" as const };
     persistLocalBooking(syncedBooking);
     await persistBookingPayment(syncedBooking);
     return { record: syncedBooking, source: "supabase" };
@@ -1094,6 +1126,7 @@ export const requestBookingCheckoutSession = async (
         ...(existingPayment || createPaymentRecordFromBooking(booking)),
         stripeCheckoutSessionId: response.id,
         checkoutSessionUrl: response.url,
+        status: "checkout_opened",
         updatedAt: new Date().toISOString(),
       });
     }
@@ -1137,15 +1170,13 @@ export const requestBookingRefund = async (
       refundId?: string;
     };
 
-    if (response.status === "refunded") {
-      const existingPayment = getStoredPaymentForBooking(booking.id);
-      if (existingPayment) {
-        persistLocalPayment({
-          ...existingPayment,
-          status: "refunded",
-          updatedAt: requestedAt,
-        });
-      }
+    const existingPayment = getStoredPaymentForBooking(booking.id);
+    if (existingPayment) {
+      persistLocalPayment({
+        ...existingPayment,
+        status: response.status === "refunded" ? "refunded" : "refund_requested",
+        updatedAt: requestedAt,
+      });
     }
 
     return {
@@ -1156,6 +1187,14 @@ export const requestBookingRefund = async (
       persistenceSource: "supabase",
     };
   } catch {
+    const existingPayment = getStoredPaymentForBooking(booking.id);
+    if (existingPayment?.status === "paid") {
+      persistLocalPayment({
+        ...existingPayment,
+        status: "refund_requested",
+        updatedAt: requestedAt,
+      });
+    }
     return {
       provider: "stripe",
       status: "review_required",

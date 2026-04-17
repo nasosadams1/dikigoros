@@ -9,6 +9,7 @@ import {
   getPartnerSession,
   isLocalApprovedPartner,
   localPartnerAccessCode,
+  recordLocalCheckoutReturn,
 } from "@/lib/platformRepository";
 import { buildAvailabilityTimeSlots } from "@/lib/partnerWorkspace";
 
@@ -81,7 +82,7 @@ describe("platform repository contracts", () => {
           clientEmail: "client@example.com",
           clientPhone: "6900000000",
           referenceId: "BK-20260412-TEST",
-          status: "confirmed",
+          status: "confirmed_unpaid",
           createdAt: new Date().toISOString(),
           persistenceSource: "local",
         },
@@ -90,6 +91,37 @@ describe("platform repository contracts", () => {
 
     completeStoredBooking("booking-1");
 
-    expect(getStoredPaymentsForUser("user-1", "client@example.com")[0]?.status).toBe("pending");
+    expect(getStoredPaymentsForUser("user-1", "client@example.com")[0]?.status).toBe("not_opened");
+  });
+
+  it("keeps checkout-opened separate from paid and never downgrades a paid payment", () => {
+    localStorage.setItem(
+      "dikigoros.bookingRequests.v1",
+      JSON.stringify([
+        {
+          id: "booking-2",
+          userId: "user-1",
+          lawyerId: "maria-papadopoulou",
+          lawyerName: "Maria",
+          consultationType: "Video",
+          consultationMode: "video",
+          price: 60,
+          duration: "30 minutes",
+          dateLabel: "Monday",
+          time: "10:00",
+          clientName: "Client",
+          clientEmail: "client@example.com",
+          clientPhone: "6900000000",
+          referenceId: "BK-20260412-TEST2",
+          status: "confirmed_unpaid",
+          createdAt: new Date().toISOString(),
+          persistenceSource: "local",
+        },
+      ]),
+    );
+
+    expect(recordLocalCheckoutReturn("booking-2", "checkout_opened", "cs_test_1")?.status).toBe("checkout_opened");
+    expect(recordLocalCheckoutReturn("booking-2", "paid", "cs_test_1")?.status).toBe("paid");
+    expect(recordLocalCheckoutReturn("booking-2", "failed", "cs_test_1")?.status).toBe("paid");
   });
 });

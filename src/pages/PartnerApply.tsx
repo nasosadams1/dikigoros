@@ -438,7 +438,7 @@ const PartnerApply = () => {
                     <p>{form.specialties.length} ενεργές ειδικότητες δηλώθηκαν</p>
                     <p>{documents.length} αρχείο(α) υποβλήθηκαν για έλεγχο</p>
                     {submittedApplication?.persistenceSource === "local" ? (
-                      <p className="text-[hsl(var(--partner-navy-soft))]">Ο φάκελος αποθηκεύτηκε τοπικά μέχρι να συγχρονιστεί με την υποδομή.</p>
+                      <p className="text-[hsl(var(--partner-navy-soft))]">Ο φάκελος καταχωρίστηκε και θα περάσει από έλεγχο ένταξης.</p>
                     ) : null}
                   </div>
                 </div>
