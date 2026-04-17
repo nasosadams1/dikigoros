@@ -19,12 +19,12 @@ const Footer = () => {
           </div>
 
           <div>
-            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-primary-foreground/50">Marketplace</h4>
+            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-primary-foreground/50">Αγορά</h4>
             <ul className="space-y-3">
-              <li><Link to="/search" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Find lawyer</Link></li>
-              <li><Link to="/lawyers/divorce" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Divorce lawyers</Link></li>
-              <li><Link to="/lawyers/employment/athens" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Employment lawyers in Athens</Link></li>
-              <li><Link to="/lawyers/property/thessaloniki" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Property lawyers in Thessaloniki</Link></li>
+              <li><Link to="/search" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Βρες δικηγόρο</Link></li>
+              <li><Link to="/lawyers/divorce" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Δικηγόροι για διαζύγιο</Link></li>
+              <li><Link to="/lawyers/employment/athens" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Εργατικό δίκαιο στην Αθήνα</Link></li>
+              <li><Link to="/lawyers/property/thessaloniki" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Ακίνητα στη Θεσσαλονίκη</Link></li>
             </ul>
           </div>
 
@@ -40,13 +40,13 @@ const Footer = () => {
 
           {/* Legal */}
           <div>
-            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-primary-foreground/50">Trust center</h4>
+            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-primary-foreground/50">Κέντρο εμπιστοσύνης</h4>
             <ul className="space-y-3">
-              <li><Link to="/trust/verification-standards" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Verification standards</Link></li>
-              <li><Link to="/trust/reviews-policy" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Review policy</Link></li>
-              <li><Link to="/trust/payments-refunds" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Payments and refunds</Link></li>
-              <li><Link to="/help" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Support center</Link></li>
-              <li><Link to="/operations" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Operations center</Link></li>
+              <li><Link to="/trust/verification-standards" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Πρότυπα επαλήθευσης</Link></li>
+              <li><Link to="/trust/reviews-policy" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Πολιτική αξιολογήσεων</Link></li>
+              <li><Link to="/trust/payments-refunds" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Πληρωμές και επιστροφές</Link></li>
+              <li><Link to="/help" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Υποστήριξη</Link></li>
+              <li><Link to="/operations" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Λειτουργίες αγοράς</Link></li>
             </ul>
           </div>
         </div>

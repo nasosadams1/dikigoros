@@ -525,7 +525,7 @@ const getModePrice = (profile: PartnerProfileSettings, mode: ConsultationMode) =
 
 const getNextAvailabilityLabel = (availability: PartnerAvailabilitySlot[]) => {
   const nextSlot = availability.find((slot) => slot.enabled);
-  if (!nextSlot) return "Ξ”ΞΉΞ±ΞΈΞµΟƒΞΉΞΌΟΟ„Ξ·Ο„Ξ± ΞΌΞµ ΟΞ±Ξ½Ο„ΞµΞβΞΏΟ";
+  if (!nextSlot) return "Διαθεσιμότητα με ραντεβού";
   return `${nextSlot.day}, ${nextSlot.start}`;
 };
 

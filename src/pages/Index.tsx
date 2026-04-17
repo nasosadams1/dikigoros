@@ -26,6 +26,7 @@ import {
   formatCurrency,
   getFeaturedLawyerGroups,
   getMarketplaceStats,
+  getPriceFrom,
   getRecommendedLawyers,
   popularLegalJourneys,
   publicTrustMechanics,
@@ -35,16 +36,16 @@ import {
 import { cn } from "@/lib/utils";
 
 const modeOptions: Array<{ value: "any" | ConsultationMode; label: string }> = [
-  { value: "any", label: "Any mode" },
-  { value: "video", label: "Video consultation" },
-  { value: "phone", label: "Phone consultation" },
-  { value: "inPerson", label: "Office visit" },
+  { value: "any", label: "Όλοι οι τρόποι" },
+  { value: "video", label: "Βιντεοκλήση" },
+  { value: "phone", label: "Τηλεφωνική συμβουλευτική" },
+  { value: "inPerson", label: "Συνάντηση στο γραφείο" },
 ];
 
 const languageOptions: Array<{ value: "any" | LanguageIntent; label: string }> = [
-  { value: "any", label: "Any language" },
-  { value: "Greek", label: "Greek" },
-  { value: "English", label: "English" },
+  { value: "any", label: "Όλες οι γλώσσες" },
+  { value: "Greek", label: "Ελληνικά" },
+  { value: "English", label: "Αγγλικά" },
 ];
 
 const groupOrder: FeaturedGroupKey[] = ["topRated", "fastestResponse", "bestValue", "availableSoon"];
@@ -52,23 +53,23 @@ const groupOrder: FeaturedGroupKey[] = ["topRated", "fastestResponse", "bestValu
 const trustCards = [
   {
     icon: ShieldCheck,
-    title: "Verified partner profiles",
-    text: "Identity, license, bar association, and core professional details are checked before a profile appears publicly.",
+    title: "Ελεγμένα δημόσια προφίλ",
+    text: "Ταυτότητα, άδεια άσκησης, δικηγορικός σύλλογος και βασικά επαγγελματικά στοιχεία ελέγχονται πριν από τη δημόσια εμφάνιση.",
   },
   {
     icon: MessageSquareText,
-    title: "Reviews after booking",
-    text: "Published reviews are tied to completed consultations, with moderation and lawyer reply handling.",
+    title: "Αξιολογήσεις μετά από ραντεβού",
+    text: "Οι δημοσιευμένες αξιολογήσεις συνδέονται με ολοκληρωμένες συμβουλευτικές, έλεγχο δημοσίευσης και δυνατότητα απάντησης δικηγόρου.",
   },
   {
     icon: CalendarCheck,
-    title: "Real availability rules",
-    text: "Booking options follow each lawyer's published schedule, booking window, and buffer rules.",
+    title: "Πραγματικοί κανόνες διαθεσιμότητας",
+    text: "Οι ώρες κράτησης ακολουθούν το δημοσιευμένο πρόγραμμα, το παράθυρο κρατήσεων και τα buffers κάθε δικηγόρου.",
   },
   {
     icon: CreditCard,
-    title: "Secure booking and payment",
-    text: "Reservation and payment steps use Stripe-backed checkout before the consultation is confirmed.",
+    title: "Ασφαλής κράτηση και πληρωμή",
+    text: "Η δέσμευση και πληρωμή του πρώτου ραντεβού γίνεται μέσα από Stripe Checkout πριν θεωρηθεί πληρωμένη η κράτηση.",
   },
 ];
 
@@ -109,8 +110,8 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Find and book a verified lawyer | Dikigoros"
-        description="Describe your legal issue, compare verified lawyers by reviews, availability, response time, and price, then book and pay securely."
+        title="Βρείτε και κλείστε ραντεβού με δικηγόρο | Dikigoros"
+        description="Περιγράψτε το νομικό θέμα, συγκρίνετε ελεγμένα προφίλ με αξιολογήσεις, διαθεσιμότητα, απάντηση και τιμή, και κλείστε με ασφαλή πληρωμή."
         path="/"
       />
       <Navbar />
@@ -120,34 +121,34 @@ const Index = () => {
           <div>
             <p className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground">
               <ShieldCheck className="h-3.5 w-3.5 text-sage" />
-              Verified lawyers, real availability, booking-backed reviews
+              Ελεγμένα προφίλ, πραγματική διαθεσιμότητα, αξιολογήσεις μετά από κράτηση
             </p>
             <h1 className="mt-5 max-w-3xl font-serif text-[2.65rem] leading-[1.06] tracking-tight text-foreground md:text-[3.4rem]">
-              Describe the legal issue. Compare the right lawyers. Book with payment.
+              Περιγράψτε το θέμα. Συγκρίνετε δικηγόρους. Κλείστε ραντεβού με πληρωμή.
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
-              Start with the facts that change the match: issue, city, consultation mode, and language. Add details only when they help the lawyer prepare.
+              Ξεκινήστε από όσα αλλάζουν την επιλογή: θέμα, πόλη, τρόπο συμβουλευτικής και γλώσσα. Προσθέστε λεπτομέρειες μόνο όταν βοηθούν την προετοιμασία.
             </p>
 
             <form onSubmit={handleHeroSubmit} className="mt-7 rounded-lg border border-border bg-card p-4 shadow-xl shadow-foreground/[0.05] md:p-5">
               <div className="grid gap-3 md:grid-cols-2">
-                <FieldShell icon={Search} label="Legal issue">
+                <FieldShell icon={Search} label="Νομικό θέμα">
                   <input
                     value={legalIssue}
                     onChange={(event) => setLegalIssue(event.target.value)}
-                    placeholder="Divorce, dismissal, inheritance..."
+                    placeholder="Διαζύγιο, απόλυση, κληρονομιά..."
                     className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
                   />
                 </FieldShell>
-                <FieldShell icon={MapPin} label="City">
+                <FieldShell icon={MapPin} label="Πόλη">
                   <input
                     value={city}
                     onChange={(event) => setCity(event.target.value)}
-                    placeholder="Athens, Thessaloniki..."
+                    placeholder="Αθήνα, Θεσσαλονίκη..."
                     className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
                   />
                 </FieldShell>
-                <FieldShell icon={CalendarCheck} label="Consultation mode">
+                <FieldShell icon={CalendarCheck} label="Τρόπος συμβουλευτικής">
                   <select
                     value={mode}
                     onChange={(event) => setMode(event.target.value as "any" | ConsultationMode)}
@@ -160,7 +161,7 @@ const Index = () => {
                     ))}
                   </select>
                 </FieldShell>
-                <FieldShell icon={Languages} label="Language">
+                <FieldShell icon={Languages} label="Γλώσσα">
                   <select
                     value={language}
                     onChange={(event) => setLanguage(event.target.value as "any" | LanguageIntent)}
@@ -175,22 +176,22 @@ const Index = () => {
                 </FieldShell>
               </div>
               <label className="mt-3 block rounded-lg border border-border bg-background px-3 py-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Problem description, optional</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Σύντομη περιγραφή, προαιρετικά</span>
                 <textarea
                   value={problemDescription}
                   onChange={(event) => setProblemDescription(event.target.value)}
                   rows={3}
-                  placeholder="A few lines about what happened and what you need next."
+                  placeholder="Λίγες γραμμές για το τι συνέβη και τι χρειάζεστε τώρα."
                   className="mt-1 w-full resize-none bg-transparent text-sm font-medium leading-6 text-foreground outline-none placeholder:text-muted-foreground/60"
                 />
               </label>
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Button type="submit" className="h-12 rounded-lg px-6 text-sm font-bold">
-                  Compare matching lawyers
+                  Σύγκριση δικηγόρων
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
                 <p className="text-xs font-semibold text-muted-foreground">
-                  {isFetching ? "Refreshing marketplace data..." : `${stats.verifiedProfiles} public profiles from the marketplace layer`}
+                  {isFetching ? "Ανανέωση δεδομένων αγοράς..." : `${stats.verifiedProfiles} δημόσια ελεγμένα προφίλ`}
                 </p>
               </div>
             </form>
@@ -201,17 +202,17 @@ const Index = () => {
               <div className="flex items-start gap-4">
                 <img src={heroLawyer.image} alt={heroLawyer.name} className="h-20 w-20 rounded-lg object-cover shadow-md ring-2 ring-background" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold uppercase tracking-wider text-sage">Available marketplace profile</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-sage">Διαθέσιμο προφίλ αγοράς</p>
                   <h2 className="mt-1 truncate text-lg font-bold text-foreground">{heroLawyer.name}</h2>
                   <p className="text-sm font-semibold text-primary">{heroLawyer.specialty}</p>
-                  <p className="mt-1 text-xs font-semibold text-muted-foreground">{heroLawyer.city} · {heroLawyer.experience} years</p>
+                  <p className="mt-1 text-xs font-semibold text-muted-foreground">{heroLawyer.city} · {heroLawyer.experience} χρόνια</p>
                 </div>
               </div>
               <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                <HeroMetric label="Rating" value={`${heroLawyer.rating}/5`} detail={`${heroLawyer.reviews} reviews`} />
-                <HeroMetric label="Response" value={heroLawyer.response} detail="Published profile signal" />
-                <HeroMetric label="Next slot" value={heroLawyer.available} detail="Availability rules" />
-                <HeroMetric label="From" value={formatCurrency(heroLawyer.price)} detail="First consultation" />
+                <HeroMetric label="Αξιολόγηση" value={`${heroLawyer.rating}/5`} detail={`${heroLawyer.reviews} αξιολογήσεις`} />
+                <HeroMetric label="Απάντηση" value={heroLawyer.response} detail="Σήμα δημόσιου προφίλ" />
+                <HeroMetric label="Επόμενη ώρα" value={heroLawyer.available} detail="Κανόνες διαθεσιμότητας" />
+                <HeroMetric label="Τιμή από" value={formatCurrency(getPriceFrom(heroLawyer))} detail="Πρώτη συμβουλευτική" />
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {heroLawyer.consultationModes.map((item) => (
@@ -221,7 +222,7 @@ const Index = () => {
                 ))}
               </div>
               <Button asChild className="mt-5 h-11 w-full rounded-lg font-bold">
-                <Link to={`/lawyer/${heroLawyer.id}`}>View decision page</Link>
+                <Link to={`/lawyer/${heroLawyer.id}`}>Προβολή προφίλ απόφασης</Link>
               </Button>
             </aside>
           ) : null}
@@ -230,24 +231,24 @@ const Index = () => {
 
       <section className="bg-primary text-primary-foreground">
         <div className="mx-auto grid max-w-7xl gap-4 px-5 py-5 md:grid-cols-4 lg:px-8">
-          <TrustStat value={String(stats.verifiedProfiles)} label="verified public profiles" />
-          <TrustStat value={`${stats.totalReviews}+`} label="booking-linked reviews" />
-          <TrustStat value={`${stats.averageRating}/5`} label="marketplace rating" />
-          <TrustStat value={`${stats.availableToday}`} label="available today" />
+          <TrustStat value={String(stats.verifiedProfiles)} label="ελεγμένα δημόσια προφίλ" />
+          <TrustStat value={`${stats.totalReviews}+`} label="αξιολογήσεις μετά από κράτηση" />
+          <TrustStat value={`${stats.averageRating}/5`} label="μέση αξιολόγηση αγοράς" />
+          <TrustStat value={`${stats.availableToday}`} label="διαθέσιμοι σήμερα" />
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-sage">Marketplace groups</p>
-            <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Featured from live public profiles</h2>
+            <p className="text-xs font-bold uppercase tracking-widest text-sage">Ομάδες αγοράς</p>
+            <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Προτάσεις από ζωντανά δημόσια προφίλ</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              These groups are calculated from rating, reviews, response time, price, and availability data used across search and profiles.
+              Οι ομάδες υπολογίζονται από αξιολογήσεις, αριθμό κριτικών, χρόνο απάντησης, τιμή και διαθεσιμότητα, με τα ίδια δεδομένα που χρησιμοποιούνται στην αναζήτηση και στα προφίλ.
             </p>
           </div>
           <Button asChild variant="outline" className="rounded-lg font-bold">
-            <Link to="/search">Open comparison engine</Link>
+            <Link to="/search">Άνοιγμα αναζήτησης</Link>
           </Button>
         </div>
 
@@ -291,8 +292,8 @@ const Index = () => {
                 <ProofPill icon={CalendarCheck}>{lawyer.available}</ProofPill>
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
-                <span className="text-lg font-bold text-foreground">{formatCurrency(lawyer.price)}</span>
-                <span className="text-xs font-bold text-primary">Compare and book</span>
+                <span className="text-lg font-bold text-foreground">{formatCurrency(getPriceFrom(lawyer))}</span>
+                <span className="text-xs font-bold text-primary">Σύγκριση και κράτηση</span>
               </div>
             </Link>
           ))}
@@ -301,15 +302,15 @@ const Index = () => {
 
       <section id="categories" className="border-y border-border bg-secondary/35">
         <div className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
-          <p className="text-xs font-bold uppercase tracking-widest text-sage">Popular legal journeys</p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Start from the problem, not a category list</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">Συχνές νομικές διαδρομές</p>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Ξεκινήστε από το πρόβλημα, όχι από κατάλογο κατηγοριών</h2>
           <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
             {popularLegalJourneys.map((journey) => (
               <Link key={journey.title} to={journey.to} className="rounded-lg border border-border bg-card p-4 transition hover:border-primary/25 hover:shadow-md">
                 <h3 className="text-base font-bold text-foreground">{journey.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{journey.description}</p>
                 <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-primary">
-                  See lawyers
+                  Δείτε δικηγόρους
                   <ArrowRight className="h-3.5 w-3.5" />
                 </span>
               </Link>
@@ -320,14 +321,14 @@ const Index = () => {
 
       <section id="how-it-works" className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
         <div className="text-center">
-          <p className="text-xs font-bold uppercase tracking-widest text-sage">Transactional path</p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Describe, compare, book and pay</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">Διαδρομή κράτησης</p>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Περιγραφή, σύγκριση, κράτηση και πληρωμή</h2>
         </div>
         <div className="mx-auto mt-7 grid max-w-5xl gap-3 md:grid-cols-3">
           {[
-            ["01", "Describe the issue", "Use issue, city, language, and mode to narrow the marketplace quickly."],
-            ["02", "Compare lawyers", "Review specialty, fit, rating, response time, next slot, consultation modes, and price."],
-            ["03", "Book and pay", "Reserve a real slot, confirm the summary, and complete the secure payment step."],
+            ["01", "Περιγράψτε το θέμα", "Χρησιμοποιήστε θέμα, πόλη, γλώσσα και τρόπο συμβουλευτικής για γρήγορο περιορισμό της αγοράς."],
+            ["02", "Συγκρίνετε δικηγόρους", "Δείτε εξειδίκευση, καταλληλότητα, αξιολόγηση, απάντηση, επόμενη ώρα, τρόπους και τιμή."],
+            ["03", "Κλείστε και πληρώστε", "Δεσμεύστε πραγματική ώρα, επιβεβαιώστε τη σύνοψη και ολοκληρώστε την ασφαλή πληρωμή."],
           ].map(([step, title, text]) => (
             <div key={step} className="rounded-lg border border-border bg-card p-5">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary font-serif text-primary-foreground">{step}</span>
@@ -342,8 +343,8 @@ const Index = () => {
         <div className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
           <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-sage">Trust mechanics</p>
-              <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Proof that follows the booking system</h2>
+              <p className="text-xs font-bold uppercase tracking-widest text-sage">Κανόνες εμπιστοσύνης</p>
+              <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Απόδειξη που ακολουθεί το σύστημα κρατήσεων</h2>
               <div className="mt-5 space-y-2">
                 {publicTrustMechanics.map((item) => (
                   <p key={item} className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -368,20 +369,20 @@ const Index = () => {
 
       {reviewBackedLawyers.length > 0 ? (
         <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
-          <p className="text-xs font-bold uppercase tracking-widest text-sage">Review-backed proof</p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Published review signals, not homepage testimonials</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">Απόδειξη από αξιολογήσεις</p>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Δημοσιευμένα σήματα αξιολόγησης, όχι μαρτυρίες βιτρίνας</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             {reviewBackedLawyers.map((lawyer) => (
               <Link key={lawyer.id} to={`/lawyer/${lawyer.id}`} className="rounded-lg border border-border bg-card p-5 transition hover:border-primary/25">
                 <div className="flex items-center gap-1.5 text-gold">
                   <Star className="h-4 w-4 fill-current" />
                   <span className="font-bold text-foreground">{lawyer.rating}</span>
-                  <span className="text-sm font-semibold text-muted-foreground">from {lawyer.reviews} reviews</span>
+                  <span className="text-sm font-semibold text-muted-foreground">από {lawyer.reviews} αξιολογήσεις</span>
                 </div>
                 <h3 className="mt-3 text-base font-bold text-foreground">{lawyer.name}</h3>
                 <p className="mt-1 text-sm font-semibold text-primary">{lawyer.specialty}</p>
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  Reviews are published only after completed consultations and appear on the lawyer decision page.
+                  Οι αξιολογήσεις δημοσιεύονται μόνο μετά από ολοκληρωμένες συμβουλευτικές και εμφανίζονται στο προφίλ απόφασης.
                 </p>
               </Link>
             ))}
@@ -391,13 +392,13 @@ const Index = () => {
 
       <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8">
         <div className="rounded-lg bg-primary px-6 py-9 text-center text-primary-foreground">
-          <h2 className="font-serif text-3xl tracking-tight">Ready to compare real options?</h2>
+          <h2 className="font-serif text-3xl tracking-tight">Έτοιμοι να συγκρίνετε πραγματικές επιλογές;</h2>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-primary-foreground/70">
-            Move into search with the same public marketplace data, then shortlist, compare, and book.
+            Συνεχίστε στην αναζήτηση με τα ίδια δημόσια δεδομένα αγοράς, φτιάξτε σύντομη λίστα, συγκρίνετε και κλείστε ραντεβού.
           </p>
           <Button asChild variant="secondary" className="mt-5 rounded-lg font-bold">
             <Link to="/search">
-              Find a lawyer
+              Βρείτε δικηγόρο
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>

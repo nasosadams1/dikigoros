@@ -8,68 +8,68 @@ import SEO from "@/components/SEO";
 const trustPages = {
   "/trust/verification-standards": {
     icon: ShieldCheck,
-    eyebrow: "Verification standards",
-    title: "What verified means",
-    intro: "Verified means the public profile passed partner checks before marketplace visibility. It does not guarantee a legal outcome.",
+    eyebrow: "Πρότυπα επαλήθευσης",
+    title: "Τι σημαίνει επαληθευμένο προφίλ",
+    intro: "Επαληθευμένο σημαίνει ότι ο φάκελος συνεργάτη πέρασε έλεγχο πριν εμφανιστεί δημόσια στην αγορά. Δεν είναι εγγύηση αποτελέσματος υπόθεσης.",
     sections: [
-      ["What we check", "Identity, license, professional details, bar association, practice information, consultation setup, and public profile readiness."],
-      ["What it does not mean", "It is not a guarantee of case result, legal strategy, or client-lawyer fit. Clients still compare experience, price, availability, and reviews."],
-      ["Operations", "Applications can be approved, rejected, retried with missing evidence, suspended, or removed when readiness or conduct rules are not met."],
+      ["Τι ελέγχουμε", "Ταυτότητα, άδεια άσκησης, δικηγορικό σύλλογο, βασικά επαγγελματικά στοιχεία, στοιχεία πρακτικής, τρόπους συμβουλευτικής, τιμές και ετοιμότητα δημόσιου προφίλ."],
+      ["Τι δεν σημαίνει", "Δεν εγγυάται αποτέλεσμα υπόθεσης, στρατηγική ή τελική καταλληλότητα. Ο πελάτης συγκρίνει ακόμη εμπειρία, τιμή, διαθεσιμότητα και αξιολογήσεις."],
+      ["Τι γίνεται επιχειρησιακά", "Αιτήσεις εγκρίνονται, απορρίπτονται, επιστρέφουν για στοιχεία, παγώνουν ή αφαιρούνται όταν δεν τηρούνται οι κανόνες ετοιμότητας ή συμπεριφοράς."],
     ],
   },
   "/trust/reviews-policy": {
     icon: Star,
-    eyebrow: "Review policy",
-    title: "Who can review and when reviews go live",
-    intro: "Reviews are connected to completed bookings so public proof follows actual consultations.",
+    eyebrow: "Πολιτική αξιολογήσεων",
+    title: "Ποιος αξιολογεί και πότε δημοσιεύεται η κριτική",
+    intro: "Οι αξιολογήσεις συνδέονται με ολοκληρωμένες κρατήσεις ώστε η δημόσια απόδειξη να ακολουθεί πραγματική συμβουλευτική.",
     sections: [
-      ["Who can review", "Clients with completed bookings can submit ratings for overall experience, clarity, and responsiveness, plus a written review."],
-      ["Moderation rules", "Reviews can be blocked for abuse, private case details, conflicts of interest, fraud signals, or content unrelated to the consultation."],
-      ["Disputes and replies", "Lawyers can reply publicly and raise disputes. The platform can hold, hide, or remove reviews after moderation."],
+      ["Ποιος μπορεί να αξιολογήσει", "Πελάτες με ολοκληρωμένο και επαληθευμένο ραντεβού μπορούν να βαθμολογήσουν συνολική εμπειρία, σαφήνεια και ανταπόκριση, και να γράψουν κριτική."],
+      ["Κανόνες ελέγχου", "Κριτικές μπλοκάρονται ή κρατούνται όταν περιέχουν καταχρηστικό περιεχόμενο, ιδιωτικά στοιχεία υπόθεσης, σύγκρουση συμφερόντων, ένδειξη απάτης ή άσχετο περιεχόμενο."],
+      ["Ενστάσεις και απαντήσεις", "Ο δικηγόρος μπορεί να απαντήσει δημόσια ή να ζητήσει έλεγχο. Η πλατφόρμα μπορεί να κρατήσει, κρύψει ή αφαιρέσει κριτική μετά από moderation."],
     ],
   },
   "/trust/payments-refunds": {
     icon: CreditCard,
-    eyebrow: "Payments and refunds",
-    title: "Payment timing, cancellations, refunds",
-    intro: "Booking commitment is tied to a Stripe-backed payment step before the consultation is treated as paid.",
+    eyebrow: "Πληρωμές και επιστροφές",
+    title: "Πότε πληρώνετε, πότε ακυρώνετε, πότε επιστρέφονται χρήματα",
+    intro: "Η εμπορική δέσμευση της κράτησης συνδέεται με Stripe Checkout πριν το ραντεβού θεωρηθεί πληρωμένο.",
     sections: [
-      ["Payment timing", "The first consultation is paid during checkout. Card data is handled by Stripe-hosted payment flow."],
-      ["Cancellation rules", "Clients can cancel or reschedule free up to 24 hours before the slot. Late cancellation, lawyer cancellation, no-show, and slot-conflict cases go to support review."],
-      ["Refund handling", "Eligible refunds are routed through the original payment method. Failed or interrupted payments show a human-readable support path."],
+      ["Χρόνος πληρωμής", "Η πρώτη συμβουλευτική πληρώνεται στη ροή Stripe Checkout. Τα στοιχεία κάρτας χειρίζονται από φιλοξενούμενη ροή Stripe και δεν πληκτρολογούνται μέσα στην εφαρμογή."],
+      ["Κανόνες ακύρωσης", "Ο πελάτης μπορεί να ακυρώσει ή να αλλάξει δωρεάν έως 24 ώρες πριν. Εκπρόθεσμη ακύρωση, ακύρωση δικηγόρου, μη εμφάνιση ή σύγκρουση ώρας περνά σε έλεγχο υποστήριξης."],
+      ["Εκτέλεση επιστροφής", "Επιλέξιμες επιστροφές στέλνονται στην αρχική μέθοδο πληρωμής. Αποτυχημένη ή διακοπείσα πληρωμή εμφανίζει καθαρή διαδρομή υποστήριξης και δεν αφήνει τεχνικό αδιέξοδο."],
     ],
   },
   "/trust/privacy-documents": {
     icon: FileText,
-    eyebrow: "Privacy and documents",
-    title: "Document visibility and deletion basics",
-    intro: "Legal documents should be shared only when needed for a booked consultation or support request.",
+    eyebrow: "Απόρρητο και έγγραφα",
+    title: "Ορατότητα εγγράφων και αιτήματα διαγραφής",
+    intro: "Τα νομικά έγγραφα κοινοποιούνται μόνο όταν χρειάζονται για κράτηση ή αίτημα υποστήριξης.",
     sections: [
-      ["Visibility", "Uploaded documents are visible to the selected lawyer only when the client marks them visible for a related booking."],
-      ["Retention and deletion", "Clients can request deletion or access workflows. Retention depends on account, booking, payment, support, and legal obligations."],
-      ["Privacy requests", "Account data, document access, and deletion requests route through privacy support for review and confirmation."],
+      ["Ορατότητα", "Τα ανεβασμένα έγγραφα είναι ορατά στον επιλεγμένο δικηγόρο μόνο όταν ο πελάτης τα αφήσει ορατά για συνδεδεμένο ραντεβού."],
+      ["Διατήρηση και διαγραφή", "Ο πελάτης μπορεί να ζητήσει πρόσβαση ή διαγραφή. Η διατήρηση εξαρτάται από λογαριασμό, κράτηση, πληρωμή, υποστήριξη και νόμιμες υποχρεώσεις."],
+      ["Αιτήματα απορρήτου", "Αιτήματα για δεδομένα λογαριασμού, πρόσβαση εγγράφων ή διαγραφή δρομολογούνται σε υποστήριξη απορρήτου για έλεγχο και επιβεβαίωση."],
     ],
   },
   "/trust/support-complaints": {
     icon: MessageSquareWarning,
-    eyebrow: "Support and complaints",
-    title: "Booking, payment, and conduct support",
-    intro: "Support paths cover urgent booking issues, payment failures, account access, complaints, and moderation questions.",
+    eyebrow: "Υποστήριξη και παράπονα",
+    title: "Υποστήριξη για κρατήσεις, πληρωμές και συμπεριφορά",
+    intro: "Οι διαδρομές υποστήριξης καλύπτουν επείγοντα προβλήματα κράτησης, αποτυχίες πληρωμής, πρόσβαση λογαριασμού, παράπονα και ερωτήσεις moderation.",
     sections: [
-      ["Response standards", "Urgent booking or payment failures are prioritized. General account and policy questions are routed by issue type."],
-      ["Complaint paths", "Clients and lawyers can raise complaints about booking disputes, review moderation, profile accuracy, payment handling, or document access."],
-      ["Resolution rules", "Support may request evidence, freeze disputed publication, coordinate reschedule/refund handling, or escalate privacy/security issues."],
+      ["Προτεραιότητες απάντησης", "Επείγουσα αποτυχία κράτησης ή πληρωμής μπαίνει πρώτη. Γενικές ερωτήσεις λογαριασμού και πολιτικής δρομολογούνται ανά τύπο θέματος."],
+      ["Διαδρομές παραπόνων", "Πελάτες και δικηγόροι μπορούν να ανοίξουν παράπονο για διαφωνία κράτησης, moderation αξιολόγησης, ακρίβεια προφίλ, χειρισμό πληρωμής ή πρόσβαση εγγράφων."],
+      ["Κανόνες επίλυσης", "Η υποστήριξη μπορεί να ζητήσει στοιχεία, να παγώσει επίμαχη δημοσίευση, να συντονίσει αλλαγή/επιστροφή ή να κλιμακώσει θέμα απορρήτου και ασφάλειας."],
     ],
   },
   "/trust/security": {
     icon: LockKeyhole,
-    eyebrow: "Secure client handling",
-    title: "Sensitive legal data controls",
-    intro: "Security controls focus on payment consistency, privacy handling, incident response, and restricted access to sensitive legal/customer data.",
+    eyebrow: "Ασφαλής χειρισμός πελάτη",
+    title: "Έλεγχοι για ευαίσθητα νομικά δεδομένα",
+    intro: "Οι έλεγχοι ασφάλειας εστιάζουν σε συνέπεια πληρωμών, χειρισμό απορρήτου, απόκριση περιστατικών και περιορισμένη πρόσβαση σε ευαίσθητα δεδομένα.",
     sections: [
-      ["Payment consistency", "Payment claims must match the Stripe-backed checkout flow and account payment records."],
-      ["Access controls", "Client documents and booking records should be visible only to the user, the selected lawyer, and authorized support workflows."],
-      ["Incident handling", "Security or privacy incidents require triage, containment, user communication, and operational review."],
+      ["Συνέπεια πληρωμών", "Κάθε ισχυρισμός πληρωμής πρέπει να συμφωνεί με Stripe Checkout και τις εγγραφές πληρωμών του λογαριασμού."],
+      ["Έλεγχοι πρόσβασης", "Έγγραφα πελάτη και εγγραφές κρατήσεων πρέπει να είναι ορατά μόνο στον χρήστη, στον επιλεγμένο δικηγόρο και σε εξουσιοδοτημένες ροές υποστήριξης."],
+      ["Χειρισμός περιστατικών", "Περιστατικά ασφάλειας ή απορρήτου απαιτούν triage, περιορισμό, ενημέρωση χρήστη όπου χρειάζεται και επιχειρησιακό έλεγχο."],
     ],
   },
 } as const;
@@ -110,12 +110,12 @@ const TrustPage = () => {
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="rounded-lg font-bold">
             <Link to="/search">
-              Find a lawyer
+              Βρείτε δικηγόρο
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
           <Button asChild variant="outline" className="rounded-lg font-bold">
-            <Link to="/help">Open support center</Link>
+            <Link to="/help">Άνοιγμα υποστήριξης</Link>
           </Button>
         </div>
       </main>

@@ -32,6 +32,7 @@ import {
   formatCurrency,
   getLowestConsultation,
   getNextAvailabilityOptions,
+  getPriceFrom,
   getSimilarLawyerGroups,
   type AvailabilityRules,
 } from "@/lib/marketplace";
@@ -167,7 +168,7 @@ const LawyerProfile = () => {
     <div className="min-h-screen bg-background">
       <SEO
         title={`${lawyer.name} - ${lawyer.specialty} | Dikigoros`}
-        description={`Compare ${lawyer.name} by specialty, verified profile details, reviews, availability, consultation modes, and starting price.`}
+        description={`Συγκρίνετε τον/την ${lawyer.name} με βάση ειδίκευση, επαλήθευση, αξιολογήσεις, διαθεσιμότητα, τρόπους συμβουλευτικής και τιμή από.`}
         path={`/lawyer/${lawyer.id}`}
       />
       <Navbar />
@@ -231,7 +232,7 @@ const LawyerProfile = () => {
                         <ShieldCheck className="h-4 w-4" />
                         Επαληθευμένος φάκελος συνεργάτη
                       </span>
-                      <span className="text-[12px] font-semibold text-foreground/55">Last check: {lawyer.verification.checkedAt}</span>
+                      <span className="text-[12px] font-semibold text-foreground/55">Τελευταίος έλεγχος: {lawyer.verification.checkedAt}</span>
                     </div>
                     <p className="mt-2 text-[13px] leading-6 text-foreground/65">
                       {lawyer.verification.barAssociation} · {lawyer.verification.registryLabel}
@@ -255,11 +256,11 @@ const LawyerProfile = () => {
             <section className="mt-7 rounded-2xl border border-border bg-card p-5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-sage">Real next slots</p>
-                  <h2 className="mt-1 font-serif text-xl tracking-tight text-foreground">Available before you enter booking</h2>
+                  <p className="text-xs font-bold uppercase tracking-wider text-sage">Πραγματικές επόμενες ώρες</p>
+                  <h2 className="mt-1 font-serif text-xl tracking-tight text-foreground">Διαθεσιμότητα πριν μπείτε στην κράτηση</h2>
                 </div>
                 <span className="rounded-lg bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground">
-                  Uses the same booking availability rules
+                  Ίδιοι κανόνες με τη ροή κράτησης
                 </span>
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -274,7 +275,7 @@ const LawyerProfile = () => {
                   </Link>
                 )) : (
                   <div className="rounded-xl border border-dashed border-border bg-secondary/40 p-4 text-sm font-semibold text-muted-foreground sm:col-span-2 lg:col-span-4">
-                    No near-term public slots are available from the current published schedule.
+                    Δεν υπάρχουν κοντινές δημόσιες ώρες από το τρέχον δημοσιευμένο πρόγραμμα.
                   </div>
                 )}
               </div>
@@ -315,14 +316,14 @@ const LawyerProfile = () => {
             </section>
 
             <section className="mt-8 grid gap-4 md:grid-cols-3">
-              <DecisionInfoCard icon={FileText} title="What to prepare">
-                A short timeline, names of involved parties, key deadlines, and any contracts, notices, court papers, or messages that explain the issue.
+              <DecisionInfoCard icon={FileText} title="Τι να ετοιμάσετε">
+                Σύντομο ιστορικό, ονόματα εμπλεκομένων, βασικές προθεσμίες και έγγραφα, ειδοποιήσεις, δικαστικά χαρτιά ή μηνύματα που εξηγούν το θέμα.
               </DecisionInfoCard>
-              <DecisionInfoCard icon={MessageSquareQuote} title="What happens">
-                The first consultation clarifies the facts, immediate risks, likely next steps, and whether the lawyer can take the matter forward.
+              <DecisionInfoCard icon={MessageSquareQuote} title="Τι θα γίνει">
+                Η πρώτη συμβουλευτική ξεκαθαρίζει γεγονότα, άμεσους κινδύνους, πιθανά επόμενα βήματα και αν ο δικηγόρος μπορεί να συνεχίσει την υπόθεση.
               </DecisionInfoCard>
-              <DecisionInfoCard icon={CreditCard} title="Change terms">
-                Free cancellation or reschedule up to 24 hours before the slot. Later changes may need support review before refund handling.
+              <DecisionInfoCard icon={CreditCard} title="Αλλαγή ή ακύρωση">
+                Δωρεάν ακύρωση ή αλλαγή έως 24 ώρες πριν. Μεταγενέστερες αλλαγές μπορεί να χρειαστούν έλεγχο υποστήριξης πριν από επιστροφή.
               </DecisionInfoCard>
             </section>
 
@@ -375,14 +376,14 @@ const LawyerProfile = () => {
                       </div>
                     </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                      <ReviewMetric label="Overall" value={`${review.rating}/5`} />
-                      <ReviewMetric label="Clarity" value={`${review.clarityRating}/5`} />
-                      <ReviewMetric label="Responsiveness" value={`${review.responsivenessRating}/5`} />
+                      <ReviewMetric label="Συνολικά" value={`${review.rating}/5`} />
+                      <ReviewMetric label="Σαφήνεια" value={`${review.clarityRating}/5`} />
+                      <ReviewMetric label="Ανταπόκριση" value={`${review.responsivenessRating}/5`} />
                     </div>
                     <p className="mt-3 text-[14px] leading-relaxed text-foreground/70">{review.text}</p>
                     {review.lawyerReply ? (
                       <div className="mt-3 rounded-xl bg-secondary px-4 py-3 text-[13px] leading-relaxed text-foreground/65">
-                        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Lawyer reply</p>
+                        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Απάντηση δικηγόρου</p>
                         <p>{review.lawyerReply}</p>
                       </div>
                     ) : null}
@@ -399,12 +400,12 @@ const LawyerProfile = () => {
             </section>
 
             <section className="mt-8">
-              <h2 className="font-serif text-xl tracking-tight text-foreground">Similar lawyer alternatives</h2>
+              <h2 className="font-serif text-xl tracking-tight text-foreground">Εναλλακτικές με συγκεκριμένο λόγο</h2>
               <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <AlternativeGroup title="Best overall match" lawyers={similarLawyers.bestMatch} />
-                <AlternativeGroup title="Cheaper" lawyers={similarLawyers.cheaper} />
-                <AlternativeGroup title="Faster response" lawyers={similarLawyers.faster} />
-                <AlternativeGroup title="More reviewed" lawyers={similarLawyers.moreReviewed} />
+                <AlternativeGroup title="Καλύτερη συνολική αντιστοίχιση" lawyers={similarLawyers.bestMatch} />
+                <AlternativeGroup title="Χαμηλότερη τιμή" lawyers={similarLawyers.cheaper} />
+                <AlternativeGroup title="Ταχύτερη απάντηση" lawyers={similarLawyers.faster} />
+                <AlternativeGroup title="Περισσότερες αξιολογήσεις" lawyers={similarLawyers.moreReviewed} />
               </div>
             </section>
 
@@ -433,8 +434,8 @@ const LawyerProfile = () => {
             <div className="rounded-2xl border border-border bg-card p-5 shadow-xl shadow-foreground/[0.06]">
               <p className="text-[11px] font-bold uppercase tracking-widest text-foreground/40">Κλείστε ραντεβού</p>
               <div className="mt-2.5 flex items-baseline gap-1.5">
-                <span className="text-[1.75rem] font-bold text-foreground">from {formatCurrency(lowestPrice)}</span>
-                <span className="text-[13px] font-semibold text-foreground/40">/ consultation</span>
+                <span className="text-[1.75rem] font-bold text-foreground">από {formatCurrency(lowestPrice)}</span>
+                <span className="text-[13px] font-semibold text-foreground/40">/ συμβουλευτική</span>
               </div>
 
               <div className="mt-4 space-y-2.5">
@@ -442,8 +443,8 @@ const LawyerProfile = () => {
                 <Signal icon={ShieldCheck}>{lawyer.verification.barAssociation}</Signal>
                 <Signal icon={Clock}>Απάντηση {lawyer.response}</Signal>
                 <Signal icon={Star}>{displayRating} ({reviewCount} αξιολογήσεις)</Signal>
-                <Signal icon={CreditCard}>Payment step before commitment</Signal>
-                <Signal icon={CalendarDays}>Real slot held during checkout</Signal>
+                <Signal icon={CreditCard}>Πληρωμή πριν θεωρηθεί δεσμευμένο</Signal>
+                <Signal icon={CalendarDays}>Πραγματική ώρα κρατιέται στο checkout</Signal>
                 <Signal icon={ShieldCheck}>Δωρεάν ακύρωση 24 ώρες πριν</Signal>
               </div>
 
@@ -454,7 +455,7 @@ const LawyerProfile = () => {
 
               {nextSlots.length > 0 ? (
                 <div className="mt-3 rounded-xl border border-border bg-background p-3">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Near-term slots</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Κοντινές ώρες</p>
                   <div className="mt-2 space-y-1.5">
                     {nextSlots.slice(0, 3).map((slot) => (
                       <p key={`${slot.dateLabel}-${slot.time}`} className="flex items-center justify-between gap-3 text-xs font-bold text-foreground">
@@ -563,11 +564,11 @@ const AlternativeGroup = ({ title, lawyers }: { title: string; lawyers: Lawyer[]
         <Link key={lawyer.id} to={`/lawyer/${lawyer.id}`} className="block rounded-lg bg-secondary/60 p-3 transition hover:bg-secondary">
           <p className="truncate text-sm font-bold text-foreground">{lawyer.name}</p>
           <p className="mt-1 text-xs font-semibold text-muted-foreground">
-            {formatCurrency(lawyer.price)} · {lawyer.response} · {lawyer.reviews} reviews
+            {formatCurrency(getPriceFrom(lawyer))} · {lawyer.response} · {lawyer.reviews} αξιολογήσεις
           </p>
         </Link>
       )) : (
-        <p className="text-sm leading-6 text-muted-foreground">No stronger alternative in this group yet.</p>
+        <p className="text-sm leading-6 text-muted-foreground">Δεν υπάρχει ισχυρότερη εναλλακτική σε αυτή την ομάδα ακόμη.</p>
       )}
     </div>
   </div>

@@ -61,18 +61,19 @@ import {
 } from "@/lib/userWorkspace";
 import { clearPaymentReturnParams, getPaymentReturnNotice, parseUserProfileTab } from "@/lib/userProfileNavigation";
 import { createOperationalCase } from "@/lib/operationsRepository";
+import { getPriceFrom } from "@/lib/marketplace";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { id: "overview", label: "Workspace", icon: UserRound },
-  { id: "profile", label: "Client details", icon: UserRound },
-  { id: "bookings", label: "Consultations", icon: CalendarDays },
-  { id: "messages", label: "Messages", icon: MessageSquareQuote },
-  { id: "saved", label: "Saved & compare", icon: Heart },
-  { id: "documents", label: "Documents", icon: FileText },
-  { id: "payments", label: "Billing & receipts", icon: CreditCard },
-  { id: "reviews", label: "Reviews", icon: MessageSquareQuote },
-  { id: "privacy", label: "Privacy", icon: LockKeyhole },
+  { id: "overview", label: "Χώρος εργασίας", icon: UserRound },
+  { id: "profile", label: "Στοιχεία πελάτη", icon: UserRound },
+  { id: "bookings", label: "Ραντεβού", icon: CalendarDays },
+  { id: "messages", label: "Επόμενα βήματα", icon: MessageSquareQuote },
+  { id: "saved", label: "Αποθηκευμένα και σύγκριση", icon: Heart },
+  { id: "documents", label: "Έγγραφα", icon: FileText },
+  { id: "payments", label: "Πληρωμές και αποδείξεις", icon: CreditCard },
+  { id: "reviews", label: "Αξιολογήσεις", icon: MessageSquareQuote },
+  { id: "privacy", label: "Απόρρητο", icon: LockKeyhole },
 ] as const;
 
 type ActiveView = (typeof navItems)[number]["id"];
@@ -114,6 +115,13 @@ const paymentMethodStatusLabels: Record<UserWorkspace["paymentMethod"]["status"]
   not_configured: "Δεν έχει συνδεθεί",
   setup_required: "Χρειάζεται σύνδεση",
   ready: "Έτοιμη",
+};
+
+const paymentStatusLabels: Record<StoredPayment["status"], string> = {
+  pending: "Σε αναμονή",
+  paid: "Πληρωμένο",
+  refunded: "Επιστροφή",
+  failed: "Απέτυχε",
 };
 
 const getCompletionItems = (workspace: UserWorkspace, profileEmail?: string, phone?: string, city?: string) => [
@@ -875,7 +883,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
             ) : null}
 
             {activeView === "messages" ? (
-              <Panel title="Messages and next steps" eyebrow="Post-booking workspace">
+              <Panel title="Επόμενα βήματα ραντεβού" eyebrow="Μετά την κράτηση">
                 <div className="grid gap-4">
                   {bookings.length > 0 ? (
                     bookings.map((booking) => {
@@ -889,7 +897,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               <p className="text-xs font-bold uppercase tracking-wider text-primary">{booking.referenceId}</p>
                               <h3 className="mt-1 text-lg font-bold text-foreground">{booking.lawyerName}</h3>
                               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                                {booking.dateLabel} at {booking.time} - {booking.consultationType}
+                                {booking.dateLabel} στις {booking.time} - {booking.consultationType}
                               </p>
                             </div>
                             <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground">
@@ -899,17 +907,19 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
 
                           <div className="mt-4 grid gap-3 md:grid-cols-3">
                             <div className="rounded-lg bg-secondary/45 p-3">
-                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Payment</p>
-                              <p className="mt-1 text-sm font-bold text-foreground">{payment?.status || "pending"}</p>
-                            </div>
-                            <div className="rounded-lg bg-secondary/45 p-3">
-                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Documents</p>
-                              <p className="mt-1 text-sm font-bold text-foreground">{linkedDocuments.length} linked</p>
-                            </div>
-                            <div className="rounded-lg bg-secondary/45 p-3">
-                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Next step</p>
+                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Πληρωμή</p>
                               <p className="mt-1 text-sm font-bold text-foreground">
-                                {booking.status === "completed" ? "Leave a review" : "Prepare documents"}
+                                {payment ? paymentStatusLabels[payment.status] : "Σε αναμονή"}
+                              </p>
+                            </div>
+                            <div className="rounded-lg bg-secondary/45 p-3">
+                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Έγγραφα</p>
+                              <p className="mt-1 text-sm font-bold text-foreground">{linkedDocuments.length} συνδεδεμένα</p>
+                            </div>
+                            <div className="rounded-lg bg-secondary/45 p-3">
+                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Επόμενο βήμα</p>
+                              <p className="mt-1 text-sm font-bold text-foreground">
+                                {booking.status === "completed" ? "Αφήστε αξιολόγηση" : "Προετοιμάστε έγγραφα"}
                               </p>
                             </div>
                           </div>
@@ -917,14 +927,14 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                           <div className="mt-4 flex flex-wrap gap-2">
                             <Button type="button" variant="outline" onClick={() => selectView("documents")} className="rounded-xl text-xs font-bold">
                               <FileText className="h-4 w-4" />
-                              Upload documents
+                              Ανέβασμα εγγράφων
                             </Button>
                             <Button type="button" variant="outline" onClick={() => selectView("payments")} className="rounded-xl text-xs font-bold">
                               <CreditCard className="h-4 w-4" />
-                              Receipts
+                              Αποδείξεις
                             </Button>
                             <Button asChild variant="outline" className="rounded-xl text-xs font-bold">
-                              <Link to="/help">Support</Link>
+                              <Link to="/help">Υποστήριξη</Link>
                             </Button>
                           </div>
                         </article>
@@ -933,9 +943,9 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                   ) : (
                     <EmptyState
                       icon={MessageSquareQuote}
-                      title="No consultation workspace yet"
-                      description="After booking, this becomes the place for next steps, document prompts, receipts, and support paths."
-                      action={<Button asChild className="rounded-xl font-bold"><Link to="/search">Find a lawyer</Link></Button>}
+                      title="Δεν υπάρχει ακόμη χώρος ραντεβού"
+                      description="Μετά την κράτηση, εδώ εμφανίζονται επόμενα βήματα, έγγραφα, αποδείξεις και διαδρομές υποστήριξης."
+                      action={<Button asChild className="rounded-xl font-bold"><Link to="/search">Βρείτε δικηγόρο</Link></Button>}
                     />
                   )}
                 </div>
@@ -980,7 +990,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                           <p className="font-bold text-foreground">{lawyer.name}</p>
                           <p className="mt-1 text-xs font-semibold text-primary/80">{lawyer.specialty}</p>
                           <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-                            <ComparisonLine label="Τιμή" value={`€${lawyer.price}`} />
+                            <ComparisonLine label="Τιμή από" value={`€${getPriceFrom(lawyer)}`} />
                             <ComparisonLine label="Εμπειρία" value={`${lawyer.experience} έτη`} />
                             <ComparisonLine label="Αξιολόγηση" value={`${lawyer.rating}/5`} />
                             <ComparisonLine label="Απάντηση" value={lawyer.response} />
@@ -1421,14 +1431,21 @@ const InvoiceCard = ({
   const canOpenReceipt = Boolean(payment?.receiptUrl);
   const verified = isVerifiedBooking(booking);
   const canCheckout = verified && booking.status === "confirmed" && payment?.status !== "paid";
+  const paymentStatus = payment?.status || "pending";
   const statusText =
     !verified
       ? "Χρειάζεται επαληθευμένη κράτηση Supabase πριν ανοίξει πληρωμή ή απόδειξη"
+      : paymentStatus === "paid"
+      ? "Πληρωμένο · η απόδειξη εμφανίζεται όταν επιστρέψει από τη Stripe"
+      : paymentStatus === "refunded"
+      ? "Ακυρωμένο · η επιστροφή έχει δρομολογηθεί"
+      : paymentStatus === "failed"
+      ? "Η πληρωμή απέτυχε · μπορείτε να δοκιμάσετε ξανά"
       : booking.status === "cancelled"
       ? "Ακυρωμένο χωρίς χρέωση"
       : booking.status === "completed"
-        ? "Πληρωμένο · Απόδειξη διαθέσιμη"
-        : "Προεγκεκριμένο · τελική απόδειξη μετά την ολοκλήρωση";
+        ? "Το ραντεβού ολοκληρώθηκε · η πληρωμή δεν έχει επιβεβαιωθεί ακόμη"
+        : "Πληρωμή σε αναμονή · η απόδειξη εμφανίζεται μετά την επιβεβαίωση";
 
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -1556,7 +1573,7 @@ const SavedLawyerRow = ({
             <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold text-muted-foreground">
               <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{lawyer.city}</span>
               <span className="inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 fill-gold text-gold" />{lawyer.rating}</span>
-              <span>από €{lawyer.price}</span>
+              <span>από €{getPriceFrom(lawyer)}</span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">

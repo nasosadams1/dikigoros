@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { lawyers } from "@/data/lawyers";
 import { searchLawyers, type LawyerSearchFilters } from "@/lib/lawyerSearch";
+import { getPriceFrom } from "@/lib/marketplace";
 
 const baseFilters: LawyerSearchFilters = {
   query: "",
@@ -36,8 +37,15 @@ describe("lawyer search", () => {
     });
 
     expect(results.length).toBeGreaterThan(0);
-    expect(results[0].price).toBeLessThanOrEqual(results[results.length - 1].price);
-    expect(results.every((lawyer) => lawyer.price > 50 && lawyer.price <= 80)).toBe(true);
+    expect(getPriceFrom(results[0])).toBeLessThanOrEqual(getPriceFrom(results[results.length - 1]));
+    expect(results.every((lawyer) => getPriceFrom(lawyer) > 50 && getPriceFrom(lawyer) <= 80)).toBe(true);
+  });
+
+  it("uses the lowest consultation as the public price-from definition", () => {
+    const maria = lawyers.find((lawyer) => lawyer.id === "maria-papadopoulou");
+
+    expect(maria).toBeDefined();
+    expect(getPriceFrom(maria!)).toBe(50);
   });
 
   it("sorts by fastest response", () => {

@@ -45,6 +45,8 @@ import {
 import {
   consultationModeNames,
   formatCurrency,
+  getLawyerMarketplaceSignals,
+  getPriceFrom,
   type AvailabilityIntent,
   type LanguageIntent,
 } from "@/lib/marketplace";
@@ -64,22 +66,22 @@ const priceOptions: Array<{ value: PriceRange; label: string }> = [
 ];
 
 const sortTabs: Array<{ value: LawyerSort; label: string }> = [
-  { value: "recommended", label: "Recommended" },
-  { value: "response", label: "Fastest response" },
-  { value: "value", label: "Best value" },
-  { value: "available", label: "Available soon" },
+  { value: "recommended", label: "Καλύτερη αντιστοίχιση" },
+  { value: "response", label: "Ταχύτερη απάντηση" },
+  { value: "value", label: "Καλύτερη τιμή" },
+  { value: "available", label: "Πιο άμεση ώρα" },
 ];
 
 const sortOptions: Array<{ value: LawyerSort; label: string }> = [
   ...sortTabs,
-  { value: "rating", label: "Highest rating" },
-  { value: "price-low", label: "Lowest price" },
-  { value: "experience", label: "Most experience" },
+  { value: "rating", label: "Υψηλότερη αξιολόγηση" },
+  { value: "price-low", label: "Χαμηλότερη τιμή" },
+  { value: "experience", label: "Περισσότερη εμπειρία" },
 ];
 
 const languageOptions: Array<{ value: LanguageIntent; label: string }> = [
-  { value: "Greek", label: "Greek" },
-  { value: "English", label: "English" },
+  { value: "Greek", label: "Ελληνικά" },
+  { value: "English", label: "Αγγλικά" },
 ];
 
 const validAppointmentTypes = new Set<ConsultationMode>(appointmentTypeOptions.map((option) => option.value));
@@ -152,6 +154,15 @@ const getActiveFilterCount = (filters: LawyerSearchFilters) =>
   (filters.minRating ? 1 : 0) +
   (filters.minReviews ? 1 : 0) +
   (filters.languages?.length || 0);
+
+const availabilityFilterLabels: Record<AvailabilityIntent, string> = {
+  any: "Οποιαδήποτε διαθεσιμότητα",
+  today: "Σήμερα διαθέσιμος",
+  tomorrow: "Αύριο διαθέσιμος",
+};
+
+const getLanguageLabel = (language: LanguageIntent) =>
+  languageOptions.find((option) => option.value === language)?.label || language;
 
 const SearchResults = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -266,8 +277,8 @@ const SearchResults = () => {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Compare lawyers | Dikigoros"
-        description="Compare verified lawyers by specialty, best fit, city, reviews, response time, availability, consultation mode, and starting price."
+        title="Σύγκριση δικηγόρων | Dikigoros"
+        description="Συγκρίνετε ελεγμένα προφίλ δικηγόρων με βάση ειδίκευση, καταλληλότητα, πόλη, αξιολογήσεις, χρόνο απάντησης, διαθεσιμότητα, τρόπο συμβουλευτικής και τιμή από."
         path="/search"
       />
       <Navbar />
@@ -279,7 +290,7 @@ const SearchResults = () => {
             <input
               value={queryDraft}
               onChange={(event) => setQueryDraft(event.target.value)}
-              placeholder="Legal issue or lawyer name"
+              placeholder="Νομικό θέμα ή όνομα δικηγόρου"
               className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
@@ -288,12 +299,12 @@ const SearchResults = () => {
             <input
               value={cityDraft}
               onChange={(event) => setCityDraft(event.target.value)}
-              placeholder="City or area"
+              placeholder="Πόλη ή περιοχή"
               className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
           <Button type="submit" className="h-11 rounded-lg px-6 text-sm font-bold">
-            Search
+            Αναζήτηση
           </Button>
           <button
             type="button"
@@ -316,53 +327,53 @@ const SearchResults = () => {
           <aside className={cn(showFilters ? "block" : "hidden", "lg:block")}>
             <div className="sticky top-32 rounded-lg border border-border bg-card p-5">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-bold text-foreground">Filters</h2>
+                <h2 className="text-sm font-bold text-foreground">Φίλτρα απόφασης</h2>
                 <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Clear
+                  Καθαρισμός
                 </button>
               </div>
 
               <div className="mt-5 space-y-5">
                 <div className="md:hidden">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">City</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Πόλη</label>
                   <input
                     value={cityDraft}
                     onChange={(event) => setCityDraft(event.target.value)}
                     onBlur={() => updateFilters({ ...filters, city: cityDraft })}
-                    placeholder="City or area"
+                    placeholder="Πόλη ή περιοχή"
                     className="mt-2 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
                   />
                 </div>
 
-                <FilterGroup label="Booking intent">
-                  <RadioFilter name="availability" label="Available today" checked={filters.availability === "today"} onChange={() => updateFilters({ ...filters, availability: filters.availability === "today" ? "any" : "today" })} />
-                  <RadioFilter name="availability" label="Available tomorrow" checked={filters.availability === "tomorrow"} onChange={() => updateFilters({ ...filters, availability: filters.availability === "tomorrow" ? "any" : "tomorrow" })} />
-                  <CheckboxFilter label="Responds under 1h" checked={filters.responseUnderMinutes === 60} onChange={() => updateFilters({ ...filters, responseUnderMinutes: filters.responseUnderMinutes === 60 ? null : 60 })} />
-                  <CheckboxFilter label="Responds under 2h" checked={filters.responseUnderMinutes === 120} onChange={() => updateFilters({ ...filters, responseUnderMinutes: filters.responseUnderMinutes === 120 ? null : 120 })} />
-                  <CheckboxFilter label="4.8+ rating" checked={filters.minRating === 4.8} onChange={() => updateFilters({ ...filters, minRating: filters.minRating === 4.8 ? null : 4.8 })} />
-                  <CheckboxFilter label="10+ verified reviews" checked={filters.minReviews === 10} onChange={() => updateFilters({ ...filters, minReviews: filters.minReviews === 10 ? null : 10 })} />
+                <FilterGroup label="Πρόθεση κράτησης">
+                  <RadioFilter name="availability" label="Διαθέσιμος σήμερα" checked={filters.availability === "today"} onChange={() => updateFilters({ ...filters, availability: filters.availability === "today" ? "any" : "today" })} />
+                  <RadioFilter name="availability" label="Διαθέσιμος αύριο" checked={filters.availability === "tomorrow"} onChange={() => updateFilters({ ...filters, availability: filters.availability === "tomorrow" ? "any" : "tomorrow" })} />
+                  <CheckboxFilter label="Απάντηση κάτω από 1 ώρα" checked={filters.responseUnderMinutes === 60} onChange={() => updateFilters({ ...filters, responseUnderMinutes: filters.responseUnderMinutes === 60 ? null : 60 })} />
+                  <CheckboxFilter label="Απάντηση κάτω από 2 ώρες" checked={filters.responseUnderMinutes === 120} onChange={() => updateFilters({ ...filters, responseUnderMinutes: filters.responseUnderMinutes === 120 ? null : 120 })} />
+                  <CheckboxFilter label="Αξιολόγηση 4,8+" checked={filters.minRating === 4.8} onChange={() => updateFilters({ ...filters, minRating: filters.minRating === 4.8 ? null : 4.8 })} />
+                  <CheckboxFilter label="10+ επαληθευμένες αξιολογήσεις" checked={filters.minReviews === 10} onChange={() => updateFilters({ ...filters, minReviews: filters.minReviews === 10 ? null : 10 })} />
                 </FilterGroup>
 
-                <FilterGroup label="Language">
+                <FilterGroup label="Γλώσσα">
                   {languageOptions.map((option) => (
                     <CheckboxFilter key={option.value} label={option.label} checked={Boolean(filters.languages?.includes(option.value))} onChange={() => toggleLanguage(option.value)} />
                   ))}
                 </FilterGroup>
 
-                <FilterGroup label="Consultation mode">
+                <FilterGroup label="Τρόπος συμβουλευτικής">
                   {appointmentTypeOptions.map((option) => (
                     <CheckboxFilter key={option.value} label={option.label} checked={filters.appointmentTypes.includes(option.value)} onChange={() => toggleAppointmentType(option.value)} />
                   ))}
                 </FilterGroup>
 
-                <FilterGroup label="Specialty">
+                <FilterGroup label="Ειδίκευση">
                   {availableSpecialtyOptions.slice(0, 10).map((specialty) => (
                     <CheckboxFilter key={specialty} label={specialty} checked={filters.specialties.includes(specialty)} onChange={() => toggleSpecialty(specialty)} />
                   ))}
                 </FilterGroup>
 
-                <FilterGroup label="City">
+                <FilterGroup label="Πόλη">
                   {availableCityOptions.map((item) => (
                     <RadioFilter
                       key={item}
@@ -377,7 +388,7 @@ const SearchResults = () => {
                   ))}
                 </FilterGroup>
 
-                <FilterGroup label="Starting price">
+                <FilterGroup label="Τιμή από">
                   {priceOptions.map((option) => (
                     <RadioFilter
                       key={option.value}
@@ -398,16 +409,16 @@ const SearchResults = () => {
                 <div>
                   <p className="text-sm text-muted-foreground">
                     <span className="font-bold text-foreground">{results.length}</span>{" "}
-                    {results.length === 1 ? "lawyer found" : "lawyers found"}
+                    {results.length === 1 ? "δικηγόρος βρέθηκε" : "δικηγόροι βρέθηκαν"}
                   </p>
                   <p className="mt-1 text-xs font-medium text-muted-foreground">
-                    Proof-first comparison from public marketplace profiles.
-                    {isFetching ? " Refreshing live marketplace data." : ""}
+                    Σύγκριση με αποδείξεις από δημόσια προφίλ αγοράς.
+                    {isFetching ? " Ανανεώνονται τα ζωντανά δεδομένα." : ""}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold text-foreground">
                   <Scale className="h-4 w-4 text-primary" />
-                  {selectedLawyers.length}/3 selected for compare
+                  {selectedLawyers.length}/3 στη σύγκριση
                 </div>
               </div>
 
@@ -431,7 +442,7 @@ const SearchResults = () => {
                   value={filters.sort}
                   onChange={(event) => updateFilters({ ...filters, sort: event.target.value as LawyerSort })}
                   className="h-9 shrink-0 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground"
-                  aria-label="Secondary sort"
+                  aria-label="Επιπλέον ταξινόμηση"
                 >
                   {sortOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -470,28 +481,28 @@ const SearchResults = () => {
                                 <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-foreground/70">{lawyer.bestFor}</p>
                               </div>
                               <div className="rounded-lg border border-border bg-secondary/45 px-4 py-3 text-left md:text-right">
-                                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Starting price</p>
-                                <p className="text-2xl font-bold text-foreground">{formatCurrency(lawyer.price)}</p>
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Τιμή από</p>
+                                <p className="text-2xl font-bold text-foreground">{formatCurrency(getPriceFrom(lawyer))}</p>
                               </div>
                             </div>
 
                             <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                              <ProofCell icon={MapPin} label="City" value={lawyer.city} />
-                              <ProofCell icon={ShieldCheck} label="Experience" value={`${lawyer.experience} years`} />
-                              <ProofCell icon={Star} label="Rating" value={`${lawyer.rating} (${lawyer.reviews} reviews)`} />
-                              <ProofCell icon={Clock} label="Response time" value={lawyer.response} />
-                              <ProofCell icon={CalendarDays} label="Next slot" value={lawyer.available} />
-                              <ProofCell icon={Video} label="Modes" value={lawyer.consultationModes.map((item) => consultationModeNames[item]).join(", ")} />
+                              <ProofCell icon={MapPin} label="Πόλη" value={lawyer.city} />
+                              <ProofCell icon={ShieldCheck} label="Εμπειρία" value={`${lawyer.experience} χρόνια`} />
+                              <ProofCell icon={Star} label="Αξιολόγηση" value={`${lawyer.rating} (${lawyer.reviews} αξιολογήσεις)`} />
+                              <ProofCell icon={Clock} label="Απάντηση" value={lawyer.response} />
+                              <ProofCell icon={CalendarDays} label="Επόμενη ώρα" value={lawyer.available} />
+                              <ProofCell icon={Video} label="Τρόποι" value={lawyer.consultationModes.map((item) => consultationModeNames[item]).join(", ")} />
                             </div>
 
                             <div className="mt-4 flex flex-wrap gap-2">
-                              <SpecificTrustCopy>Bar association verified</SpecificTrustCopy>
-                              <SpecificTrustCopy>Reviews after completed booking</SpecificTrustCopy>
-                              <SpecificTrustCopy>Readiness checks passed</SpecificTrustCopy>
+                              <SpecificTrustCopy>Έλεγχος δικηγορικού συλλόγου</SpecificTrustCopy>
+                              <SpecificTrustCopy>Αξιολογήσεις μετά από ολοκληρωμένη κράτηση</SpecificTrustCopy>
+                              <SpecificTrustCopy>Πέρασε έλεγχο ετοιμότητας</SpecificTrustCopy>
                             </div>
 
                             <details className="mt-4 rounded-lg border border-border bg-background px-4 py-3">
-                              <summary className="cursor-pointer text-xs font-bold uppercase tracking-wider text-muted-foreground">Read profile summary</summary>
+                              <summary className="cursor-pointer text-xs font-bold uppercase tracking-wider text-muted-foreground">Σύνοψη προφίλ</summary>
                               <p className="mt-2 text-sm leading-6 text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{lawyer.bio}</p>
                             </details>
                           </div>
@@ -513,21 +524,21 @@ const SearchResults = () => {
                         <div className="flex flex-wrap items-center gap-2">
                           <Button type="button" variant={saved ? "default" : "outline"} size="sm" onClick={() => handleToggleSavedLawyer(lawyer.id)} className="h-9 rounded-lg px-3 text-xs font-bold">
                             <Heart className={cn("h-3.5 w-3.5", saved && "fill-current")} />
-                            {saved ? "Saved to account" : "Save"}
+                            {saved ? "Αποθηκευμένο" : "Αποθήκευση"}
                           </Button>
                           <Button type="button" variant={compared ? "default" : "outline"} size="sm" onClick={() => handleToggleComparedLawyer(lawyer.id)} className="h-9 rounded-lg px-3 text-xs font-bold">
                             <Scale className="h-3.5 w-3.5" />
-                            {compared ? "In compare" : "Compare"}
+                            {compared ? "Στη σύγκριση" : "Σύγκριση"}
                           </Button>
                           <Button asChild variant="outline" size="sm" className="h-9 rounded-lg px-4 text-xs font-bold">
-                            <Link to={`/lawyer/${lawyer.id}`}>Decision page</Link>
+                            <Link to={`/lawyer/${lawyer.id}`}>Προφίλ απόφασης</Link>
                           </Button>
                           {isOwnLawyerProfile ? (
-                            <Button type="button" size="sm" disabled className="h-9 rounded-lg px-5 text-xs font-bold">Your profile</Button>
+                            <Button type="button" size="sm" disabled className="h-9 rounded-lg px-5 text-xs font-bold">Το προφίλ σας</Button>
                           ) : (
                             <Button asChild size="sm" className="h-9 rounded-lg px-5 text-xs font-bold">
                               <Link to={`/booking/${lawyer.id}`}>
-                                Book
+                                Κράτηση
                                 <ArrowRight className="ml-1 h-3.5 w-3.5" />
                               </Link>
                             </Button>
@@ -543,12 +554,12 @@ const SearchResults = () => {
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
                   <Search className="h-6 w-6" />
                 </div>
-                <h2 className="mt-5 font-serif text-2xl tracking-tight text-foreground">No lawyers matched those filters</h2>
+                <h2 className="mt-5 font-serif text-2xl tracking-tight text-foreground">Δεν βρέθηκε δικηγόρος με αυτά τα φίλτρα</h2>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                  Try a broader issue, a nearby city, or fewer booking-intent filters.
+                  Δοκιμάστε πιο γενικό θέμα, κοντινή πόλη ή λιγότερα φίλτρα πρόθεσης κράτησης.
                 </p>
                 <Button onClick={clearFilters} variant="outline" className="mt-5 rounded-lg font-bold">
-                  Clear filters
+                  Καθαρισμός φίλτρων
                 </Button>
               </div>
             )}
@@ -562,14 +573,26 @@ const SearchResults = () => {
 
       {selectedLawyers.length > 0 ? (
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card p-3 shadow-2xl lg:hidden">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-bold text-foreground">{selectedLawyers.length}/3 selected</p>
-              <p className="text-xs font-semibold text-muted-foreground">Compare price, proof, and next slot</p>
+          <div className="mx-auto max-w-7xl">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-foreground">{selectedLawyers.length}/3 στη σύγκριση</p>
+                <p className="text-xs font-semibold text-muted-foreground">Τιμή, αποδείξεις, απάντηση και επόμενη ώρα</p>
+              </div>
+              <Button asChild className="rounded-lg text-xs font-bold">
+                <Link to="/account?tab=saved">Άνοιγμα</Link>
+              </Button>
             </div>
-            <Button asChild className="rounded-lg text-xs font-bold">
-              <Link to="/account?tab=saved">Open compare</Link>
-            </Button>
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              {selectedLawyers.map((lawyer) => (
+                <div key={lawyer.id} className="min-w-[13rem] rounded-lg border border-border bg-background px-3 py-2">
+                  <p className="truncate text-xs font-bold text-foreground">{lawyer.name}</p>
+                  <p className="mt-0.5 truncate text-[11px] font-semibold text-muted-foreground">
+                    {formatCurrency(getPriceFrom(lawyer))} · {lawyer.response} · {lawyer.available}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}
@@ -633,58 +656,82 @@ const CompareRail = ({
 }: {
   selectedLawyers: Lawyer[];
   onRemove: (lawyerId: string) => void;
-}) => (
-  <div id="compare" className="sticky top-32 rounded-lg border border-border bg-card p-5">
-    <p className="flex items-center gap-2 text-sm font-bold text-foreground">
-      <Scale className="h-4 w-4 text-primary" />
-      Compare destination
-    </p>
-    <p className="mt-1 text-xs font-semibold text-muted-foreground">{selectedLawyers.length}/3 selected lawyers</p>
+}) => {
+  const cheapest = selectedLawyers.length
+    ? [...selectedLawyers].sort((first, second) => getPriceFrom(first) - getPriceFrom(second))[0]
+    : null;
+  const fastest = selectedLawyers.length
+    ? [...selectedLawyers].sort((first, second) => first.responseMinutes - second.responseMinutes)[0]
+    : null;
+  const mostReviewed = selectedLawyers.length
+    ? [...selectedLawyers].sort((first, second) => second.reviews - first.reviews)[0]
+    : null;
 
-    <div className="mt-4 space-y-3">
-      {selectedLawyers.length > 0 ? selectedLawyers.map((lawyer) => (
-        <div key={lawyer.id} className="rounded-lg border border-border bg-background p-3">
-          <div className="flex items-start gap-3">
-            <img src={lawyer.image} alt={lawyer.name} className="h-10 w-10 rounded-md object-cover" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-foreground">{lawyer.name}</p>
-              <p className="text-[11px] font-semibold text-muted-foreground">{lawyer.specialty}</p>
+  return (
+    <div id="compare" className="sticky top-32 rounded-lg border border-border bg-card p-5">
+      <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+        <Scale className="h-4 w-4 text-primary" />
+        Κέντρο σύγκρισης
+      </p>
+      <p className="mt-1 text-xs font-semibold text-muted-foreground">{selectedLawyers.length}/3 δικηγόροι επιλεγμένοι</p>
+
+      {selectedLawyers.length > 1 ? (
+        <div className="mt-4 grid gap-2 rounded-lg border border-border bg-secondary/35 p-3 text-[11px] font-bold text-foreground">
+          {cheapest ? <span>Χαμηλότερη τιμή: {cheapest.name}</span> : null}
+          {fastest ? <span>Ταχύτερη απάντηση: {fastest.name}</span> : null}
+          {mostReviewed ? <span>Περισσότερες αξιολογήσεις: {mostReviewed.name}</span> : null}
+        </div>
+      ) : null}
+
+      <div className="mt-4 space-y-3">
+        {selectedLawyers.length > 0 ? selectedLawyers.map((lawyer) => {
+          const signals = getLawyerMarketplaceSignals(lawyer);
+
+          return (
+            <div key={lawyer.id} className="rounded-lg border border-border bg-background p-3">
+              <div className="flex items-start gap-3">
+                <img src={lawyer.image} alt={lawyer.name} className="h-10 w-10 rounded-md object-cover" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-foreground">{lawyer.name}</p>
+                  <p className="text-[11px] font-semibold text-muted-foreground">{lawyer.specialty}</p>
+                </div>
+                <button type="button" onClick={() => onRemove(lawyer.id)} className="rounded-md p-1 text-muted-foreground hover:text-foreground" aria-label={`Αφαίρεση ${lawyer.name}`}>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] font-bold text-foreground">
+                <span>{signals.priceFromLabel}</span>
+                <span>{lawyer.rating}/5</span>
+                <span>{lawyer.response}</span>
+                <span>{signals.availabilityLabel}</span>
+              </div>
             </div>
-            <button type="button" onClick={() => onRemove(lawyer.id)} className="rounded-md p-1 text-muted-foreground hover:text-foreground" aria-label={`Remove ${lawyer.name}`}>
-              <X className="h-3.5 w-3.5" />
-            </button>
+          );
+        }) : (
+          <div className="rounded-lg border border-dashed border-border bg-background p-4 text-sm leading-6 text-muted-foreground">
+            Προσθέστε έως τρεις δικηγόρους για να συγκρίνετε αποδείξεις, τιμή, απάντηση και επόμενη διαθέσιμη ώρα.
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] font-bold text-foreground">
-            <span>{formatCurrency(lawyer.price)}</span>
-            <span>{lawyer.rating} rating</span>
-            <span>{lawyer.response}</span>
-            <span>{lawyer.available}</span>
-          </div>
-        </div>
-      )) : (
-        <div className="rounded-lg border border-dashed border-border bg-background p-4 text-sm leading-6 text-muted-foreground">
-          Add up to three lawyers to compare proof, price, response, and next availability.
-        </div>
-      )}
-    </div>
+        )}
+      </div>
 
-    <Button asChild className="mt-4 w-full rounded-lg text-xs font-bold">
-      <Link to="/account?tab=saved">Open account comparison</Link>
-    </Button>
-  </div>
-);
+      <Button asChild className="mt-4 w-full rounded-lg text-xs font-bold">
+        <Link to="/account?tab=saved">Άνοιγμα σύγκρισης λογαριασμού</Link>
+      </Button>
+    </div>
+  );
+};
 
 const ActiveFilterSummary = ({ filters, onClear }: { filters: LawyerSearchFilters; onClear: () => void }) => (
   <div className="mb-5 flex flex-wrap items-center gap-2">
-    <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground">Active filters</span>
+    <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground">Ενεργά φίλτρα</span>
     {filters.query ? <FilterPill>{filters.query}</FilterPill> : null}
     {filters.city ? <FilterPill>{filters.city}</FilterPill> : null}
-    {filters.availability && filters.availability !== "any" ? <FilterPill>{filters.availability}</FilterPill> : null}
-    {filters.responseUnderMinutes ? <FilterPill>{`under ${filters.responseUnderMinutes / 60}h`}</FilterPill> : null}
-    {filters.minRating ? <FilterPill>{`${filters.minRating}+ rating`}</FilterPill> : null}
-    {filters.minReviews ? <FilterPill>{`${filters.minReviews}+ reviews`}</FilterPill> : null}
-    {filters.languages?.map((language) => <FilterPill key={language}>{language}</FilterPill>)}
-    <button type="button" onClick={onClear} className="text-xs font-bold text-primary">Clear all</button>
+    {filters.availability && filters.availability !== "any" ? <FilterPill>{availabilityFilterLabels[filters.availability]}</FilterPill> : null}
+    {filters.responseUnderMinutes ? <FilterPill>{`Απάντηση κάτω από ${filters.responseUnderMinutes / 60} ώ.`}</FilterPill> : null}
+    {filters.minRating ? <FilterPill>{`Αξιολόγηση ${filters.minRating}+`}</FilterPill> : null}
+    {filters.minReviews ? <FilterPill>{`${filters.minReviews}+ αξιολογήσεις`}</FilterPill> : null}
+    {filters.languages?.map((language) => <FilterPill key={language}>{getLanguageLabel(language)}</FilterPill>)}
+    <button type="button" onClick={onClear} className="text-xs font-bold text-primary">Καθαρισμός όλων</button>
   </div>
 );
 

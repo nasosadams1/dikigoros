@@ -14,10 +14,10 @@ const Navbar = () => {
   const { user, signOut } = useAuth();
 
   const links = [
-    { label: "Find lawyer", path: "/search" },
-    { label: "Categories", path: "/lawyers/divorce" },
-    { label: "For lawyers", path: "/for-lawyers" },
-    { label: "Trust / help", path: "/trust/verification-standards" },
+    { label: "Βρες δικηγόρο", path: "/search" },
+    { label: "Νομικά θέματα", path: "/lawyers/divorce" },
+    { label: "Για δικηγόρους", path: "/for-lawyers" },
+    { label: "Εμπιστοσύνη", path: "/trust/verification-standards" },
   ];
 
   const currentPath = useMemo(() => `${location.pathname}${location.hash}`, [location.hash, location.pathname]);

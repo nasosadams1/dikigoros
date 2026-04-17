@@ -23,53 +23,53 @@ export interface NextAvailabilityOption {
 }
 
 export const featuredGroupLabels: Record<FeaturedGroupKey, string> = {
-  topRated: "Top rated",
-  fastestResponse: "Fastest response",
-  bestValue: "Best value",
-  availableSoon: "Available soon",
+  topRated: "Υψηλότερη αξιολόγηση",
+  fastestResponse: "Ταχύτερη απάντηση",
+  bestValue: "Καλύτερη σχέση τιμής",
+  availableSoon: "Πιο άμεση διαθεσιμότητα",
 };
 
 export const consultationModeNames: Record<ConsultationMode, string> = {
-  video: "Video",
-  phone: "Phone",
-  inPerson: "Office",
+  video: "Βιντεοκλήση",
+  phone: "Τηλέφωνο",
+  inPerson: "Στο γραφείο",
 };
 
 export const publicTrustMechanics = [
-  "Verified partner profiles before public listing",
-  "Reviews only after a completed booking",
-  "Availability follows each lawyer's published rules",
-  "Secure booking and Stripe-backed payment flow",
+  "Τα δημόσια προφίλ περνούν έλεγχο συνεργάτη πριν εμφανιστούν",
+  "Οι αξιολογήσεις δημοσιεύονται μόνο μετά από ολοκληρωμένο ραντεβού",
+  "Η διαθεσιμότητα ακολουθεί τους δημοσιευμένους κανόνες κάθε δικηγόρου",
+  "Η κράτηση πληρώνεται με ασφαλή ροή Stripe Checkout",
 ];
 
 export const popularLegalJourneys = [
   {
-    title: "Divorce or custody",
-    description: "Compare family lawyers for separation, custody, support, and first-step strategy.",
+    title: "Διαζύγιο ή επιμέλεια",
+    description: "Συγκρίνετε δικηγόρους οικογενειακού δικαίου για χωρισμό, επιμέλεια, διατροφή και πρώτα βήματα.",
     to: "/lawyers/divorce",
     query: "διαζύγιο",
   },
   {
-    title: "Dismissal or compensation",
-    description: "Find employment lawyers for severance, unpaid wages, and workplace disputes.",
+    title: "Απόλυση ή αποζημίωση",
+    description: "Βρείτε δικηγόρους εργατικού δικαίου για αποζημίωση, μισθούς, συμβάσεις και εργασιακές διαφορές.",
     to: "/lawyers/employment",
     query: "απόλυση",
   },
   {
-    title: "Inheritance",
-    description: "Plan acceptance, refusal, wills, and inheritance disputes with verified lawyers.",
+    title: "Κληρονομικά",
+    description: "Οργανώστε αποδοχή, αποποίηση, διαθήκη και κληρονομικές διαφορές με ελεγμένα προφίλ δικηγόρων.",
     to: "/lawyers/inheritance",
     query: "κληρονομιά",
   },
   {
-    title: "Property sale or purchase",
-    description: "Check titles, contracts, leases, and purchase risks before signing.",
+    title: "Αγορά ή πώληση ακινήτου",
+    description: "Ελέγξτε τίτλους, συμβάσεις, μισθώσεις και κινδύνους πριν από την υπογραφή.",
     to: "/lawyers/property",
     query: "ακίνητα",
   },
   {
-    title: "Criminal defense",
-    description: "Move quickly on urgent criminal defense, complaints, and court appearances.",
+    title: "Ποινική υπεράσπιση",
+    description: "Κινηθείτε γρήγορα για υπεράσπιση, μηνύσεις, αυτόφωρο και προετοιμασία δικαστηρίου.",
     to: "/lawyers/criminal-defense",
     query: "ποινικό",
   },
@@ -78,46 +78,46 @@ export const popularLegalJourneys = [
 export const issueDirectory = [
   {
     slug: "divorce",
-    title: "Divorce lawyers",
+    title: "Δικηγόροι για διαζύγιο",
     query: "διαζύγιο",
-    specialtyHint: "Family law",
-    description: "Compare lawyers for divorce, custody, support, and family property questions.",
+    specialtyHint: "Οικογενειακό δίκαιο",
+    description: "Συγκρίνετε δικηγόρους για διαζύγιο, επιμέλεια, διατροφή και οικογενειακές περιουσιακές διαφορές.",
   },
   {
     slug: "employment",
-    title: "Employment lawyers",
+    title: "Δικηγόροι εργατικού δικαίου",
     query: "εργατικό",
-    specialtyHint: "Employment law",
-    description: "Find lawyers for dismissal, compensation, contracts, unpaid wages, and workplace disputes.",
+    specialtyHint: "Εργατικό δίκαιο",
+    description: "Βρείτε δικηγόρους για απόλυση, αποζημίωση, συμβάσεις, οφειλόμενους μισθούς και εργασιακές διαφορές.",
   },
   {
     slug: "property",
-    title: "Property lawyers",
+    title: "Δικηγόροι για ακίνητα",
     query: "ακίνητα",
-    specialtyHint: "Property law",
-    description: "Book help for title checks, purchases, sales, leases, and property disputes.",
+    specialtyHint: "Δίκαιο ακινήτων",
+    description: "Κλείστε συμβουλευτική για έλεγχο τίτλων, αγορά, πώληση, μισθώσεις και διαφορές ακινήτων.",
   },
   {
     slug: "inheritance",
-    title: "Inheritance lawyers",
+    title: "Δικηγόροι κληρονομικού δικαίου",
     query: "κληρονομικό",
-    specialtyHint: "Inheritance law",
-    description: "Get guidance on wills, acceptance, refusal, probate steps, and inheritance conflicts.",
+    specialtyHint: "Κληρονομικό δίκαιο",
+    description: "Πάρτε καθοδήγηση για διαθήκες, αποδοχή, αποποίηση, διαδικαστικά βήματα και κληρονομικές συγκρούσεις.",
   },
   {
     slug: "criminal-defense",
-    title: "Criminal defense lawyers",
+    title: "Δικηγόροι ποινικού δικαίου",
     query: "ποινικό",
-    specialtyHint: "Criminal law",
-    description: "Compare lawyers for urgent defense, complaints, hearings, and court preparation.",
+    specialtyHint: "Ποινικό δίκαιο",
+    description: "Συγκρίνετε δικηγόρους για επείγουσα υπεράσπιση, μηνύσεις, ακροάσεις και προετοιμασία δικαστηρίου.",
   },
 ];
 
 export const cityDirectory = [
-  { slug: "athens", title: "Athens", query: "Αθήνα" },
-  { slug: "thessaloniki", title: "Thessaloniki", query: "Θεσσαλονίκη" },
-  { slug: "patra", title: "Patra", query: "Πάτρα" },
-  { slug: "heraklion", title: "Heraklion", query: "Ηράκλειο" },
+  { slug: "athens", title: "Αθήνα", inTitle: "στην Αθήνα", query: "Αθήνα" },
+  { slug: "thessaloniki", title: "Θεσσαλονίκη", inTitle: "στη Θεσσαλονίκη", query: "Θεσσαλονίκη" },
+  { slug: "patra", title: "Πάτρα", inTitle: "στην Πάτρα", query: "Πάτρα" },
+  { slug: "heraklion", title: "Ηράκλειο", inTitle: "στο Ηράκλειο", query: "Ηράκλειο" },
 ];
 
 export const formatCurrency = (value: number) =>
@@ -164,13 +164,44 @@ export const getLowestConsultation = (lawyer: Lawyer): ConsultationOption | null
   return [...lawyer.consultations].sort((first, second) => first.price - second.price)[0];
 };
 
+export const getPriceFrom = (lawyer: Lawyer) => {
+  const consultationPrice = getLowestConsultation(lawyer)?.price;
+  return consultationPrice && consultationPrice > 0 ? consultationPrice : lawyer.price;
+};
+
+export const getLawyerMarketplaceSignals = (lawyer: Lawyer) => {
+  const priceFrom = getPriceFrom(lawyer);
+  const verified = Boolean(
+    lawyer.verification?.barAssociation &&
+      lawyer.verification?.registryLabel &&
+      lawyer.verification?.evidence?.length,
+  );
+  const bookable = lawyer.consultations.some(
+    (consultation) =>
+      consultation.price > 0 &&
+      lawyer.consultationModes.includes(consultation.mode),
+  );
+
+  return {
+    verified,
+    available: Boolean(lawyer.available),
+    reviewed: lawyer.reviews > 0,
+    bookable,
+    priceFrom,
+    priceFromLabel: `από ${formatCurrency(priceFrom)}`,
+    reviewLabel: lawyer.reviews === 1 ? "1 αξιολόγηση" : `${lawyer.reviews} αξιολογήσεις`,
+    verifiedLabel: verified ? "Ελεγμένο προφίλ δικηγόρου" : "Σε έλεγχο προφίλ",
+    availabilityLabel: lawyer.available || "Διαθεσιμότητα με ραντεβού",
+  };
+};
+
 export const getMarketplaceStats = (lawyers: Lawyer[]) => {
   const totalReviews = lawyers.reduce((sum, lawyer) => sum + lawyer.reviews, 0);
   const averageRating =
     lawyers.length > 0
       ? lawyers.reduce((sum, lawyer) => sum + lawyer.rating, 0) / lawyers.length
       : 0;
-  const prices = lawyers.map((lawyer) => lawyer.price).filter((price) => Number.isFinite(price) && price > 0);
+  const prices = lawyers.map(getPriceFrom).filter((price) => Number.isFinite(price) && price > 0);
 
   return {
     verifiedProfiles: lawyers.length,
@@ -184,18 +215,18 @@ export const getMarketplaceStats = (lawyers: Lawyer[]) => {
 };
 
 const scoreRecommended = (lawyer: Lawyer) =>
-  lawyer.rating * 100 + lawyer.reviews * 0.2 + lawyer.experience * 1.6 - lawyer.responseMinutes * 0.05 - lawyer.price * 0.04;
+  lawyer.rating * 100 + lawyer.reviews * 0.2 + lawyer.experience * 1.6 - lawyer.responseMinutes * 0.05 - getPriceFrom(lawyer) * 0.04;
 
 const scoreAvailableSoon = (lawyer: Lawyer) =>
   (isAvailableToday(lawyer) ? 1000 : isAvailableTomorrow(lawyer) ? 700 : 0) -
   lawyer.responseMinutes +
   lawyer.rating * 20 -
-  lawyer.price * 0.1;
+  getPriceFrom(lawyer) * 0.1;
 
 export const getFeaturedLawyerGroups = (lawyers: Lawyer[]): Record<FeaturedGroupKey, Lawyer[]> => ({
   topRated: [...lawyers].sort((first, second) => second.rating - first.rating || second.reviews - first.reviews).slice(0, 3),
   fastestResponse: [...lawyers].sort((first, second) => first.responseMinutes - second.responseMinutes || second.rating - first.rating).slice(0, 3),
-  bestValue: [...lawyers].sort((first, second) => first.price - second.price || second.rating - first.rating || second.reviews - first.reviews).slice(0, 3),
+  bestValue: [...lawyers].sort((first, second) => getPriceFrom(first) - getPriceFrom(second) || second.rating - first.rating || second.reviews - first.reviews).slice(0, 3),
   availableSoon: [...lawyers].sort((first, second) => scoreAvailableSoon(second) - scoreAvailableSoon(first)).slice(0, 3),
 });
 
@@ -209,9 +240,9 @@ export const getDiscoveryConfig = (issueSlug?: string, citySlug?: string) => {
   return {
     issue,
     city,
-    title: city ? `${issue.title} in ${city.title}` : issue.title,
+    title: city ? `${issue.title} ${city.inTitle}` : issue.title,
     description: city
-      ? `${issue.description} Filtered for lawyers serving ${city.title}.`
+      ? `${issue.description} Τα αποτελέσματα δίνουν προτεραιότητα σε δικηγόρους που εξυπηρετούν ${city.title}.`
       : issue.description,
     searchPath: `/search?q=${encodeURIComponent(issue.query)}${city ? `&city=${encodeURIComponent(city.query)}` : ""}`,
   };
@@ -249,9 +280,9 @@ export const getNextAvailabilityOptions = (
     }).format(date);
     const shortDateLabel =
       offset === 0
-        ? "Today"
+        ? "Σήμερα"
         : offset === 1
-          ? "Tomorrow"
+          ? "Αύριο"
           : new Intl.DateTimeFormat("el-GR", { weekday: "short", day: "numeric", month: "short" }).format(date);
 
     times.forEach((time) => {
@@ -287,7 +318,7 @@ export const getSimilarLawyerGroups = (lawyers: Lawyer[], current: Lawyer) => {
     const modeOverlap = lawyer.consultations.filter((consultation) => currentModes.has(consultation.mode)).length;
     const languageOverlap = lawyer.languages.filter((language) => currentLanguages.has(normalizeMarketplaceText(language))).length;
     const cityMatch = includesMarketplaceText(lawyer.city, current.city) || includesMarketplaceText(current.city, lawyer.city) ? 1 : 0;
-    const priceDistance = Math.abs(lawyer.price - current.price);
+    const priceDistance = Math.abs(getPriceFrom(lawyer) - getPriceFrom(current));
 
     return (
       specialtyOverlap * 28 +
@@ -307,8 +338,8 @@ export const getSimilarLawyerGroups = (lawyers: Lawyer[], current: Lawyer) => {
       .sort((first, second) => scoreSimilarity(second) - scoreSimilarity(first))
       .slice(0, 2),
     cheaper: alternatives
-      .filter((lawyer) => lawyer.price <= current.price)
-      .sort((first, second) => first.price - second.price || second.rating - first.rating)
+      .filter((lawyer) => getPriceFrom(lawyer) <= getPriceFrom(current))
+      .sort((first, second) => getPriceFrom(first) - getPriceFrom(second) || second.rating - first.rating)
       .slice(0, 2),
     faster: alternatives
       .filter((lawyer) => lawyer.responseMinutes <= current.responseMinutes)

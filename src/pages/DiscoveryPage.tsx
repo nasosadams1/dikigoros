@@ -8,7 +8,7 @@ import Navbar from "@/components/Navbar";
 import SEO from "@/components/SEO";
 import { getLawyers } from "@/lib/lawyerRepository";
 import { defaultLawyerSearchFilters, searchLawyers } from "@/lib/lawyerSearch";
-import { cityDirectory, formatCurrency, getDiscoveryConfig, issueDirectory } from "@/lib/marketplace";
+import { cityDirectory, formatCurrency, getDiscoveryConfig, getPriceFrom, issueDirectory } from "@/lib/marketplace";
 import { getDiscoverySeo } from "@/lib/seo";
 
 const DiscoveryPage = () => {
@@ -39,18 +39,18 @@ const DiscoveryPage = () => {
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Button asChild className="rounded-lg font-bold">
                 <Link to={config.searchPath}>
-                  Compare lawyers
+                  Σύγκριση δικηγόρων
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
               <Button asChild variant="outline" className="rounded-lg font-bold">
-                <Link to="/trust/verification-standards">Read trust standards</Link>
+                <Link to="/trust/verification-standards">Κανόνες εμπιστοσύνης</Link>
               </Button>
             </div>
           </section>
 
           <aside className="rounded-lg border border-border bg-card p-5">
-            <h2 className="text-lg font-bold text-foreground">Discovery paths</h2>
+            <h2 className="text-lg font-bold text-foreground">Διαδρομές αναζήτησης</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {issueDirectory.map((issue) => (
                 <Link key={issue.slug} to={`/lawyers/${issue.slug}`} className="rounded-lg border border-border bg-background p-3 text-sm font-bold text-foreground transition hover:border-primary/25">
@@ -59,7 +59,7 @@ const DiscoveryPage = () => {
               ))}
               {cityDirectory.slice(0, 2).map((city) => (
                 <Link key={city.slug} to={`/lawyers/${config.issue.slug}/${city.slug}`} className="rounded-lg border border-border bg-background p-3 text-sm font-bold text-foreground transition hover:border-primary/25">
-                  {config.issue.title} in {city.title}
+                  {config.issue.title} {city.inTitle}
                 </Link>
               ))}
             </div>
@@ -67,7 +67,7 @@ const DiscoveryPage = () => {
         </div>
 
         <section className="mt-10">
-          <h2 className="font-serif text-2xl tracking-tight text-foreground">Bookable lawyers for this journey</h2>
+          <h2 className="font-serif text-2xl tracking-tight text-foreground">Δικηγόροι με δυνατότητα κράτησης για αυτή τη διαδρομή</h2>
           <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {lawyers.length > 0 ? lawyers.map((lawyer) => (
               <Link key={lawyer.id} to={`/lawyer/${lawyer.id}`} className="rounded-lg border border-border bg-card p-5 transition hover:border-primary/25 hover:shadow-xl hover:shadow-foreground/[0.05]">
@@ -83,12 +83,12 @@ const DiscoveryPage = () => {
                   <span className="flex items-center gap-1"><Star className="h-3.5 w-3.5 text-gold fill-gold" />{lawyer.rating} ({lawyer.reviews})</span>
                   <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-muted-foreground" />{lawyer.city}</span>
                   <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />{lawyer.available}</span>
-                  <span>{formatCurrency(lawyer.price)}</span>
+                  <span>{formatCurrency(getPriceFrom(lawyer))}</span>
                 </div>
               </Link>
             )) : (
               <div className="rounded-lg border border-dashed border-border bg-card p-6 text-sm leading-6 text-muted-foreground md:col-span-2 lg:col-span-3">
-                No direct match yet. Open search to broaden issue or city filters.
+                Δεν υπάρχει άμεση αντιστοίχιση ακόμη. Ανοίξτε την αναζήτηση για πιο γενικό θέμα ή κοντινή πόλη.
               </div>
             )}
           </div>
@@ -97,10 +97,10 @@ const DiscoveryPage = () => {
         <section className="mt-10 rounded-lg border border-border bg-secondary/40 p-6">
           <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
             <ShieldCheck className="h-5 w-5 text-sage" />
-            National launch focus
+            Εστίαση πρώτης πυκνότητας
           </h2>
           <p className="mt-2 text-sm leading-7 text-muted-foreground">
-            Country-wide production starts with density in Athens and Thessaloniki, then expands category and city coverage as verified supply becomes bookable.
+            Η παραγωγική κάλυψη ξεκινά από πυκνότητα σε Αθήνα και Θεσσαλονίκη και επεκτείνεται μόνο όταν η διαθέσιμη, ελεγμένη προσφορά γίνεται πραγματικά κρατήσιμη.
           </p>
         </section>
       </main>

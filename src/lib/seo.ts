@@ -2,7 +2,7 @@ import { cityDirectory, getDiscoveryConfig, issueDirectory } from "@/lib/marketp
 
 export const siteName = "Dikigoros";
 export const defaultSeoDescription =
-  "Compare verified lawyers in Greece, book a consultation, pay securely, and manage documents, receipts, reviews, and support.";
+  "Συγκρίνετε ελεγμένα προφίλ δικηγόρων στην Ελλάδα, κλείστε συμβουλευτική με ασφαλή πληρωμή και διαχειριστείτε έγγραφα, αποδείξεις, αξιολογήσεις και υποστήριξη.";
 
 export interface SeoConfig {
   title: string;
@@ -15,58 +15,58 @@ export const withSiteName = (title: string) => `${title} | ${siteName}`;
 export const staticSeoRoutes: SeoConfig[] = [
   {
     path: "/",
-    title: withSiteName("Find and book a verified lawyer"),
+    title: withSiteName("Βρείτε και κλείστε ραντεβού με δικηγόρο"),
     description: defaultSeoDescription,
   },
   {
     path: "/search",
-    title: withSiteName("Compare lawyers"),
-    description: "Compare lawyers by issue, city, response speed, availability, review proof, consultation mode, and starting price.",
+    title: withSiteName("Σύγκριση δικηγόρων"),
+    description: "Συγκρίνετε δικηγόρους ανά θέμα, πόλη, ταχύτητα απάντησης, διαθεσιμότητα, αξιολογήσεις, τρόπο συμβουλευτικής και τιμή από.",
   },
   {
     path: "/for-lawyers",
-    title: withSiteName("For lawyers and firms"),
-    description: "Get better-qualified consultations, availability control, booking management, verified reviews, and a public profile.",
+    title: withSiteName("Για δικηγόρους και γραφεία"),
+    description: "Πιο κατάλληλες συμβουλευτικές, έλεγχος διαθεσιμότητας, διαχείριση κρατήσεων, επαληθευμένες αξιολογήσεις και δημόσιο προφίλ.",
   },
   {
     path: "/help",
-    title: withSiteName("Support center"),
-    description: "Support for bookings, payments, refunds, documents, privacy requests, account access, and complaints.",
+    title: withSiteName("Κέντρο υποστήριξης"),
+    description: "Υποστήριξη για κρατήσεις, πληρωμές, επιστροφές, έγγραφα, αιτήματα απορρήτου, πρόσβαση λογαριασμού και παράπονα.",
   },
   {
     path: "/operations",
-    title: withSiteName("Production operations"),
-    description: "Operational readiness for payments, supply density, verification, reviews, disputes, support, privacy, and security.",
+    title: withSiteName("Λειτουργίες παραγωγής"),
+    description: "Επιχειρησιακή ετοιμότητα για πληρωμές, πυκνότητα προσφοράς, επαλήθευση, αξιολογήσεις, διαφωνίες, υποστήριξη, απόρρητο και ασφάλεια.",
   },
   {
     path: "/trust/verification-standards",
-    title: withSiteName("Verification standards"),
-    description: "What verified lawyer profiles mean, what is checked, and what verification does not guarantee.",
+    title: withSiteName("Πρότυπα επαλήθευσης"),
+    description: "Τι σημαίνει επαληθευμένο προφίλ δικηγόρου, τι ελέγχεται και τι δεν εγγυάται η επαλήθευση.",
   },
   {
     path: "/trust/reviews-policy",
-    title: withSiteName("Review policy"),
-    description: "Who can review, when reviews go live, moderation rules, dispute handling, and lawyer replies.",
+    title: withSiteName("Πολιτική αξιολογήσεων"),
+    description: "Ποιος μπορεί να αξιολογήσει, πότε δημοσιεύονται οι κριτικές, moderation, διαφωνίες και απαντήσεις δικηγόρων.",
   },
   {
     path: "/trust/payments-refunds",
-    title: withSiteName("Payments and refunds"),
-    description: "Payment timing, Stripe-backed checkout, receipts, cancellation rules, refund handling, and payment issue support.",
+    title: withSiteName("Πληρωμές και επιστροφές"),
+    description: "Χρόνος πληρωμής, Stripe Checkout, αποδείξεις, κανόνες ακύρωσης, επιστροφές και υποστήριξη πληρωμών.",
   },
   {
     path: "/trust/privacy-documents",
-    title: withSiteName("Privacy and documents"),
-    description: "Document visibility, access, retention, deletion requests, and secure client account handling.",
+    title: withSiteName("Απόρρητο και έγγραφα"),
+    description: "Ορατότητα εγγράφων, πρόσβαση, διατήρηση, αιτήματα διαγραφής και ασφαλής χειρισμός λογαριασμού πελάτη.",
   },
   {
     path: "/trust/support-complaints",
-    title: withSiteName("Support and complaints"),
-    description: "Support response paths for booking failures, payment issues, privacy requests, review disputes, and complaints.",
+    title: withSiteName("Υποστήριξη και παράπονα"),
+    description: "Διαδρομές υποστήριξης για αποτυχίες κράτησης, πληρωμές, απόρρητο, διαφωνίες αξιολογήσεων και παράπονα.",
   },
   {
     path: "/trust/security",
-    title: withSiteName("Security handling"),
-    description: "Security controls, sensitive data handling, incident response, and account protection standards.",
+    title: withSiteName("Χειρισμός ασφάλειας"),
+    description: "Έλεγχοι ασφάλειας, χειρισμός ευαίσθητων δεδομένων, απόκριση περιστατικών και πρότυπα προστασίας λογαριασμού.",
   },
 ];
 
@@ -81,8 +81,8 @@ export const getDiscoverySeo = (issueSlug?: string, citySlug?: string): SeoConfi
     path,
     title: withSiteName(title),
     description: config.city
-      ? `${config.issue.description} Compare verified lawyers serving ${config.city.title} with availability, reviews, and pricing.`
-      : `${config.issue.description} Compare verified lawyers with availability, reviews, consultation modes, and pricing.`,
+      ? `${config.issue.description} Συγκρίνετε ελεγμένα προφίλ που εξυπηρετούν ${config.city.title} με διαθεσιμότητα, αξιολογήσεις και τιμές.`
+      : `${config.issue.description} Συγκρίνετε ελεγμένα προφίλ με διαθεσιμότητα, αξιολογήσεις, τρόπους συμβουλευτικής και τιμές.`,
   };
 };
 
@@ -98,4 +98,3 @@ export const getSitemapEntries = (origin = "https://dikigoros.gr") =>
     ...route,
     loc: `${origin.replace(/\/+$/, "")}${route.path}`,
   }));
-

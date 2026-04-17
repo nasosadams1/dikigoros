@@ -1,5 +1,6 @@
 import type { ConsultationMode, Lawyer } from "@/data/lawyers";
 import {
+  getPriceFrom,
   hasLanguage,
   isAvailableToday,
   isAvailableTomorrow,
@@ -72,13 +73,13 @@ const matchesQuery = (lawyer: Lawyer, query: string) => {
 };
 
 const getRecommendationScore = (lawyer: Lawyer) =>
-  lawyer.rating * 100 + lawyer.reviews * 0.18 + lawyer.experience * 1.8 - lawyer.responseMinutes * 0.04 - lawyer.price * 0.05;
+  lawyer.rating * 100 + lawyer.reviews * 0.18 + lawyer.experience * 1.8 - lawyer.responseMinutes * 0.04 - getPriceFrom(lawyer) * 0.05;
 
 const getAvailabilityScore = (lawyer: Lawyer) =>
   (isAvailableToday(lawyer) ? 1000 : isAvailableTomorrow(lawyer) ? 700 : 0) +
   lawyer.rating * 20 -
   lawyer.responseMinutes * 0.5 -
-  lawyer.price * 0.1;
+  getPriceFrom(lawyer) * 0.1;
 
 const matchesAvailabilityIntent = (lawyer: Lawyer, availability?: AvailabilityIntent) => {
   if (!availability || availability === "any") return true;
@@ -108,7 +109,7 @@ export const filterLawyers = (lawyers: Lawyer[], filters: LawyerSearchFilters) =
       cityMatches &&
       specialtyMatches &&
       appointmentMatches &&
-      matchesPriceRange(lawyer.price, filters.priceRange) &&
+      matchesPriceRange(getPriceFrom(lawyer), filters.priceRange) &&
       matchesAvailabilityIntent(lawyer, filters.availability) &&
       responseMatches &&
       ratingMatches &&
@@ -120,8 +121,8 @@ export const filterLawyers = (lawyers: Lawyer[], filters: LawyerSearchFilters) =
 export const sortLawyers = (lawyers: Lawyer[], sort: LawyerSort) =>
   [...lawyers].sort((first, second) => {
     if (sort === "rating") return second.rating - first.rating || second.reviews - first.reviews;
-    if (sort === "price-low") return first.price - second.price || second.rating - first.rating;
-    if (sort === "value") return first.price - second.price || second.rating - first.rating || second.reviews - first.reviews;
+    if (sort === "price-low") return getPriceFrom(first) - getPriceFrom(second) || second.rating - first.rating;
+    if (sort === "value") return getPriceFrom(first) - getPriceFrom(second) || second.rating - first.rating || second.reviews - first.reviews;
     if (sort === "available") return getAvailabilityScore(second) - getAvailabilityScore(first);
     if (sort === "experience") return second.experience - first.experience || second.rating - first.rating;
     if (sort === "response") return first.responseMinutes - second.responseMinutes || second.rating - first.rating;
