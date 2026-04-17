@@ -100,7 +100,11 @@ const Booking = () => {
   const [confirmedBooking, setConfirmedBooking] = useState<StoredBooking | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [paymentState, setPaymentState] = useState({ loading: false, error: "" });
+  const [paymentState, setPaymentState] = useState<{
+    loading: boolean;
+    error: string;
+    action?: "retry-payment" | "support" | "";
+  }>({ loading: false, error: "", action: "" });
   const [authOpen, setAuthOpen] = useState(false);
   const [currentPartnerLawyerId, setCurrentPartnerLawyerId] = useState<string | null>(() => getStoredPartnerLawyerId(partnerSession?.email));
 
@@ -205,7 +209,7 @@ const Booking = () => {
     }
 
     if (checkout === "success") {
-      setPaymentState({ loading: false, error: "" });
+      setPaymentState({ loading: false, error: "", action: "" });
       setCurrentStep(4);
       return;
     }
@@ -213,6 +217,7 @@ const Booking = () => {
     setPaymentState({
       loading: false,
       error: "Η πληρωμή δεν ολοκληρώθηκε. Η κάρτα δεν χρεώθηκε. Μπορείτε να δοκιμάσετε ξανά την ασφαλή πληρωμή.",
+      action: "retry-payment",
     });
     setCurrentStep(3);
   }, [searchParams]);
@@ -328,10 +333,15 @@ const Booking = () => {
           setSubmitError("Δεν μπορείτε να κλείσετε ραντεβού στον εαυτό σας.");
           return;
         }
+        if (message.includes("BOOKING_SLOT_UNAVAILABLE") || message.includes("δεν είναι πλέον διαθέσιμη")) {
+          setSubmitError("Η ώρα δεν είναι πλέον διαθέσιμη. Επιλέξτε άλλη διαθέσιμη ώρα.");
+          setSelectedTime(null);
+          setCurrentStep(1);
+          setReservedSlots(await fetchReservedBookingSlots(lawyer.id));
+          return;
+        }
         setSubmitError(
-          message.includes("BOOKING_SLOT_UNAVAILABLE") || message.includes("δεν είναι πλέον διαθέσιμη")
-            ? "Η ώρα δεν είναι πλέον διαθέσιμη. Επιλέξτε άλλη ώρα."
-            : "Δεν μπορέσαμε να κρατήσουμε αυτή την ώρα. Δοκιμάστε ξανά ή επιλέξτε άλλη διαθέσιμη ώρα.",
+          "Δεν μπορέσαμε να κρατήσουμε αυτή την ώρα. Δοκιμάστε ξανά ή επιλέξτε άλλη διαθέσιμη ώρα.",
         );
       } finally {
         setIsSubmitting(false);
@@ -345,12 +355,13 @@ const Booking = () => {
         setPaymentState({
           loading: false,
           error: "Συνδεθείτε ή δημιουργήστε λογαριασμό για να ολοκληρώσετε την ασφαλή πληρωμή και να κρατηθεί η απόδειξη μαζί με την κράτηση.",
+          action: "",
         });
         setAuthOpen(true);
         return;
       }
 
-      setPaymentState({ loading: true, error: "" });
+      setPaymentState({ loading: true, error: "", action: "" });
 
       try {
         const returnUrl =
@@ -366,11 +377,13 @@ const Booking = () => {
         setPaymentState({
           loading: false,
           error: "Δεν μπορέσαμε να ανοίξουμε την ασφαλή πληρωμή για αυτή την κράτηση. Δοκιμάστε ξανά ή επικοινωνήστε με την υποστήριξη.",
+          action: "support",
         });
       } catch {
         setPaymentState({
           loading: false,
           error: "Η πληρωμή δεν ξεκίνησε. Η κάρτα δεν χρεώθηκε. Δοκιμάστε ξανά.",
+          action: "retry-payment",
         });
       }
 
@@ -621,7 +634,7 @@ const Booking = () => {
             <div>
               <h1 className="font-serif text-2xl tracking-tight text-foreground">Ασφαλής πληρωμή</h1>
               <p className="mt-1.5 text-sm font-medium text-muted-foreground">
-                Η ώρα είναι έτοιμη για δέσμευση. Επιβεβαιώστε τα στοιχεία πριν ανοίξει το Stripe Checkout.
+                Η ώρα είναι έτοιμη για δέσμευση. Επιβεβαιώστε τα στοιχεία πριν ανοίξει η ασφαλής πληρωμή.
               </p>
 
               <div className="mt-5 rounded-2xl border border-border bg-card p-5">
@@ -642,7 +655,7 @@ const Booking = () => {
                   <div>
                     <p className="text-sm font-bold text-foreground">Μοντέλο πληρωμής: πλήρης πληρωμή πρώτης συμβουλευτικής</p>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      Τα στοιχεία κάρτας χειρίζονται από το Stripe Checkout. Η κράτηση δεν θεωρείται πληρωμένη μέχρι να ολοκληρωθεί το checkout και να καταγραφεί η κατάσταση πληρωμής.
+                      Τα στοιχεία κάρτας χειρίζονται από ασφαλή πληρωμή μέσω Stripe. Η κράτηση δεν θεωρείται πληρωμένη μέχρι να ολοκληρωθεί η πληρωμή και να καταγραφεί η κατάστασή της.
                     </p>
                   </div>
                 </div>
@@ -655,9 +668,19 @@ const Booking = () => {
               ) : null}
 
               {paymentState.error ? (
-                <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive">
-                  {paymentState.error}
-                </p>
+                <div className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3">
+                  <p className="text-sm font-semibold text-destructive">{paymentState.error}</p>
+                  {paymentState.action === "retry-payment" ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => void handleNext()} className="mt-3 rounded-lg font-bold">
+                      Δοκιμάστε ξανά την ασφαλή πληρωμή
+                    </Button>
+                  ) : null}
+                  {paymentState.action === "support" ? (
+                    <Button asChild variant="outline" size="sm" className="mt-3 rounded-lg font-bold">
+                      <Link to="/help">Άνοιγμα υποστήριξης</Link>
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -688,10 +711,11 @@ const Booking = () => {
                 <p className="mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Τι ακολουθεί</p>
                 <NextStep icon={ReceiptText}>Η απόδειξη και η κατάσταση πληρωμής εμφανίζονται στις πληρωμές του λογαριασμού σας.</NextStep>
                 <NextStep icon={CalendarDays}>Προσθέστε τη συμβουλευτική στο ημερολόγιό σας από την επιβεβαίωση.</NextStep>
+                <NextStep icon={Mail}>Ο δικηγόρος βλέπει τα στοιχεία του ραντεβού και ακολουθεί η επόμενη επικοινωνία από την πλατφόρμα ή το γραφείο.</NextStep>
                 <NextStep icon={Upload}>Ανεβάστε ή στείλτε έγγραφα προετοιμασίας πριν από το ραντεβού.</NextStep>
                 <NextStep icon={ShieldCheck}>Δωρεάν ακύρωση ή αλλαγή έως 24 ώρες πριν από την ώρα.</NextStep>
                 {confirmedBooking?.persistenceSource === "local" ? (
-                  <NextStep icon={ShieldCheck}>Η κράτηση αποθηκεύτηκε τοπικά μέχρι να συγχρονιστεί με την υποδομή.</NextStep>
+                  <NextStep icon={ShieldCheck}>Η κράτηση χρειάζεται ακόμη τελική επιβεβαίωση πλατφόρμας. Αν δεν λάβετε email, ανοίξτε υποστήριξη.</NextStep>
                 ) : null}
               </div>
 

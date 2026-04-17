@@ -23,11 +23,40 @@ const roiPoints = [
 
 const firmTools = [
   { icon: UsersRound, title: "Δημόσιο προφίλ", text: "Ειδικεύσεις, γλώσσες, τιμές, έλεγχοι εμπιστοσύνης και στοιχεία συμβουλευτικής που βοηθούν την απόφαση." },
-  { icon: CalendarClock, title: "Έλεγχος διαθεσιμότητας", text: "Δημοσιευμένα παράθυρα κρατήσεων, ημέρες εργασίας, buffers και τρόποι συμβουλευτικής." },
+  { icon: CalendarClock, title: "Έλεγχος διαθεσιμότητας", text: "Δημοσιευμένα παράθυρα κρατήσεων, ημέρες εργασίας, κενά ασφαλείας και τρόποι συμβουλευτικής." },
   { icon: FileSearch, title: "Διαχείριση κρατήσεων", text: "Επιβεβαιωμένα ραντεβού, πλαίσιο πελάτη, κατάσταση ολοκλήρωσης και ορατότητα πληρωμής." },
   { icon: MessageSquareReply, title: "Χειρισμός αξιολογήσεων", text: "Ελεγμένες δημοσιευμένες αξιολογήσεις, απαντήσεις και απόδειξη συνδεδεμένη με ολοκληρωμένες κρατήσεις." },
-  { icon: ShieldCheck, title: "Έλεγχος αιτήσεων", text: "Έλεγχοι ετοιμότητας και ελεγχόμενο δημόσιο status πριν από την εμφάνιση στην αγορά." },
+  { icon: ShieldCheck, title: "Έλεγχος αιτήσεων", text: "Έλεγχοι ετοιμότητας και ελεγχόμενη δημόσια κατάσταση πριν από την εμφάνιση στην αγορά." },
   { icon: TrendingUp, title: "Πίνακας συνεργάτη", text: "Ένας χώρος για προφίλ, διαθεσιμότητα, κρατήσεις, έγγραφα, πληρωμές και αξιολογήσεις." },
+];
+
+const proofModules = [
+  {
+    title: "Διαθεσιμότητα που μειώνει χαμένο χρόνο",
+    signal: "Ώρες, κενά ασφαλείας, τρόποι συμβουλευτικής",
+    text: "Ο πελάτης βλέπει μόνο ώρες που μπορούν να κρατηθούν και το γραφείο κρατά έλεγχο στις ημέρες εργασίας, στα κενά και στις αλλαγές.",
+  },
+  {
+    title: "Κρατήσεις με καθαρή κατάσταση",
+    signal: "Επιβεβαίωση, πληρωμή, ολοκλήρωση",
+    text: "Κάθε πρώτη συμβουλευτική έχει κωδικό, στοιχεία πελάτη, τρόπο επικοινωνίας, κατάσταση πληρωμής και βήμα ολοκλήρωσης.",
+  },
+  {
+    title: "Κριτικές που χτίζουν εμπιστοσύνη",
+    signal: "Μόνο μετά από ολοκληρωμένη κράτηση",
+    text: "Οι δημόσιες κριτικές ανοίγουν μετά την ολοκλήρωση, μπορούν να ελεγχθούν και μπορούν να απαντηθούν χωρίς να εκτίθενται ιδιωτικά στοιχεία υπόθεσης.",
+  },
+  {
+    title: "Αναφορά απόδοσης",
+    signal: "Ζήτηση, κρατήσεις, πρώτες συμβουλευτικές",
+    text: "Το γραφείο βλέπει τι φέρνει πραγματική πρόθεση, ποιες ειδικεύσεις αποδίδουν και πού χρειάζεται καλύτερη δημόσια απόδειξη.",
+  },
+];
+
+const pricingRules = [
+  "Η βασική χρέωση εφαρμόζεται όταν η πρώτη συμβουλευτική ολοκληρωθεί και η κράτηση έχει επιβεβαιωμένη κατάσταση.",
+  "Ακύρωση, αποτυχία πληρωμής ή μη πραγματοποίηση ραντεβού δεν αντιμετωπίζονται ως ολοκληρωμένη πρώτη συμβουλευτική.",
+  "Τα πακέτα Ανάπτυξη και Ομάδα μειώνουν την τριβή για γραφεία με μεγαλύτερο όγκο, περισσότερες θέσεις ή ανάγκη εμπορικής αναφοράς.",
 ];
 
 const plans = [
@@ -138,6 +167,24 @@ const ForLawyersLanding = () => {
           </div>
         </section>
 
+        <section className="partner-panel p-7 lg:p-8">
+          <div className="max-w-[760px]">
+            <p className="partner-kicker">Απόδειξη προϊόντος</p>
+            <h2 className="mt-3 font-sans text-[30px] font-semibold leading-tight tracking-[-0.02em] text-[hsl(var(--partner-ink))]">
+              Όχι απλή προβολή. Καλύτερη αρχική λήψη στοιχείων, λιγότερος θόρυβος, καθαρότερη πρώτη συμβουλευτική.
+            </h2>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {proofModules.map((module) => (
+              <article key={module.title} className="partner-soft-card p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--partner-navy-soft))]">{module.signal}</p>
+                <h3 className="mt-3 text-[20px] font-semibold leading-snug tracking-[-0.02em] text-[hsl(var(--partner-ink))]">{module.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{module.text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="partner-dark-panel p-7">
             <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-white/58">Εμπορικό μοντέλο</p>
@@ -147,6 +194,13 @@ const ForLawyersLanding = () => {
             <p className="mt-4 text-sm leading-6 text-white/70">
               Το βασικό μοντέλο ευθυγραμμίζει την προμήθεια της πλατφόρμας με πραγματικά παραδομένες πρώτες συμβουλευτικές. Μεγαλύτερα γραφεία μπορούν να περάσουν σε μηνιαίο ελάχιστο ή συμφωνία γραφείου όταν ο όγκος το δικαιολογεί.
             </p>
+            <div className="mt-5 grid gap-2">
+              {pricingRules.map((rule) => (
+                <p key={rule} className="rounded-[8px] border border-white/10 bg-white/8 px-3 py-2 text-sm font-semibold leading-6 text-white/78">
+                  {rule}
+                </p>
+              ))}
+            </div>
             <div className="mt-5 rounded-[8px] border border-white/10 bg-white/8 p-4">
               <p className="text-sm font-semibold text-white">Πρόσθετες επιλογές</p>
               <div className="mt-3 flex flex-wrap gap-2">

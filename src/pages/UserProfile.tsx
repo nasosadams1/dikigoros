@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Bell,
@@ -21,6 +21,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AuthContainer from "@/components/auth/AuthContainer";
 import Footer from "@/components/Footer";
@@ -282,9 +283,10 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
 
   const activeBookings = bookings.filter((booking) => booking.status === "confirmed");
   const completedBookings = bookings.filter((booking) => booking.status === "completed");
-  const reviewableBookings = completedBookings.filter((booking) => booking.persistenceSource === "supabase");
-  const unsyncedCompletedBookings = completedBookings.filter((booking) => booking.persistenceSource !== "supabase");
+  const reviewableBookings = completedBookings.filter(isVerifiedBooking);
+  const completionPendingBookings = completedBookings.filter((booking) => !isVerifiedBooking(booking));
   const nextBooking = activeBookings[0];
+  const nextBookingPayment = nextBooking ? payments.find((payment) => payment.bookingId === nextBooking.id) : undefined;
 
   const savedLawyers = useMemo(
     () => workspace.savedLawyerIds.map((id) => lawyerCatalog.find((lawyer) => lawyer.id === id)).filter(Boolean),
@@ -485,7 +487,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
           });
           setPaymentSetupState({
             loading: false,
-            message: "The booking was cancelled. Support will review the paid refund path and follow up with the next step.",
+            message: "Η ακύρωση καταχωρίστηκε. Η επιστροφή εξετάζεται από την υποστήριξη.",
             tone: "info",
           });
         } else {
@@ -493,8 +495,8 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
             loading: false,
             message:
               refund.status === "refunded"
-                ? "The booking was cancelled and the refund was started through the original payment method."
-                : "The booking was cancelled. The refund has been requested through the original payment method.",
+                ? "Η ακύρωση καταχωρίστηκε και η επιστροφή ξεκίνησε στην αρχική μέθοδο πληρωμής."
+                : "Η ακύρωση καταχωρίστηκε. Η επιστροφή ζητήθηκε στην αρχική μέθοδο πληρωμής.",
             tone: "success",
           });
         }
@@ -504,7 +506,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     })().catch(() => {
       setPaymentSetupState({
         loading: false,
-        message: "The booking could not be cancelled right now. Refresh and try again, or contact support.",
+        message: "Δεν μπορέσαμε να ολοκληρώσουμε την ακύρωση τώρα. Δοκιμάστε ξανά ή ανοίξτε υποστήριξη.",
         tone: "error",
       });
     });
@@ -516,7 +518,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     }).catch(() => {
       setPaymentSetupState({
         loading: false,
-        message: "Η ακύρωση δεν αποθηκεύτηκε στο Supabase. Κάντε ανανέωση και δοκιμάστε ξανά.",
+        message: "Δεν μπορέσαμε να ολοκληρώσουμε την ακύρωση τώρα. Δοκιμάστε ξανά μετά από ανανέωση ή ανοίξτε υποστήριξη.",
         tone: "error",
       });
     });
@@ -540,7 +542,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
         loading: false,
         message: session.url
           ? "Μεταφορά σε ασφαλή σύνδεση κάρτας μέσω Stripe."
-          : "Η ασφαλής σύνδεση κάρτας δεν επέστρεψε URL. Οι πληρωμές μένουν κλειδωμένες μέχρι να συνδεθεί σωστά.",
+          : "Δεν μπορέσαμε να ανοίξουμε την ασφαλή σύνδεση κάρτας. Οι πληρωμές μένουν κλειδωμένες μέχρι να ολοκληρωθεί σωστά.",
         tone: session.url ? "info" : "error",
       });
 
@@ -550,7 +552,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     } catch {
       setPaymentSetupState({
         loading: false,
-        message: "Η σύνδεση με Stripe απέτυχε. Δοκιμάστε ξανά μετά από ανανέωση.",
+        message: "Η ασφαλής σύνδεση κάρτας απέτυχε. Δοκιμάστε ξανά μετά από ανανέωση.",
         tone: "error",
       });
     }
@@ -560,7 +562,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     if (!isVerifiedBooking(booking)) {
       setPaymentSetupState({
         loading: false,
-        message: "Η πληρωμή ανοίγει μόνο για επαληθευμένα ραντεβού Supabase. Αυτό το ραντεβού είναι τοπικό και δεν πρέπει να χρεωθεί.",
+        message: "Αυτό το ραντεβού δεν έχει πλήρη επιβεβαίωση πλατφόρμας ακόμη. Η πληρωμή θα ανοίξει μόλις ολοκληρωθεί η επιβεβαίωση.",
         tone: "error",
       });
       return;
@@ -574,7 +576,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
         loading: false,
         message: session.url
           ? "Μεταφορά σε ασφαλή πληρωμή μέσω Stripe."
-          : "Η ασφαλής πληρωμή δεν επέστρεψε URL. Οι πληρωμές μένουν κλειδωμένες μέχρι να συνδεθεί σωστά.",
+          : "Δεν μπορέσαμε να ανοίξουμε την ασφαλή πληρωμή. Η κράτηση μένει χωρίς χρέωση μέχρι να ολοκληρωθεί σωστά.",
         tone: session.url ? "info" : "error",
       });
 
@@ -673,8 +675,8 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
               loading: false,
               message:
                 result.reason === "booking_not_completed"
-                  ? "Το Supabase δεν βλέπει ακόμη αυτό το ραντεβού ως ολοκληρωμένο. Συνδεθείτε ξανά στον πίνακα συνεργάτη και πατήστε ολοκλήρωση στο ίδιο ραντεβού."
-                  : "Δεν έγινε αποθήκευση στο Supabase. Δοκιμάστε ξανά μετά από ανανέωση.",
+                  ? "Η συμβουλευτική δεν έχει επιβεβαιωθεί ακόμη ως ολοκληρωμένη από τον δικηγόρο. Οι κριτικές ανοίγουν μόλις ολοκληρωθεί αυτή η επιβεβαίωση."
+                  : "Δεν μπορέσαμε να καταχωρίσουμε την κριτική τώρα. Δοκιμάστε ξανά μετά από ανανέωση.",
               tone: "error",
             },
       }));
@@ -804,8 +806,35 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                   )}
                 </Panel>
 
-                <Panel title="Γρήγορες ρυθμίσεις" eyebrow="Προσωπικές επιλογές">
-                  <PreferencesForm workspace={workspace} updatePreferences={updatePreferences} toggleLegalCategory={toggleLegalCategory} compact />
+                <Panel title="Φάκελος επόμενου ραντεβού" eyebrow="Έγγραφα, πληρωμή, βήματα">
+                  {nextBooking ? (
+                    <div className="space-y-3">
+                      <WorkspaceAction
+                        icon={FileText}
+                        title="Έγγραφα προετοιμασίας"
+                        text="Ανεβάστε μόνο όσα χρειάζεται να δει ο δικηγόρος για αυτή τη συμβουλευτική."
+                        action={<Button type="button" variant="outline" onClick={() => selectView("documents")} className="rounded-lg text-xs font-bold">Άνοιγμα εγγράφων</Button>}
+                      />
+                      <WorkspaceAction
+                        icon={CreditCard}
+                        title="Πληρωμή και απόδειξη"
+                        text={nextBookingPayment?.status === "paid" ? "Η πληρωμή έχει καταχωριστεί. Η απόδειξη εμφανίζεται στις πληρωμές." : "Η απόδειξη ανοίγει μόλις ολοκληρωθεί η επιβεβαιωμένη πληρωμή."}
+                        action={<Button type="button" variant="outline" onClick={() => selectView("payments")} className="rounded-lg text-xs font-bold">Πληρωμές</Button>}
+                      />
+                      <WorkspaceAction
+                        icon={MessageSquareQuote}
+                        title="Τι ακολουθεί"
+                        text="Δείτε επόμενη επικοινωνία, προετοιμασία και διαδρομή υποστήριξης για το ραντεβού."
+                        action={<Button type="button" variant="outline" onClick={() => selectView("messages")} className="rounded-lg text-xs font-bold">Επόμενα βήματα</Button>}
+                      />
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={FileText}
+                      title="Ο φάκελος ανοίγει μετά την κράτηση"
+                      description="Μόλις κλείσετε ραντεβού, εδώ θα βλέπετε έγγραφα, πληρωμή, απόδειξη και επόμενα βήματα."
+                    />
+                  )}
                 </Panel>
 
                 <Panel title="Αποθηκευμένοι δικηγόροι" eyebrow="Σύντομη λίστα">
@@ -1175,11 +1204,11 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                   ) : (
                     <EmptyState
                       icon={MessageSquareQuote}
-                      title={unsyncedCompletedBookings.length > 0 ? "Το ολοκληρωμένο ραντεβού δεν έχει συγχρονιστεί" : "Οι κριτικές ανοίγουν μετά από ολοκληρωμένο ραντεβού"}
+                      title={completionPendingBookings.length > 0 ? "Η ολοκλήρωση του ραντεβού επιβεβαιώνεται" : "Οι κριτικές ανοίγουν μετά από ολοκληρωμένο ραντεβού"}
                       description={
-                        unsyncedCompletedBookings.length > 0
-                          ? "Το ραντεβού φαίνεται ολοκληρωμένο μόνο τοπικά. Ο συνεργάτης πρέπει να συγχρονίσει την ολοκλήρωση στο Supabase από τον πίνακα συνεργάτη πριν ανοίξει επαληθευμένη κριτική."
-                          : "Μόνο πραγματικές κρατήσεις μπορούν να αφήσουν κριτική, ώστε το δημόσιο προφίλ του δικηγόρου να παραμένει αξιόπιστο."
+                        completionPendingBookings.length > 0
+                          ? "Οι κριτικές ανοίγουν μόλις ο δικηγόρος επιβεβαιώσει ότι η συμβουλευτική ολοκληρώθηκε."
+                          : "Μόνο επιβεβαιωμένες κρατήσεις μπορούν να αφήσουν κριτική, ώστε το δημόσιο προφίλ του δικηγόρου να παραμένει αξιόπιστο."
                       }
                     />
                   )}
@@ -1314,6 +1343,31 @@ const AccountProfileForm = ({
   </div>
 );
 
+const WorkspaceAction = ({
+  icon: Icon,
+  title,
+  text,
+  action,
+}: {
+  icon: LucideIcon;
+  title: string;
+  text: string;
+  action: ReactNode;
+}) => (
+  <article className="rounded-xl border border-border bg-secondary/35 p-4">
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-card text-primary">
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-sm font-bold text-foreground">{title}</h3>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">{text}</p>
+        <div className="mt-3">{action}</div>
+      </div>
+    </div>
+  </article>
+);
+
 const BookingCard = ({
   booking,
   onCancel,
@@ -1335,7 +1389,7 @@ const BookingCard = ({
           </span>
           {!verified ? (
             <span className="rounded-full border border-destructive/20 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive">
-              Τοπική εγγραφή
+              Σε επιβεβαίωση
             </span>
           ) : null}
           <span className="text-xs font-semibold text-muted-foreground">{booking.referenceId}</span>
@@ -1344,7 +1398,7 @@ const BookingCard = ({
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{booking.issueSummary || booking.consultationType}</p>
         {!verified ? (
           <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-semibold leading-5 text-destructive">
-            Δεν υπάρχει επαληθευμένη εγγραφή στο Supabase. Δεν ανοίγουν πληρωμές, αποδείξεις ή κριτικές μέχρι να δημιουργηθεί πραγματική κράτηση.
+            Η κράτηση χρειάζεται πλήρη επιβεβαίωση πλατφόρμας πριν ανοίξουν πληρωμές, αποδείξεις ή κριτικές.
           </p>
         ) : null}
         <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold text-muted-foreground">
@@ -1365,6 +1419,11 @@ const BookingCard = ({
             <Button type="button" variant="outline" size="sm" onClick={() => onCancel(booking.id)} disabled={!verified} className="rounded-xl font-bold">
               Ακύρωση
             </Button>
+            {!verified ? (
+              <Button asChild variant="outline" size="sm" className="rounded-xl font-bold">
+                <Link to="/help">Υποστήριξη</Link>
+              </Button>
+            ) : null}
           </>
         ) : null}
       </div>
@@ -1391,7 +1450,7 @@ const SecurePaymentMethodForm = ({
       <div>
         <p className="font-bold text-foreground">Ασφαλές προφίλ πληρωμής μέσω Stripe</p>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
-          Τα στοιχεία κάρτας συλλέγονται μόνο σε Stripe-hosted ροή και δεν πληκτρολογούνται μέσα στο προφίλ.
+          Τα στοιχεία κάρτας συλλέγονται μόνο σε ασφαλή ροή Stripe και δεν πληκτρολογούνται μέσα στο προφίλ.
         </p>
         <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           Κατάσταση: {paymentMethodStatusLabels[paymentMethod.status]}
@@ -1434,9 +1493,9 @@ const InvoiceCard = ({
   const paymentStatus = payment?.status || "pending";
   const statusText =
     !verified
-      ? "Χρειάζεται επαληθευμένη κράτηση Supabase πριν ανοίξει πληρωμή ή απόδειξη"
+      ? "Η κράτηση χρειάζεται πλήρη επιβεβαίωση πριν ανοίξει πληρωμή ή απόδειξη"
       : paymentStatus === "paid"
-      ? "Πληρωμένο · η απόδειξη εμφανίζεται όταν επιστρέψει από τη Stripe"
+      ? "Πληρωμένο · η απόδειξη εμφανίζεται μετά την επιβεβαίωση πληρωμής"
       : paymentStatus === "refunded"
       ? "Ακυρωμένο · η επιστροφή έχει δρομολογηθεί"
       : paymentStatus === "failed"

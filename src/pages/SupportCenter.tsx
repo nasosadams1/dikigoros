@@ -20,6 +20,12 @@ const supportTopics = [
   { type: "security", icon: ShieldAlert, title: "Ασφάλεια ή απόρρητο", text: "Ανησυχία για ευαίσθητα νομικά δεδομένα, αναφορά περιστατικού, αίτημα δεδομένων, διαγραφή λογαριασμού και έλεγχος πρόσβασης." },
 ];
 
+const supportFlow = [
+  { title: "Επείγοντα κράτησης ή πληρωμής", text: "Μπαίνουν πρώτα, ειδικά όταν υπάρχει ώρα που πλησιάζει, χρέωση που δεν ξεκαθαρίζει ή ακύρωση από δικηγόρο." },
+  { title: "Επιστροφές και αλλαγές", text: "Η υποστήριξη ελέγχει τον κανόνα 24 ωρών, την αιτία ακύρωσης, την κατάσταση πληρωμής και την αρχική μέθοδο πληρωμής." },
+  { title: "Παράπονα και έλεγχος", text: "Μπορεί να ζητηθούν στοιχεία, να κρατηθεί δημοσίευση, να αφαιρεθεί κριτική ή να παγώσει προφίλ μέχρι να ολοκληρωθεί ο έλεγχος." },
+];
+
 const areaBySupportType: Record<string, OperationalArea> = {
   booking: "bookingDisputes",
   payment: "payments",
@@ -90,6 +96,18 @@ const SupportCenter = () => {
           </section>
         ))}
       </div>
+
+      <section className="mt-8 rounded-lg border border-border bg-card p-5">
+        <h2 className="text-lg font-bold text-foreground">Πώς δρομολογείται ένα αίτημα</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {supportFlow.map((item) => (
+            <article key={item.title} className="rounded-lg border border-border bg-secondary/40 p-4">
+              <h3 className="text-sm font-bold text-foreground">{item.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.text}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <div className="mt-8 rounded-lg border border-border bg-secondary/40 p-5">
         <h2 className="text-lg font-bold text-foreground">Διαδρομές επικοινωνίας</h2>
