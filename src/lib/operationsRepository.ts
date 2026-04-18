@@ -14,6 +14,7 @@ export type OperationalCaseStatus =
 export type OperationalCasePriority = "urgent" | "high" | "normal" | "low";
 
 export type OperationalSlaState = "closed" | "overdue" | "due_soon" | "on_track";
+export type OperationalCasesSource = "backend" | "fallback";
 
 export interface OperationalCaseTimelineEntry {
   at: string;
@@ -38,6 +39,11 @@ export interface OperationalCase {
   updatedAt: string;
   slaDueAt: string;
   timeline: OperationalCaseTimelineEntry[];
+}
+
+export interface OperationalCasesSnapshot {
+  cases: OperationalCase[];
+  source: OperationalCasesSource;
 }
 
 export interface CreateOperationalCaseInput {
@@ -543,13 +549,16 @@ const getFallbackOperationalCases = (area?: OperationalArea) => {
 
 export const getOperationalCases = (area?: OperationalArea) => getFallbackOperationalCases(area);
 
-export const fetchOperationalCases = async (area?: OperationalArea) => {
+export const fetchOperationalCasesSnapshot = async (area?: OperationalArea): Promise<OperationalCasesSnapshot> => {
   try {
-    return await fetchBackendCases(area);
+    return { cases: await fetchBackendCases(area), source: "backend" };
   } catch {
-    return getFallbackOperationalCases(area);
+    return { cases: getFallbackOperationalCases(area), source: "fallback" };
   }
 };
+
+export const fetchOperationalCases = async (area?: OperationalArea) =>
+  (await fetchOperationalCasesSnapshot(area)).cases;
 
 export const createOperationalCase = async (input: CreateOperationalCaseInput) => {
   const nextCase = createCase(input);

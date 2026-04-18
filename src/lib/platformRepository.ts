@@ -163,8 +163,12 @@ const bookingTableName = (import.meta.env.VITE_SUPABASE_BOOKINGS_TABLE as string
 const applicationTableName =
   (import.meta.env.VITE_SUPABASE_PARTNER_APPLICATIONS_TABLE as string | undefined) || "partner_applications";
 const isTestMode = import.meta.env.MODE === "test";
+const requireLivePayments = import.meta.env.VITE_REQUIRE_LIVE_PAYMENTS === "true";
 const enableLocalBookingFallback =
-  isTestMode || import.meta.env.VITE_ENABLE_LOCAL_BOOKING_FALLBACK === "true";
+  isTestMode ||
+  (import.meta.env.DEV &&
+    !requireLivePayments &&
+    import.meta.env.VITE_ENABLE_LOCAL_BOOKING_FALLBACK === "true");
 const requirePartnerBackend = import.meta.env.VITE_REQUIRE_PARTNER_BACKEND === "true";
 const enableLocalPartnerFallback =
   isTestMode || import.meta.env.VITE_ENABLE_LOCAL_PARTNER_FALLBACK === "true";
@@ -987,6 +991,40 @@ export const completePartnerBooking = async (
   }
 };
 
+export const cancelPartnerBooking = async (
+  booking: StoredBooking,
+  partnerSession?: PartnerSession | null,
+  reason = "lawyer_requested_reschedule",
+): Promise<BookingMutationResult> => {
+  if (!partnerSession?.sessionToken) {
+    return {
+      booking,
+      synced: false,
+      error: "Λείπει το token συνεδρίας συνεργάτη. Κάντε αποσύνδεση και ξανά είσοδο στον πίνακα συνεργάτη.",
+    };
+  }
+
+  try {
+    const { error } = await publicSupabase.rpc("cancel_booking_as_partner", {
+      p_partner_email: normalizeEmail(partnerSession.email),
+      p_session_token: partnerSession.sessionToken,
+      p_booking_id: booking.id,
+      p_reason: reason,
+    });
+
+    if (error) throw error;
+
+    const localBooking = cancelStoredBooking(booking.id) || { ...booking, status: "cancelled" as const };
+    return { booking: localBooking, synced: true };
+  } catch (error) {
+    return {
+      booking,
+      synced: false,
+      error: isPartnerSessionInvalidError(error) ? "PARTNER_SESSION_INVALID" : getErrorMessage(error),
+    };
+  }
+};
+
 const persistLocalApplication = (application: StoredPartnerApplication) => {
   writeStoredList(applicationStorageKey, [application, ...getStoredPartnerApplications()]);
 };
@@ -1083,7 +1121,11 @@ export const requestPaymentSetupSession = async (
       requestedAt,
       persistenceSource: "supabase",
     };
-  } catch {
+  } catch (error) {
+    if (requireLivePayments) {
+      throw error;
+    }
+
     return {
       provider: "stripe",
       status: "setup_required",
@@ -1139,7 +1181,11 @@ export const requestBookingCheckoutSession = async (
       requestedAt,
       persistenceSource: "supabase",
     };
-  } catch {
+  } catch (error) {
+    if (requireLivePayments || !enableLocalBookingFallback) {
+      throw error;
+    }
+
     return {
       provider: "stripe",
       status: "setup_required",
@@ -1186,7 +1232,11 @@ export const requestBookingRefund = async (
       requestedAt,
       persistenceSource: "supabase",
     };
-  } catch {
+  } catch (error) {
+    if (requireLivePayments || !enableLocalBookingFallback) {
+      throw error;
+    }
+
     const existingPayment = getStoredPaymentForBooking(booking.id);
     if (existingPayment?.status === "paid") {
       persistLocalPayment({

@@ -1,4 +1,5 @@
 import type { Lawyer } from "@/data/lawyers";
+import type { FunnelEvent } from "@/lib/funnelAnalytics";
 import { getLawyerMarketplaceSignals, includesMarketplaceText, isAvailableToday, isAvailableTomorrow } from "@/lib/marketplace";
 
 export type OperationalArea =
@@ -42,6 +43,21 @@ export interface LaunchGate {
   owner: string;
   ready: boolean;
   evidence: string;
+}
+
+export interface LaunchEvidenceCase {
+  area: OperationalArea;
+  title: string;
+  summary: string;
+  status: string;
+  evidence: string[];
+}
+
+export interface LaunchGateInputs {
+  lawyers: Lawyer[];
+  funnelEvents: FunnelEvent[];
+  operationalCases: LaunchEvidenceCase[];
+  operationalCasesSource: "backend" | "fallback";
 }
 
 export interface PaymentReadinessCheck {
@@ -465,6 +481,165 @@ export const launchGates: LaunchGate[] = [
     evidence: "Partner portal shows views/appearances proxies, booking starts, paid bookings, completion, reviews, availability, and profile proof gaps.",
   },
 ];
+
+const closedOperationalStatuses = new Set(["resolved", "rejected", "suspended"]);
+
+export const bookingPaymentEvidenceScenarios = [
+  {
+    label: "successful live booking",
+    terms: ["successful live booking", "payment succeeded", "receipt visible", "confirmed_paid"],
+  },
+  {
+    label: "failed payment",
+    terms: ["failed payment", "checkout failed", "payment failed"],
+  },
+  {
+    label: "refunded cancellation",
+    terms: ["refunded cancellation", "refund approved", "refunded"],
+  },
+  {
+    label: "lawyer cancelled booking",
+    terms: ["lawyer cancelled", "lawyer cancellation", "reschedule"],
+  },
+];
+
+const allText = (operationalCase: LaunchEvidenceCase) =>
+  [operationalCase.title, operationalCase.summary, ...operationalCase.evidence].join(" ").toLowerCase();
+
+const hasClosedCaseWithAnyTerm = (cases: LaunchEvidenceCase[], terms: string[]) =>
+  cases.some((operationalCase) => {
+    if (!closedOperationalStatuses.has(operationalCase.status)) return false;
+    const haystack = allText(operationalCase);
+    return terms.some((term) => haystack.includes(term.toLowerCase()));
+  });
+
+export const getBookingPaymentEvidenceChecks = (cases: LaunchEvidenceCase[]) =>
+  bookingPaymentEvidenceScenarios.map((scenario) => ({
+    ...scenario,
+    ready: hasClosedCaseWithAnyTerm(cases, scenario.terms),
+  }));
+
+export const getSupportWorkflowEvidenceChecks = (cases: LaunchEvidenceCase[]) =>
+  supportWorkflows.map((workflow) => ({
+    id: workflow.id,
+    label: workflow.label,
+    ready: cases.some((operationalCase) => {
+      if (operationalCase.area !== workflow.area || !closedOperationalStatuses.has(operationalCase.status)) return false;
+      const haystack = allText(operationalCase);
+      return haystack.includes(workflow.id.replace(/_/g, " ")) || haystack.includes(workflow.label.toLowerCase());
+    }),
+  }));
+
+export const getFunnelEventCoverage = (funnelEvents: FunnelEvent[]) => {
+  const counts = funnelEvents.reduce<Record<string, number>>((accumulator, event) => {
+    accumulator[event.name] = (accumulator[event.name] || 0) + 1;
+    return accumulator;
+  }, {});
+  const timestamps = funnelEvents
+    .map((event) => new Date(event.occurredAt).getTime())
+    .filter((timestamp) => Number.isFinite(timestamp));
+  const oldest = timestamps.length > 0 ? Math.min(...timestamps) : null;
+  const newest = timestamps.length > 0 ? Math.max(...timestamps) : null;
+  const observedDays = oldest && newest ? (newest - oldest) / (24 * 60 * 60 * 1000) : 0;
+
+  return {
+    observedDays,
+    checks: [
+      "homepage_search",
+      "search_profile_opened",
+      "profile_booking_start",
+      "booking_created",
+      "payment_opened",
+      "payment_completed",
+      "consultation_completed",
+      "review_submitted",
+      "lawyer_application_submitted",
+      "lawyer_application_approved",
+      "approved_lawyer_first_completed_consultation",
+    ].map((eventName) => ({
+      eventName,
+      count: counts[eventName] || 0,
+      ready: (counts[eventName] || 0) > 0,
+    })),
+  };
+};
+
+export const getDynamicLaunchGates = ({
+  lawyers,
+  funnelEvents,
+  operationalCases,
+  operationalCasesSource,
+}: LaunchGateInputs): LaunchGate[] => {
+  const paymentChecks = getPaymentReadinessChecks();
+  const paymentEvidenceChecks = getBookingPaymentEvidenceChecks(operationalCases);
+  const supportEvidenceChecks = getSupportWorkflowEvidenceChecks(operationalCases);
+  const funnelCoverage = getFunnelEventCoverage(funnelEvents);
+  const supplyReadiness = getSupplyReadiness(lawyers);
+  const coreDensityReady = supplyReadiness.every((city) => city.ready && city.categories.every((category) => category.ready));
+
+  return [
+    {
+      label: "Booking and payment exception flows tested end to end",
+      owner: "Payments operator",
+      ready: paymentChecks.every((check) => check.ready) && paymentEvidenceChecks.every((check) => check.ready),
+      evidence: `${paymentEvidenceChecks.filter((check) => check.ready).length}/${paymentEvidenceChecks.length} live/staged payment scenarios closed with evidence.`,
+    },
+    {
+      label: "Webhook/payment reconciliation working",
+      owner: "Payments operator",
+      ready: paymentChecks.every((check) => check.ready) && hasClosedCaseWithAnyTerm(operationalCases, ["webhook", "payment reconciliation", "receipt visible"]),
+      evidence: "Requires live Stripe mode plus a closed case proving paid/failed/refunded webhook reconciliation and receipt visibility.",
+    },
+    {
+      label: "Account statuses match backend truth",
+      owner: "Support lead",
+      ready: operationalCasesSource === "backend" && hasClosedCaseWithAnyTerm(operationalCases, ["account statuses", "backend truth", "confirmed_paid", "refund_requested"]),
+      evidence: "Requires backend ops source plus a closed account-state evidence case.",
+    },
+    {
+      label: "Support workflows owned with SLA",
+      owner: "Operations lead",
+      ready: supportWorkflows.every((workflow) => workflow.owner && workflow.sla && workflow.requiredEvidence.length > 0) && supportEvidenceChecks.every((check) => check.ready),
+      evidence: `${supportEvidenceChecks.filter((check) => check.ready).length}/${supportEvidenceChecks.length} support workflows have closed staged or live evidence.`,
+    },
+    {
+      label: "Review publication workflow enforced",
+      owner: "Trust reviewer",
+      ready: hasClosedCaseWithAnyTerm(operationalCases, ["review publication", "completed confirmed consultation", "under_moderation"]),
+      evidence: "Requires closed moderation evidence proving reviews publish only after confirmed completion.",
+    },
+    {
+      label: "Partner verification workflow enforced",
+      owner: "Verification reviewer",
+      ready: hasClosedCaseWithAnyTerm(operationalCases, ["partner verification", "application review", "approved partner"]),
+      evidence: "Requires closed verification evidence proving identity/license/bar checks before approval.",
+    },
+    {
+      label: "Backend funnel analytics live",
+      owner: "Growth operations",
+      ready: funnelCoverage.checks.every((check) => check.ready) && funnelCoverage.observedDays >= 7,
+      evidence: `${funnelCoverage.checks.filter((check) => check.ready).length}/${funnelCoverage.checks.length} required events observed across ${funnelCoverage.observedDays.toFixed(1)} days.`,
+    },
+    {
+      label: "Core city/category density achieved",
+      owner: "Marketplace supply lead",
+      ready: coreDensityReady,
+      evidence: "Athens and Thessaloniki must meet verified profile thresholds and every core category must have enough coverage.",
+    },
+    {
+      label: "Lawyer dashboard shows ROI clearly",
+      owner: "Partner success",
+      ready: hasClosedCaseWithAnyTerm(operationalCases, ["lawyer dashboard", "roi", "completed consultations", "paid bookings"]),
+      evidence: "Requires a closed partner ROI evidence case backed by a real dashboard with live data.",
+    },
+    {
+      label: "Operations are backend-first",
+      owner: "Operations lead",
+      ready: operationalCasesSource === "backend",
+      evidence: operationalCasesSource === "backend" ? "Operational cases and metrics are read from Supabase." : "Operational cases are using local fallback cache.",
+    },
+  ];
+};
 
 const categoryText = (lawyer: Lawyer) =>
   [lawyer.specialty, lawyer.specialtyShort, lawyer.bestFor, lawyer.bio, ...lawyer.specialties, ...lawyer.specialtyKeywords].join(" ");

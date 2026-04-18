@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createOperationalCase,
   fetchOperationalCases,
+  fetchOperationalCasesSnapshot,
   setOperationalCaseStatus,
 } from "@/lib/operationsRepository";
 import { supabase } from "@/lib/supabase";
@@ -131,6 +132,13 @@ describe("operations repository", () => {
     expect(supabase.from).toHaveBeenCalledWith("operational_cases");
     expect(cases).toHaveLength(1);
     expect(cases[0].referenceId).toBe("PAY-BACKEND-1");
+  });
+
+  it("reports whether operational queue metrics are backed by backend truth", async () => {
+    const snapshot = await fetchOperationalCasesSnapshot();
+
+    expect(snapshot.source).toBe("backend");
+    expect(snapshot.cases[0].referenceId).toBe("PAY-BACKEND-1");
   });
 
   it("persists status updates, assignments, and timeline entries remotely", async () => {

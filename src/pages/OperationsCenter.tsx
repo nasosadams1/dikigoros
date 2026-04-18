@@ -24,14 +24,17 @@ import {
   getOperationalRulesByArea,
   getPaymentReadinessChecks,
   getSupplyReadiness,
-  launchGates,
+  getDynamicLaunchGates,
+  getBookingPaymentEvidenceChecks,
+  getSupportWorkflowEvidenceChecks,
+  getFunnelEventCoverage,
   supportWorkflows,
   type OperationalArea,
 } from "@/lib/operations";
 import {
   assignOperationalCase,
   createOperationalCase,
-  fetchOperationalCases,
+  fetchOperationalCasesSnapshot,
   getOperationalCaseMetrics,
   getOperationalSlaState,
   operationalAreaLabels,
@@ -82,13 +85,15 @@ const OperationsCenter = () => {
     queryFn: fetchFunnelEvents,
   });
   const {
-    data: operationalCases = [],
+    data: operationalCasesSnapshot = { cases: [], source: "fallback" as const },
     refetch: refetchOperationalCases,
     isFetching: operationalCasesFetching,
   } = useQuery({
     queryKey: ["operational-cases"],
-    queryFn: () => fetchOperationalCases(),
+    queryFn: () => fetchOperationalCasesSnapshot(),
   });
+  const operationalCases = operationalCasesSnapshot.cases;
+  const operationalCasesSource = operationalCasesSnapshot.source;
   const supplyReadiness = useMemo(() => getSupplyReadiness(lawyers), [lawyers]);
   const rules = activeArea === "supply" ? [] : getOperationalRulesByArea(activeArea);
   const paymentReadinessChecks = useMemo(() => getPaymentReadinessChecks(), []);
@@ -98,6 +103,19 @@ const OperationsCenter = () => {
   );
   const activeMetrics = useMemo(() => getOperationalCaseMetrics(activeCases), [activeCases]);
   const funnelMetrics = useMemo(() => getFunnelMetrics(funnelEvents), [funnelEvents]);
+  const dynamicLaunchGates = useMemo(
+    () =>
+      getDynamicLaunchGates({
+        lawyers,
+        funnelEvents,
+        operationalCases,
+        operationalCasesSource,
+      }),
+    [funnelEvents, lawyers, operationalCases, operationalCasesSource],
+  );
+  const paymentEvidenceChecks = useMemo(() => getBookingPaymentEvidenceChecks(operationalCases), [operationalCases]);
+  const supportEvidenceChecks = useMemo(() => getSupportWorkflowEvidenceChecks(operationalCases), [operationalCases]);
+  const funnelCoverage = useMemo(() => getFunnelEventCoverage(funnelEvents), [funnelEvents]);
   const funnelBottleneck = useMemo(
     () =>
       funnelMetrics
@@ -184,7 +202,12 @@ const OperationsCenter = () => {
               <ReadinessMetric label="Open ops cases" value={String(getOperationalCaseMetrics(operationalCases).open)} ready={getOperationalCaseMetrics(operationalCases).overdue === 0} />
               <ReadinessMetric label="Payment model" value="Full payment" ready={paymentReadinessChecks.every((check) => check.ready)} />
               <ReadinessMetric label="Funnel events" value={String(funnelMetrics.reduce((sum, metric) => sum + metric.count, 0))} ready={funnelMetrics.some((metric) => metric.count > 0)} notReadyLabel="No data" />
-              <ReadinessMetric label="Ops source" value={operationalCasesFetching ? "Syncing" : "Backend"} ready={!operationalCasesFetching} notReadyLabel="Syncing" />
+              <ReadinessMetric
+                label="Ops source"
+                value={operationalCasesFetching ? "Syncing" : operationalCasesSource === "backend" ? "Backend" : "Fallback"}
+                ready={!operationalCasesFetching && operationalCasesSource === "backend"}
+                notReadyLabel={operationalCasesFetching ? "Syncing" : "Fallback"}
+              />
             </div>
           </aside>
         </div>
@@ -457,7 +480,7 @@ const OperationsCenter = () => {
           <p className="text-xs font-bold uppercase tracking-widest text-primary">Hard launch gates</p>
           <h2 className="mt-2 text-xl font-bold text-foreground">Ready is a checklist, not a feeling</h2>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
-            {launchGates.map((gate) => (
+            {dynamicLaunchGates.map((gate) => (
               <article key={gate.label} className="rounded-lg border border-border bg-background p-4">
                 <StatusBadge ready={gate.ready} notReadyLabel="Gate open" />
                 <h3 className="mt-3 text-sm font-bold text-foreground">{gate.label}</h3>
@@ -465,6 +488,44 @@ const OperationsCenter = () => {
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{gate.evidence}</p>
               </article>
             ))}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-lg border border-border bg-card p-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">Evidence required</p>
+          <h2 className="mt-2 text-xl font-bold text-foreground">What still must be proven from backend truth</h2>
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            <EvidenceGroup
+              title="Booking and payment"
+              items={paymentEvidenceChecks.map((check) => ({
+                label: check.label,
+                ready: check.ready,
+                detail: check.ready ? "Closed evidence case found" : "Needs closed live/staged evidence case",
+              }))}
+            />
+            <EvidenceGroup
+              title="Support workflows"
+              items={supportEvidenceChecks.map((check) => ({
+                label: check.label,
+                ready: check.ready,
+                detail: check.ready ? "Workflow case closed" : "Needs staged or live case closure",
+              }))}
+            />
+            <EvidenceGroup
+              title="Funnel events"
+              items={[
+                ...funnelCoverage.checks.map((check) => ({
+                  label: check.eventName,
+                  ready: check.ready,
+                  detail: `${check.count} event(s)`,
+                })),
+                {
+                  label: "7-day data window",
+                  ready: funnelCoverage.observedDays >= 7,
+                  detail: `${funnelCoverage.observedDays.toFixed(1)} observed day(s)`,
+                },
+              ]}
+            />
           </div>
         </section>
       </main>
@@ -517,6 +578,29 @@ const ReadinessCheck = ({ check }: { check: ReturnType<typeof getPaymentReadines
       </div>
     </div>
   </div>
+);
+
+const EvidenceGroup = ({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<{ label: string; ready: boolean; detail: string }>;
+}) => (
+  <article className="rounded-lg border border-border bg-background p-4">
+    <h3 className="text-sm font-bold text-foreground">{title}</h3>
+    <div className="mt-3 space-y-2">
+      {items.map((item) => (
+        <div key={item.label} className="flex items-start justify-between gap-3 rounded-lg bg-secondary/35 px-3 py-2">
+          <div>
+            <p className="text-xs font-bold text-foreground">{item.label}</p>
+            <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">{item.detail}</p>
+          </div>
+          <StatusBadge ready={item.ready} notReadyLabel="Missing" />
+        </div>
+      ))}
+    </div>
+  </article>
 );
 
 const slaBadgeClasses: Record<ReturnType<typeof getOperationalSlaState>, string> = {

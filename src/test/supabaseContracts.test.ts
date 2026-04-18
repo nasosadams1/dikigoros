@@ -18,6 +18,14 @@ const setupFunction = readFileSync(
   join(process.cwd(), "supabase", "functions", "create-payment-setup-session", "index.ts"),
   "utf8",
 );
+const refundFunction = readFileSync(
+  join(process.cwd(), "supabase", "functions", "create-booking-refund", "index.ts"),
+  "utf8",
+);
+const webhookFunction = readFileSync(
+  join(process.cwd(), "supabase", "functions", "stripe-webhook", "index.ts"),
+  "utf8",
+);
 const partnerCodeFunction = readFileSync(
   join(process.cwd(), "supabase", "functions", "partner-access-code", "index.ts"),
   "utf8",
@@ -67,5 +75,23 @@ describe("Supabase production contracts", () => {
       expect(source).toContain("http://localhost:8080");
       expect(source).not.toContain('"Access-Control-Allow-Origin": "*"');
     });
+  });
+
+  it("enforces live Stripe mode and prevents multiple active checkout paths", () => {
+    [checkoutFunction, setupFunction, refundFunction, webhookFunction].forEach((source) => {
+      expect(source).toContain("REQUIRE_LIVE_STRIPE");
+      expect(source).toContain("sk_live_");
+    });
+    expect(checkoutFunction).toContain('existingPayment?.status === "checkout_opened"');
+    expect(checkoutFunction).toContain("existingPayment.checkout_session_url");
+    expect(checkoutFunction).toContain("This booking has already been paid.");
+  });
+
+  it("supports partner cancellation and requires payment before partner completion", () => {
+    expect(productionSchema).toContain("create or replace function public.cancel_booking_as_partner");
+    expect(productionSchema).toContain("cancellation_actor = 'lawyer'");
+    expect(productionSchema).toContain("reschedule_requested = true");
+    expect(productionSchema).toContain("and status = 'confirmed_paid'");
+    expect(productionSchema).toContain("BOOKING_NOT_FOUND_OR_NOT_PAID");
   });
 });

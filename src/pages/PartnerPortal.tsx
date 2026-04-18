@@ -21,6 +21,7 @@ import { consultationModeLabels, type ConsultationMode, type Lawyer } from "@/da
 import { getLawyerBaseProfileById, getPublicLawyerProfileReadiness } from "@/lib/lawyerRepository";
 import {
   clearPartnerSession,
+  cancelPartnerBooking,
   completePartnerBooking,
   fetchBookingsForLawyer,
   fetchDocumentsForLawyer,
@@ -54,6 +55,7 @@ import {
   type PartnerWorkspace,
 } from "@/lib/partnerWorkspace";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
+import { createOperationalCase } from "@/lib/operationsRepository";
 
 const navItems = [
   { id: "appointments", label: "Ραντεβού", icon: CalendarDays },
@@ -442,6 +444,11 @@ const PartnerPortal = () => {
     void completeBookingPersisted(booking);
   };
 
+  const cancelBooking = (booking?: StoredBooking) => {
+    if (!booking) return;
+    void cancelBookingPersisted(booking);
+  };
+
   const completeBookingPersisted = async (booking: StoredBooking) => {
     if (!isVerifiedBooking(booking)) {
       setBookingActionState((current) => ({
@@ -449,6 +456,18 @@ const PartnerPortal = () => {
         [booking.id]: {
           loading: false,
           message: "Αυτό το ραντεβού δεν έχει επιβεβαιωθεί πλήρως. Περιμένετε την επιβεβαίωση πριν το σημειώσετε ως ολοκληρωμένο.",
+          tone: "error",
+        },
+      }));
+      return;
+    }
+
+    if (getCanonicalBookingState(booking) !== "confirmed_paid") {
+      setBookingActionState((current) => ({
+        ...current,
+        [booking.id]: {
+          loading: false,
+          message: "Η ολοκλήρωση ανοίγει μόνο αφού η πληρωμή έχει επιβεβαιωθεί. Ο πελάτης δεν μπορεί να αφήσει κριτική πριν πληρωθεί και ολοκληρωθεί η συμβουλευτική.",
           tone: "error",
         },
       }));
@@ -499,6 +518,71 @@ const PartnerPortal = () => {
           bookingId: booking.id,
         });
       }
+      setBookingsVersion((version) => version + 1);
+    }
+  };
+
+  const cancelBookingPersisted = async (booking: StoredBooking) => {
+    if (!isVerifiedBooking(booking)) {
+      setBookingActionState((current) => ({
+        ...current,
+        [booking.id]: {
+          loading: false,
+          message: "Αυτό το ραντεβού δεν έχει επιβεβαιωθεί πλήρως. Η υποστήριξη πρέπει να το ελέγξει πριν γίνει ακύρωση από συνεργάτη.",
+          tone: "error",
+        },
+      }));
+      return;
+    }
+
+    setBookingActionState((current) => ({
+      ...current,
+      [booking.id]: {
+        loading: true,
+        message: "Καταχώριση ακύρωσης και διαδρομής αλλαγής ώρας...",
+        tone: "info",
+      },
+    }));
+
+    const result = await cancelPartnerBooking(booking, session, "lawyer_requested_reschedule");
+    if (result.error === "PARTNER_SESSION_INVALID") {
+      handleExpiredPartnerSession();
+      return;
+    }
+
+    setBookingActionState((current) => ({
+      ...current,
+      [booking.id]: result.synced
+        ? {
+            loading: false,
+            message: "Η ακύρωση καταχωρίστηκε. Ο πελάτης πρέπει να λάβει αλλαγή ώρας, εναλλακτική ή έλεγχο επιστροφής.",
+            tone: "success",
+          }
+        : {
+            loading: false,
+            message:
+              result.error?.includes("BOOKING_NOT_FOUND")
+                ? "Δεν βρέθηκε ενεργή πληρωμένη ή επιβεβαιωμένη κράτηση για ακύρωση. Ανοίξτε υποστήριξη συνεργάτη."
+                : "Δεν καταχωρίστηκε η ακύρωση. Δοκιμάστε ξανά ή ανοίξτε υποστήριξη συνεργάτη.",
+            tone: "error",
+          },
+    }));
+
+    if (result.synced) {
+      void createOperationalCase({
+        area: "bookingDisputes",
+        title: "Lawyer cancelled booking - reschedule needed",
+        summary: `Lawyer cancelled ${booking.referenceId}. Client needs reschedule, comparable alternative, or refund review if payment moved.`,
+        priority: "high",
+        requesterEmail: booking.clientEmail,
+        relatedReference: booking.referenceId,
+        evidence: [
+          "lawyer cancelled booking",
+          "reschedule needed",
+          `Booking: ${booking.referenceId}`,
+          `Lawyer: ${booking.lawyerName}`,
+        ],
+      });
       setBookingsVersion((version) => version + 1);
     }
   };
@@ -601,6 +685,7 @@ const PartnerPortal = () => {
               documents={partnerDocuments}
               actionState={bookingActionState}
               onComplete={completeBooking}
+              onCancel={cancelBooking}
             />
           ) : null}
 
@@ -660,11 +745,13 @@ const AppointmentsView = ({
   documents,
   actionState,
   onComplete,
+  onCancel,
 }: {
   bookings: StoredBooking[];
   documents: StoredBookingDocument[];
   actionState: Record<string, BookingActionState>;
   onComplete: (booking?: StoredBooking) => void;
+  onCancel: (booking?: StoredBooking) => void;
 }) => (
   <section className="partner-panel p-7 sm:p-8">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -682,6 +769,8 @@ const AppointmentsView = ({
         const bookingDocuments = documents.filter((document) => document.bookingId === booking.id);
         const currentAction = actionState[booking.id];
         const verified = isVerifiedBooking(booking);
+        const bookingState = getCanonicalBookingState(booking);
+        const canMarkComplete = bookingState === "confirmed_paid";
 
         return (
         <div key={booking.referenceId} className="rounded-[1.4rem] border border-[hsl(var(--partner-line))] bg-white/65 p-5">
@@ -690,7 +779,7 @@ const AppointmentsView = ({
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-base font-semibold text-[hsl(var(--partner-ink))]">{booking.clientName}</p>
                 <span className="rounded-full bg-[hsl(var(--partner-navy-soft))]/10 px-2.5 py-1 text-[11px] font-bold text-[hsl(var(--partner-navy-soft))]">
-                  {bookingStateLabels[getCanonicalBookingState(booking)]}
+                  {bookingStateLabels[bookingState]}
                 </span>
                 {!verified ? (
                   <span className="rounded-full border border-destructive/20 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive">
@@ -712,9 +801,20 @@ const AppointmentsView = ({
                 <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{booking.consultationType} · €{booking.price}</p>
               </div>
               {isBookingScheduled(booking) && verified ? (
-                <Button type="button" onClick={() => onComplete(booking)} disabled={currentAction?.loading} className="rounded-xl font-semibold">
-                  Σήμανση ολοκληρωμένου
-                </Button>
+                <div className="flex flex-col gap-2 sm:flex-row lg:justify-end">
+                  <Button type="button" onClick={() => onComplete(booking)} disabled={currentAction?.loading || !canMarkComplete} className="rounded-xl font-semibold">
+                    {canMarkComplete ? "Σήμανση ολοκληρωμένου" : "Αναμονή πληρωμής"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => onCancel(booking)}
+                    disabled={currentAction?.loading}
+                    className="rounded-xl border-destructive/25 font-semibold text-destructive hover:text-destructive"
+                  >
+                    Ακύρωση / αλλαγή ώρας
+                  </Button>
+                </div>
               ) : isBookingScheduled(booking) && !verified ? (
                 <Button type="button" disabled className="rounded-xl font-semibold">
                   Χρειάζεται επιβεβαίωση κράτησης

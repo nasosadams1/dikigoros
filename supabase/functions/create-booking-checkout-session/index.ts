@@ -41,6 +41,13 @@ interface BookingRow {
   status: "pending_confirmation" | "confirmed_unpaid" | "confirmed_paid" | "completed" | "cancelled" | "confirmed";
 }
 
+interface PaymentRow {
+  booking_id: string;
+  status: "not_opened" | "checkout_opened" | "paid" | "failed" | "refund_requested" | "refunded" | "pending";
+  stripe_checkout_session_id: string | null;
+  checkout_session_url: string | null;
+}
+
 interface AuthUser {
   id: string;
   email?: string;
@@ -129,6 +136,18 @@ const fetchBooking = async (supabaseUrl: string, serviceRoleKey: string, booking
   return rows[0] || null;
 };
 
+const fetchPayment = async (supabaseUrl: string, serviceRoleKey: string, bookingId: string) => {
+  const select = ["booking_id", "status", "stripe_checkout_session_id", "checkout_session_url"].join(",");
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/booking_payments?booking_id=eq.${encodeURIComponent(bookingId)}&select=${select}`,
+    { headers: serviceHeaders(serviceRoleKey) },
+  );
+
+  if (!response.ok) throw new Error(`Payment lookup failed: ${await response.text()}`);
+  const rows = (await response.json()) as PaymentRow[];
+  return rows[0] || null;
+};
+
 const patchPaymentRecord = async (
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -184,6 +203,22 @@ Deno.serve(async (request) => {
     if (booking.user_id !== user.id) return json(request, { error: "Booking does not belong to this user" }, 403);
     if (!["confirmed_unpaid", "confirmed"].includes(booking.status)) {
       return json(request, { error: "Only confirmed unpaid bookings can be paid" }, 400);
+    }
+
+    const existingPayment = await fetchPayment(supabaseUrl, serviceRoleKey, booking.id);
+    if (existingPayment?.status === "paid") {
+      return json(request, { error: "This booking has already been paid." }, 409);
+    }
+    if (existingPayment?.status === "refund_requested" || existingPayment?.status === "refunded") {
+      return json(request, { error: "This booking is already in a refund flow." }, 409);
+    }
+    if (existingPayment?.status === "checkout_opened" && existingPayment.checkout_session_url) {
+      return json(request, {
+        provider: "stripe",
+        status: "setup_required",
+        id: existingPayment.stripe_checkout_session_id,
+        url: existingPayment.checkout_session_url,
+      });
     }
 
     const amountInCents = Math.round(Number(booking.price || 0) * 100);
