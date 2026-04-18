@@ -572,16 +572,16 @@ const PartnerPortal = () => {
     if (result.synced) {
       void createOperationalCase({
         area: "bookingDisputes",
-        title: "Lawyer cancelled booking - reschedule needed",
-        summary: `Lawyer cancelled ${booking.referenceId}. Client needs reschedule, comparable alternative, or refund review if payment moved.`,
+        title: "Ακύρωση από δικηγόρο - χρειάζεται αλλαγή ώρας",
+        summary: `Ο δικηγόρος ακύρωσε την κράτηση ${booking.referenceId}. Ο πελάτης χρειάζεται αλλαγή ώρας, συγκρίσιμη εναλλακτική ή έλεγχο επιστροφής αν κινήθηκε πληρωμή.`,
         priority: "high",
         requesterEmail: booking.clientEmail,
         relatedReference: booking.referenceId,
         evidence: [
-          "lawyer cancelled booking",
-          "reschedule needed",
-          `Booking: ${booking.referenceId}`,
-          `Lawyer: ${booking.lawyerName}`,
+          "ακύρωση από δικηγόρο",
+          "χρειάζεται αλλαγή ώρας",
+          `Κράτηση: ${booking.referenceId}`,
+          `Δικηγόρος: ${booking.lawyerName}`,
         ],
       });
       setBookingsVersion((version) => version + 1);
@@ -1512,7 +1512,7 @@ const PartnerPerformanceDashboard = ({
         </p>
       </div>
       <div className="rounded-2xl border border-[hsl(var(--partner-line))] bg-white/65 px-4 py-3 text-sm font-semibold text-[hsl(var(--partner-ink))]">
-        Μέσος όρος: {averageRating}/5 · Review rate {reviewRate}%
+        Μέσος όρος: {averageRating}/5 · Ποσοστό κριτικής {reviewRate}%
       </div>
     </div>
 

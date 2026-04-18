@@ -490,15 +490,15 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
         if (refund.status === "review_required") {
           void createOperationalCase({
             area: "payments",
-            title: "Refund review after cancellation",
-            summary: `A paid booking was cancelled and needs support review before the refund can be completed for ${booking.referenceId}.`,
+            title: "Έλεγχος επιστροφής μετά από ακύρωση",
+            summary: `Η πληρωμένη κράτηση ${booking.referenceId} ακυρώθηκε και χρειάζεται έλεγχο υποστήριξης πριν ολοκληρωθεί η επιστροφή.`,
             priority: "high",
             requesterEmail: booking.clientEmail,
             relatedReference: payment.invoiceNumber || booking.referenceId,
             evidence: [
-              `Booking: ${booking.referenceId}`,
-              `Payment status before cancellation: ${payment.status}`,
-              `Lawyer: ${booking.lawyerName}`,
+              `Κράτηση: ${booking.referenceId}`,
+              `Κατάσταση πληρωμής πριν την ακύρωση: ${payment.status}`,
+              `Δικηγόρος: ${booking.lawyerName}`,
             ],
           });
           setPaymentSetupState({
@@ -686,15 +686,15 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
         });
         void createOperationalCase({
           area: "reviews",
-          title: "Review moderation check",
-          summary: `A completed-booking review was submitted for ${booking.lawyerName}. Confirm booking linkage, private-case detail safety, and publication status.`,
+          title: "Έλεγχος δημοσίευσης κριτικής",
+          summary: `Υποβλήθηκε κριτική μετά από ολοκληρωμένη κράτηση για ${booking.lawyerName}. Ελέγξτε σύνδεση κράτησης, προστασία ιδιωτικών λεπτομερειών υπόθεσης και κατάσταση δημοσίευσης.`,
           priority: "normal",
           requesterEmail: booking.clientEmail,
           relatedReference: booking.referenceId,
           evidence: [
-            `Overall: ${draft.rating}/5`,
-            `Clarity: ${draft.clarityRating}/5`,
-            `Responsiveness: ${draft.responsivenessRating}/5`,
+            `Συνολική βαθμολογία: ${draft.rating}/5`,
+            `Σαφήνεια: ${draft.clarityRating}/5`,
+            `Ανταπόκριση: ${draft.responsivenessRating}/5`,
           ],
         });
       }
@@ -1168,14 +1168,14 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                                   setWorkspace(nextWorkspace);
                                   void createOperationalCase({
                                     area: "privacyDocuments",
-                                    title: "Document deletion record",
-                                    summary: `Client removed ${document.name}. Confirm retention/deletion obligations and support visibility state.`,
+                                    title: "Καταγραφή αιτήματος διαγραφής εγγράφου",
+                                    summary: `Ο χρήστης διέγραψε το αρχείο ${document.name}. Ελέγξτε υποχρεώσεις διατήρησης/διαγραφής και την κατάσταση ορατότητας στην υποστήριξη.`,
                                     priority: "normal",
                                     requesterEmail: userEmail,
                                     relatedReference: document.id,
                                     evidence: [
-                                      `Document category: ${document.category}`,
-                                      `Visible to lawyer before deletion: ${document.visibleToLawyer ? "yes" : "no"}`,
+                                      `Κατηγορία εγγράφου: ${document.category}`,
+                                      `Ορατό στον δικηγόρο πριν τη διαγραφή: ${document.visibleToLawyer ? "ναι" : "όχι"}`,
                                     ],
                                   });
                                 })

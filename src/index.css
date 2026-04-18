@@ -209,26 +209,13 @@
   }
 
   .premium-scrollbar {
-    scrollbar-color: hsl(var(--primary) / 0.38) transparent;
-    scrollbar-gutter: stable;
-    scrollbar-width: thin;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 
   .premium-scrollbar::-webkit-scrollbar {
-    width: 10px;
-  }
-
-  .premium-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .premium-scrollbar::-webkit-scrollbar-thumb {
-    background: hsl(var(--primary) / 0.24);
-    border: 3px solid hsl(var(--card));
-    border-radius: 999px;
-  }
-
-  .premium-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--primary) / 0.4);
+    display: none;
+    height: 0;
+    width: 0;
   }
 }

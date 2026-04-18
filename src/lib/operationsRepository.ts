@@ -406,8 +406,8 @@ const migrateLegacySupportCases = () =>
     const migrated = createCase(
       {
         area,
-        title: `${operationalAreaLabels[area]} support request`,
-        summary: item.message || "Support request created from the help center.",
+        title: `Αίτημα υποστήριξης: ${operationalAreaLabels[area]}`,
+        summary: item.message || "Το αίτημα υποστήριξης δημιουργήθηκε από το κέντρο βοήθειας.",
         priority: priorityFromLegacySupportUrgency(item.urgency),
         requesterEmail: item.email,
         relatedReference: item.reference,
@@ -472,8 +472,8 @@ const mapRowToOperationalCase = (row: OperationalCaseRow): OperationalCase => {
         : [
             {
               at: createdAt,
-              actor: "Operations",
-              action: "Case opened",
+              actor: "Λειτουργία",
+              action: "Άνοιγμα υπόθεσης",
               note: row.summary,
             },
           ],

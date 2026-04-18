@@ -24,8 +24,8 @@ const { backendRows, insertCaseMock, updateCaseMock, auditInsertMock } = vi.hois
       timeline: [
         {
           at: "2026-04-17T09:00:00.000Z",
-          actor: "Operations",
-          action: "Case opened",
+          actor: "Λειτουργία",
+          action: "Άνοιγμα υπόθεσης",
           note: "Authoritative backend case.",
         },
       ],
@@ -145,21 +145,21 @@ describe("operations repository", () => {
     const updated = await setOperationalCaseStatus(
       "11111111-1111-1111-1111-111111111111",
       "in_review",
-      "Started backend review.",
+      "Ξεκίνησε backend έλεγχος.",
     );
 
     expect(updateCaseMock).toHaveBeenCalledTimes(1);
     const payload = updateCaseMock.mock.calls[0][0];
     expect(payload.status).toBe("in_review");
-    expect(payload.timeline[0].action).toBe("Status changed to In review");
-    expect(payload.timeline[0].note).toBe("Started backend review.");
+    expect(payload.timeline[0].action).toBe("Η κατάσταση άλλαξε σε Σε έλεγχο");
+    expect(payload.timeline[0].note).toBe("Ξεκίνησε backend έλεγχος.");
     expect(updated?.status).toBe("in_review");
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(auditInsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         operational_case_id: "11111111-1111-1111-1111-111111111111",
-        event_type: "Status changed to In review",
+        event_type: "Η κατάσταση άλλαξε σε Σε έλεγχο",
       }),
     );
   });
@@ -167,12 +167,12 @@ describe("operations repository", () => {
   it("creates new operational cases through the backend table shape", async () => {
     const created = await createOperationalCase({
       area: "bookingDisputes",
-      title: "Slot conflict",
-      summary: "The selected time is no longer available.",
+      title: "Σύγκρουση ώρας",
+      summary: "Η επιλεγμένη ώρα δεν είναι πλέον διαθέσιμη.",
       priority: "urgent",
       requesterEmail: "client@example.com",
       relatedReference: "BK-20260417-1",
-      evidence: ["Slot key", "Booking reference"],
+      evidence: ["Κλειδί ώρας", "Κωδικός κράτησης"],
     });
 
     expect(insertCaseMock).toHaveBeenCalledTimes(1);
@@ -180,7 +180,7 @@ describe("operations repository", () => {
     expect(payload.area).toBe("bookingDisputes");
     expect(payload.status).toBe("new");
     expect(payload.requester_email).toBe("client@example.com");
-    expect(payload.timeline[0].action).toBe("Case opened");
+    expect(payload.timeline[0].action).toBe("Άνοιγμα υπόθεσης");
     expect(created.referenceId).toMatch(/^DSP-\d{8}-[A-Z0-9]{1,5}$/);
   });
 });

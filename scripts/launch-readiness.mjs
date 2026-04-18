@@ -57,10 +57,10 @@ const supportWorkflows = [
 ];
 
 const paymentEvidenceScenarios = [
-  { label: "successful live booking", terms: ["successful live booking", "payment succeeded", "receipt visible", "confirmed_paid"] },
-  { label: "failed payment", terms: ["failed payment", "checkout failed", "payment failed"] },
-  { label: "refunded cancellation", terms: ["refunded cancellation", "refund approved", "refunded"] },
-  { label: "lawyer cancelled booking", terms: ["lawyer cancelled", "lawyer cancellation", "reschedule"] },
+  { label: "επιτυχής live κράτηση", terms: ["successful live booking", "payment succeeded", "receipt visible", "confirmed_paid", "επιτυχής live κράτηση", "επιτυχής πληρωμή", "ορατή απόδειξη", "πληρωμένη κράτηση"] },
+  { label: "αποτυχημένη πληρωμή", terms: ["failed payment", "checkout failed", "payment failed", "αποτυχημένη πληρωμή", "αποτυχία checkout", "η πληρωμή απέτυχε"] },
+  { label: "ακύρωση με επιστροφή", terms: ["refunded cancellation", "refund approved", "refunded", "ακύρωση με επιστροφή", "εγκρίθηκε επιστροφή", "επιστραφείσα"] },
+  { label: "ακύρωση από δικηγόρο", terms: ["lawyer cancelled", "lawyer cancellation", "reschedule", "ακύρωση από δικηγόρο", "αλλαγή ώρας", "νέα ώρα"] },
 ];
 
 const closedStatuses = new Set(["resolved", "rejected", "suspended"]);
@@ -241,34 +241,34 @@ const getPaymentConfigChecks = (env) => {
   const stripeSecret = env.STRIPE_SECRET_KEY || "";
   return [
     {
-      label: "Supabase project configured",
+      label: "Το Supabase project είναι ρυθμισμένο",
       ready: Boolean(env.VITE_SUPABASE_URL && env.VITE_SUPABASE_ANON_KEY),
-      detail: "VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY exist.",
+      detail: "Υπάρχουν VITE_SUPABASE_URL και VITE_SUPABASE_ANON_KEY.",
     },
     {
-      label: "Local booking fallback disabled",
+      label: "Τοπικό fallback κρατήσεων απενεργοποιημένο",
       ready: env.VITE_ENABLE_LOCAL_BOOKING_FALLBACK !== "true",
-      detail: "VITE_ENABLE_LOCAL_BOOKING_FALLBACK must not be true for launch.",
+      detail: "Το VITE_ENABLE_LOCAL_BOOKING_FALLBACK δεν πρέπει να είναι true για launch.",
     },
     {
-      label: "Frontend live payments required",
+      label: "Το frontend απαιτεί live πληρωμές",
       ready: env.VITE_REQUIRE_LIVE_PAYMENTS === "true",
       detail: "VITE_REQUIRE_LIVE_PAYMENTS=true.",
     },
     {
-      label: "Edge functions require live Stripe",
+      label: "Οι edge functions απαιτούν live Stripe",
       ready: env.REQUIRE_LIVE_STRIPE === "true" || env.STRIPE_REQUIRE_LIVE_MODE === "true",
       detail: "REQUIRE_LIVE_STRIPE=true or STRIPE_REQUIRE_LIVE_MODE=true.",
     },
     {
-      label: "Live Stripe secret configured",
+      label: "Live Stripe secret ρυθμισμένο",
       ready: stripeSecret.startsWith("sk_live_"),
-      detail: "STRIPE_SECRET_KEY starts with sk_live_.",
+      detail: "Το STRIPE_SECRET_KEY ξεκινά με sk_live_.",
     },
     {
-      label: "Webhook secret configured",
+      label: "Webhook secret ρυθμισμένο",
       ready: Boolean(env.STRIPE_WEBHOOK_SECRET),
-      detail: "STRIPE_WEBHOOK_SECRET exists.",
+      detail: "Υπάρχει STRIPE_WEBHOOK_SECRET.",
     },
   ];
 };
@@ -282,64 +282,64 @@ const getGateReport = ({ env, lawyers, operationalCases, operationalSource, funn
 
   const gates = [
     {
-      label: "Booking and payment exception flows tested end to end",
-      owner: "Payments operator",
+      label: "Οι εξαιρέσεις κράτησης και πληρωμής έχουν ελεγχθεί end-to-end",
+      owner: "Υπεύθυνος πληρωμών",
       ready: paymentConfigChecks.every((check) => check.ready) && paymentEvidenceChecks.every((check) => check.ready),
-      evidence: `${paymentEvidenceChecks.filter((check) => check.ready).length}/${paymentEvidenceChecks.length} payment scenarios closed with evidence.`,
+      evidence: `${paymentEvidenceChecks.filter((check) => check.ready).length}/${paymentEvidenceChecks.length} σενάρια πληρωμής έχουν κλείσει με στοιχεία.`,
     },
     {
-      label: "Webhook/payment reconciliation working",
-      owner: "Payments operator",
-      ready: paymentConfigChecks.every((check) => check.ready) && hasClosedCaseWithAnyTerm(operationalCases, ["webhook", "payment reconciliation", "receipt visible"]),
-      evidence: "Requires live mode and a closed case proving paid/failed/refunded webhook reconciliation.",
+      label: "Το webhook και η συμφωνία πληρωμών λειτουργούν",
+      owner: "Υπεύθυνος πληρωμών",
+      ready: paymentConfigChecks.every((check) => check.ready) && hasClosedCaseWithAnyTerm(operationalCases, ["webhook", "payment reconciliation", "receipt visible", "συμφωνία πληρωμών", "ορατή απόδειξη"]),
+      evidence: "Απαιτεί live λειτουργία και κλειστή υπόθεση που αποδεικνύει συμφωνία webhook για πληρωμή, αποτυχία και επιστροφή.",
     },
     {
-      label: "Account statuses match backend truth",
-      owner: "Support lead",
-      ready: operationalSource === "backend" && hasClosedCaseWithAnyTerm(operationalCases, ["account statuses", "backend truth", "confirmed_paid", "refund_requested"]),
-      evidence: "Requires backend ops source plus closed account-state evidence.",
+      label: "Οι καταστάσεις λογαριασμού συμφωνούν με το backend",
+      owner: "Υπεύθυνος υποστήριξης",
+      ready: operationalSource === "backend" && hasClosedCaseWithAnyTerm(operationalCases, ["account statuses", "backend truth", "confirmed_paid", "refund_requested", "καταστάσεις λογαριασμού", "αλήθεια backend"]),
+      evidence: "Απαιτεί backend πηγή λειτουργίας και κλειστή απόδειξη κατάστασης λογαριασμού.",
     },
     {
-      label: "Support workflows owned with SLA",
-      owner: "Operations lead",
+      label: "Οι ροές υποστήριξης έχουν υπεύθυνο και χρόνο απόκρισης",
+      owner: "Υπεύθυνος λειτουργίας",
       ready: supportEvidenceChecks.every((check) => check.ready),
-      evidence: `${supportEvidenceChecks.filter((check) => check.ready).length}/${supportEvidenceChecks.length} support workflows closed with evidence.`,
+      evidence: `${supportEvidenceChecks.filter((check) => check.ready).length}/${supportEvidenceChecks.length} ροές υποστήριξης έχουν κλείσει με στοιχεία.`,
     },
     {
-      label: "Review publication workflow enforced",
-      owner: "Trust reviewer",
-      ready: hasClosedCaseWithAnyTerm(operationalCases, ["review publication", "completed confirmed consultation", "under_moderation"]),
-      evidence: "Requires closed moderation evidence.",
+      label: "Η δημοσίευση κριτικών ακολουθεί υποχρεωτική ροή ελέγχου",
+      owner: "Έλεγχος εμπιστοσύνης",
+      ready: hasClosedCaseWithAnyTerm(operationalCases, ["review publication", "completed confirmed consultation", "under_moderation", "δημοσίευση κριτικής", "επιβεβαιωμένη ολοκληρωμένη συμβουλευτική", "υπό έλεγχο"]),
+      evidence: "Απαιτεί κλειστή απόδειξη ελέγχου κριτικών.",
     },
     {
-      label: "Partner verification workflow enforced",
-      owner: "Verification reviewer",
-      ready: hasClosedCaseWithAnyTerm(operationalCases, ["partner verification", "application review", "approved partner"]),
-      evidence: "Requires closed partner-verification evidence.",
+      label: "Η επαλήθευση συνεργατών εφαρμόζεται πριν τη δημόσια παρουσία",
+      owner: "Έλεγχος συνεργατών",
+      ready: hasClosedCaseWithAnyTerm(operationalCases, ["partner verification", "application review", "approved partner", "επαλήθευση συνεργάτη", "έλεγχος αίτησης", "εγκεκριμένος συνεργάτης"]),
+      evidence: "Απαιτεί κλειστή απόδειξη επαλήθευσης συνεργάτη.",
     },
     {
-      label: "Backend funnel analytics live",
-      owner: "Growth operations",
+      label: "Τα funnel analytics γράφονται στο backend",
+      owner: "Λειτουργία ανάπτυξης",
       ready: funnelCoverage.checks.every((check) => check.ready) && funnelCoverage.observedDays >= 7,
-      evidence: `${funnelCoverage.checks.filter((check) => check.ready).length}/${funnelCoverage.checks.length} events observed across ${funnelCoverage.observedDays.toFixed(1)} days.`,
+      evidence: `${funnelCoverage.checks.filter((check) => check.ready).length}/${funnelCoverage.checks.length} συμβάντα καταγράφηκαν σε ${funnelCoverage.observedDays.toFixed(1)} ημέρες.`,
     },
     {
-      label: "Core city/category density achieved",
-      owner: "Marketplace supply lead",
+      label: "Η βασική πυκνότητα πόλης/δικαίου έχει επιτευχθεί",
+      owner: "Υπεύθυνος προσφοράς αγοράς",
       ready: supplyReadiness.every((city) => city.ready),
-      evidence: `${supplyReadiness.filter((city) => city.ready).length}/${supplyReadiness.length} launch cities meet city and category density thresholds.`,
+      evidence: `${supplyReadiness.filter((city) => city.ready).length}/${supplyReadiness.length} πόλεις launch καλύπτουν όρια πόλης και δικαίου.`,
     },
     {
-      label: "Lawyer dashboard shows ROI clearly",
-      owner: "Partner success",
-      ready: hasClosedCaseWithAnyTerm(operationalCases, ["lawyer dashboard", "roi", "completed consultations", "paid bookings"]),
-      evidence: "Requires closed partner ROI evidence case backed by live dashboard data.",
+      label: "Το dashboard δικηγόρου δείχνει καθαρά την απόδοση",
+      owner: "Επιτυχία συνεργατών",
+      ready: hasClosedCaseWithAnyTerm(operationalCases, ["lawyer dashboard", "roi", "completed consultations", "paid bookings", "dashboard δικηγόρου", "απόδοση", "ολοκληρωμένες συμβουλευτικές", "πληρωμένες κρατήσεις"]),
+      evidence: "Απαιτεί κλειστή υπόθεση απόδειξης απόδοσης συνεργάτη με live δεδομένα dashboard.",
     },
     {
-      label: "Operations are backend-first",
-      owner: "Operations lead",
+      label: "Οι λειτουργίες είναι backend-first",
+      owner: "Υπεύθυνος λειτουργίας",
       ready: operationalSource === "backend",
-      evidence: operationalSource === "backend" ? "Operational cases read from Supabase." : "Operational cases could not be read from Supabase.",
+      evidence: operationalSource === "backend" ? "Οι υποθέσεις λειτουργίας διαβάζονται από Supabase." : "Οι υποθέσεις λειτουργίας δεν διαβάστηκαν από Supabase.",
     },
   ];
 
@@ -363,50 +363,50 @@ const getGateReport = ({ env, lawyers, operationalCases, operationalSource, funn
   };
 };
 
-const formatMark = (ready) => (ready ? "READY" : "BLOCKED");
+const formatMark = (ready) => (ready ? "ΕΤΟΙΜΟ" : "ΜΠΛΟΚΑΡΕΙ");
 
 const toMarkdown = (report) => {
   const lines = [
-    "# Launch Readiness Report",
+    "# Αναφορά ετοιμότητας launch",
     "",
-    `Generated: ${report.generatedAt}`,
+    `Δημιουργήθηκε: ${report.generatedAt}`,
     "",
-    `Overall: ${formatMark(report.summary.ready)} (${report.summary.readyGates}/${report.summary.totalGates} gates ready)`,
-    `Operational source: ${report.summary.operationalSource}`,
-    `Lawyers: ${report.summary.lawyerCount}`,
-    `Operational cases: ${report.summary.operationalCaseCount}`,
-    `Funnel events: ${report.summary.funnelEventCount}`,
+    `Σύνολο: ${formatMark(report.summary.ready)} (${report.summary.readyGates}/${report.summary.totalGates} κανόνες έτοιμοι)`,
+    `Πηγή λειτουργίας: ${report.summary.operationalSource}`,
+    `Δικηγόροι: ${report.summary.lawyerCount}`,
+    `Λειτουργικές υποθέσεις: ${report.summary.operationalCaseCount}`,
+    `Συμβάντα διαδρομής: ${report.summary.funnelEventCount}`,
     "",
-    "## Gates",
+    "## Κανόνες launch",
     "",
-    "| Gate | Status | Evidence |",
+    "| Κανόνας | Κατάσταση | Απόδειξη |",
     "| --- | --- | --- |",
     ...report.gates.map((gate) => `| ${gate.label} | ${formatMark(gate.ready)} | ${gate.evidence} |`),
     "",
-    "## Payment Config",
+    "## Ρύθμιση πληρωμών",
     "",
     ...report.paymentConfigChecks.map((check) => `- ${formatMark(check.ready)}: ${check.label} - ${check.detail}`),
     "",
-    "## Payment Evidence",
+    "## Αποδείξεις πληρωμών",
     "",
     ...report.paymentEvidenceChecks.map((check) => `- ${formatMark(check.ready)}: ${check.label}`),
     "",
-    "## Support Workflow Evidence",
+    "## Αποδείξεις ροών υποστήριξης",
     "",
     ...report.supportEvidenceChecks.map((check) => `- ${formatMark(check.ready)}: ${check.label}`),
     "",
-    "## Funnel Coverage",
+    "## Κάλυψη διαδρομής",
     "",
-    `Observed window: ${report.funnelCoverage.observedDays.toFixed(1)} days`,
+    `Παράθυρο παρατήρησης: ${report.funnelCoverage.observedDays.toFixed(1)} ημέρες`,
     ...report.funnelCoverage.checks.map((check) => `- ${formatMark(check.ready)}: ${check.eventName} (${check.count})`),
     "",
-    "## Supply Density",
+    "## Πυκνότητα προσφοράς",
     "",
     ...report.supplyReadiness.flatMap((city) => [
-      `- ${formatMark(city.ready)}: ${city.label} (${city.verified}/${city.minimumVerified} verified, ${city.total} total)`,
+      `- ${formatMark(city.ready)}: ${city.label} (${city.verified}/${city.minimumVerified} επαληθευμένοι, ${city.total} σύνολο)`,
       ...city.categories.map(
         (category) =>
-          `  - ${formatMark(category.ready)}: ${category.label} (verified ${category.verified}, price ${category.withPrice}, soon ${category.availableSoon}, reviewed ${category.reviewed}, bookable ${category.bookable})`,
+          `  - ${formatMark(category.ready)}: ${category.label} (επαληθευμένοι ${category.verified}, τιμή ${category.withPrice}, κοντινή διαθεσιμότητα ${category.availableSoon}, με κριτικές ${category.reviewed}, κρατήσιμοι ${category.bookable})`,
       ),
     ]),
     "",
@@ -467,8 +467,8 @@ const main = async () => {
         ),
       ])
     : [
-        { data: [], error: "SUPABASE_SERVICE_ROLE_KEY is not configured, so protected operational cases cannot be audited." },
-        { data: [], error: "SUPABASE_SERVICE_ROLE_KEY is not configured, so protected funnel events cannot be audited." },
+        { data: [], error: "Δεν έχει ρυθμιστεί SUPABASE_SERVICE_ROLE_KEY, άρα οι προστατευμένες λειτουργικές υποθέσεις δεν μπορούν να ελεγχθούν." },
+        { data: [], error: "Δεν έχει ρυθμιστεί SUPABASE_SERVICE_ROLE_KEY, άρα τα προστατευμένα συμβάντα διαδρομής δεν μπορούν να ελεγχθούν." },
       ];
 
   const [operationalCasesResult, funnelEventsResult] = protectedResults;
@@ -492,11 +492,11 @@ const main = async () => {
   writeFileSync(jsonReportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   writeFileSync(markdownReportPath, toMarkdown(report), "utf8");
 
-  console.log(`Launch readiness: ${formatMark(report.summary.ready)} (${report.summary.readyGates}/${report.summary.totalGates} gates ready)`);
-  console.log(`Report: ${markdownReportPath}`);
-  if (report.fetchErrors.lawyers) console.log(`Lawyer fetch: ${report.fetchErrors.lawyers}`);
-  if (report.fetchErrors.operationalCases) console.log(`Operational cases: ${report.fetchErrors.operationalCases}`);
-  if (report.fetchErrors.funnelEvents) console.log(`Funnel events: ${report.fetchErrors.funnelEvents}`);
+  console.log(`Ετοιμότητα launch: ${formatMark(report.summary.ready)} (${report.summary.readyGates}/${report.summary.totalGates} κανόνες έτοιμοι)`);
+  console.log(`Αναφορά: ${markdownReportPath}`);
+  if (report.fetchErrors.lawyers) console.log(`Ανάκτηση δικηγόρων: ${report.fetchErrors.lawyers}`);
+  if (report.fetchErrors.operationalCases) console.log(`Λειτουργικές υποθέσεις: ${report.fetchErrors.operationalCases}`);
+  if (report.fetchErrors.funnelEvents) console.log(`Συμβάντα διαδρομής: ${report.fetchErrors.funnelEvents}`);
 
   report.gates.forEach((gate) => {
     console.log(`${formatMark(gate.ready)} - ${gate.label}: ${gate.evidence}`);

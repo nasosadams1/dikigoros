@@ -1,10 +1,11 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Heart,
   MapPin,
@@ -178,6 +179,8 @@ const SearchResults = () => {
   const workspaceKey = user?.id || partnerSession?.email;
   const filters = useMemo(() => getFiltersFromParams(searchParams), [searchParams]);
   const [showFilters, setShowFilters] = useState(false);
+  const filterScrollRef = useRef<HTMLDivElement | null>(null);
+  const [showFilterScrollHint, setShowFilterScrollHint] = useState(false);
   const [queryDraft, setQueryDraft] = useState(filters.query);
   const [cityDraft, setCityDraft] = useState(filters.city);
   const [workspace, setWorkspace] = useState(() => getUserWorkspace(workspaceKey));
@@ -221,6 +224,31 @@ const SearchResults = () => {
     [lawyerDataset, workspace.comparedLawyerIds],
   );
   const activeFilterCount = getActiveFilterCount(filters);
+
+  useEffect(() => {
+    const element = filterScrollRef.current;
+    if (!element) return;
+
+    const updateScrollHint = () => {
+      const hasOverflow = element.scrollHeight > element.clientHeight + 4;
+      const canScrollFurther = element.scrollTop + element.clientHeight < element.scrollHeight - 4;
+      setShowFilterScrollHint(hasOverflow && canScrollFurther);
+    };
+
+    const timeoutId = window.setTimeout(updateScrollHint, 0);
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateScrollHint) : null;
+
+    element.addEventListener("scroll", updateScrollHint, { passive: true });
+    window.addEventListener("resize", updateScrollHint);
+    resizeObserver?.observe(element);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      element.removeEventListener("scroll", updateScrollHint);
+      window.removeEventListener("resize", updateScrollHint);
+      resizeObserver?.disconnect();
+    };
+  }, [showFilters, activeFilterCount, filters, availableCityOptions.length, availableSpecialtyOptions.length]);
 
   const updateFilters = (nextFilters: LawyerSearchFilters, replace = false) => {
     setSearchParams(writeFiltersToParams(nextFilters), { replace });
@@ -331,32 +359,32 @@ const SearchResults = () => {
         <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)_18rem]">
           <aside className={cn(showFilters ? "block" : "hidden", "lg:block")}>
             <div className="relative overflow-hidden rounded-lg border border-border/80 bg-card shadow-xl shadow-foreground/[0.04] lg:sticky lg:top-32">
-              <div className="border-b border-border/70 bg-card/95 px-4 py-4 backdrop-blur">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Σύγκριση</p>
-                    <h2 className="mt-1 text-sm font-bold text-foreground">Φίλτρα απόφασης</h2>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">Κρατήστε μόνο δικηγόρους που ταιριάζουν στην υπόθεση.</p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-2">
-                    {activeFilterCount > 0 ? (
-                      <span className="rounded-md bg-primary px-2 py-1 text-[11px] font-bold text-primary-foreground">
-                        {activeFilterCount} ενεργά
-                      </span>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={clearFilters}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] font-bold text-foreground transition hover:border-primary/30 hover:text-primary"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      Καθαρισμός
-                    </button>
+              <div ref={filterScrollRef} className="premium-scrollbar max-h-[min(70vh,calc(100vh-13rem))] space-y-0 overflow-y-auto overscroll-contain px-4 py-2 lg:max-h-[calc(100vh-16rem)]">
+                <div className="border-b border-border/70 bg-card/95 pb-4 pt-2 backdrop-blur">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Σύγκριση</p>
+                      <h2 className="mt-1 text-sm font-bold text-foreground">Φίλτρα απόφασης</h2>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">Κρατήστε μόνο δικηγόρους που ταιριάζουν στην υπόθεση.</p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      {activeFilterCount > 0 ? (
+                        <span className="rounded-md bg-primary px-2 py-1 text-[11px] font-bold text-primary-foreground">
+                          {activeFilterCount} ενεργά
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={clearFilters}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] font-bold text-foreground transition hover:border-primary/30 hover:text-primary"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Καθαρισμός
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="premium-scrollbar max-h-[min(70vh,calc(100vh-13rem))] space-y-0 overflow-y-auto overscroll-contain px-4 py-2 lg:max-h-[calc(100vh-16rem)]">
                 <div className="border-b border-border/70 pb-4 pt-2 md:hidden">
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Πόλη</label>
                   <select
@@ -428,7 +456,13 @@ const SearchResults = () => {
                   ))}
                 </FilterGroup>
               </div>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent" />
+              {showFilterScrollHint ? (
+                <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 flex h-14 items-end justify-center bg-gradient-to-t from-card via-card/90 to-transparent pb-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card/95 text-primary shadow-lg shadow-foreground/[0.08]">
+                    <ChevronDown className="h-4 w-4" />
+                  </span>
+                </div>
+              ) : null}
             </div>
           </aside>
 
