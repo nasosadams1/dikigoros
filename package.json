@@ -9,6 +9,8 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "launch:audit": "node scripts/launch-readiness.mjs",
+    "launch:audit:strict": "node scripts/launch-readiness.mjs --strict",
     "test": "vitest run",
     "test:watch": "vitest"
   },

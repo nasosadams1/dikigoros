@@ -74,7 +74,7 @@ export const getDiscoverySeo = (issueSlug?: string, citySlug?: string): SeoConfi
   const config = getDiscoveryConfig(issueSlug, citySlug);
   const path = config.city ? `/lawyers/${config.issue.slug}/${config.city.slug}` : `/lawyers/${config.issue.slug}`;
   const title = config.city
-    ? `${config.issue.title} in ${config.city.title}`
+    ? `${config.issue.title} ${config.city.inTitle}`
     : config.issue.title;
 
   return {

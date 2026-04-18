@@ -26,7 +26,7 @@ describe("lawyer search", () => {
       appointmentTypes: ["inPerson"],
     });
 
-    expect(results.map((lawyer) => lawyer.id).sort()).toEqual(["andreas-georgiou", "nikos-antoniou"]);
+    expect(results.map((lawyer) => lawyer.id)).toEqual(["nikos-antoniou"]);
   });
 
   it("filters by price range and sorts by lowest price", () => {

@@ -35,5 +35,24 @@ This project handles legal requests, private documents, bookings, reviews, and p
 - `npm exec tsc --noEmit --pretty false`
 - `npm run test`
 - `npm run lint`
+- `npm run launch:audit`
 - Supabase migrations applied to staging from scratch
 - Stripe test-mode checkout, setup, webhook success, cancel, and refund paths verified
+
+## Dynamic Launch Audit
+
+Run `npm run launch:audit` before any launch decision. The command reads the configured Supabase project and writes:
+
+- `var/launch-readiness-report.md`
+- `var/launch-readiness-report.json`
+
+The audit checks live/backend evidence for:
+
+- booking/payment exception scenarios
+- support workflow closure evidence
+- backend-first operations source
+- required funnel events across a 7-day window
+- Αθήνα, Θεσσαλονίκη, Πειραιάς, Ηράκλειο και Πάτρα supply density across the 5 active practice areas
+- partner ROI evidence
+
+Protected operational and funnel tables require `SUPABASE_SERVICE_ROLE_KEY` in the local environment or CI secret store. Without it, those gates stay blocked rather than falling back to browser-local data.

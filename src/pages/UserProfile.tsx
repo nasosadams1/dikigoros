@@ -77,6 +77,7 @@ import {
 import { clearPaymentReturnParams, getPaymentReturnNotice, parseUserProfileTab } from "@/lib/userProfileNavigation";
 import { createOperationalCase } from "@/lib/operationsRepository";
 import { getPriceFrom } from "@/lib/marketplace";
+import { allowedMarketplaceCityNames, normalizeAllowedMarketplaceCity } from "@/lib/marketplaceTaxonomy";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -158,7 +159,7 @@ const getStoredAccountProfile = (identityKey?: string | null): AccountProfileDra
     return {
       name: typeof parsed.name === "string" ? parsed.name : "",
       phone: typeof parsed.phone === "string" ? parsed.phone : "",
-      city: typeof parsed.city === "string" ? parsed.city : "",
+      city: typeof parsed.city === "string" ? normalizeAllowedMarketplaceCity(parsed.city) : "",
     };
   } catch {
     return { name: "", phone: "", city: "" };
@@ -220,10 +221,10 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     userEmail.split("@")[0] ||
     "Χρήστης";
   const userPhone = profile?.phone || localAccountProfile.phone || "";
-  const userCity = profile?.city || localAccountProfile.city || workspace.preferences.city || partnerWorkspace?.profile.city || "";
+  const userCity = normalizeAllowedMarketplaceCity(profile?.city || localAccountProfile.city || workspace.preferences.city || partnerWorkspace?.profile.city || "");
   const accountDisplayName = localAccountProfile.name || partnerWorkspace?.profile.displayName || displayName;
   const accountPhone = localAccountProfile.phone || userPhone;
-  const accountCity = localAccountProfile.city || userCity || partnerWorkspace?.profile.city || workspace.preferences.city;
+  const accountCity = normalizeAllowedMarketplaceCity(localAccountProfile.city || userCity || partnerWorkspace?.profile.city || workspace.preferences.city);
 
   useEffect(() => {
     setWorkspace(getUserWorkspace(workspaceKey));
@@ -338,7 +339,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     const nextDraft = {
       name: profileDraft.name.trim(),
       phone: profileDraft.phone.trim(),
-      city: profileDraft.city.trim(),
+      city: normalizeAllowedMarketplaceCity(profileDraft.city),
     };
 
     if (!nextDraft.name) {
@@ -1356,12 +1357,16 @@ const AccountProfileForm = ({
         />
       </Field>
       <Field label="Πόλη / περιοχή">
-        <input
+        <select
           value={draft.city}
           onChange={(event) => onChange({ city: event.target.value })}
-          placeholder="π.χ. Αθήνα"
           className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
-        />
+        >
+          <option value="">Δεν έχει οριστεί</option>
+          {allowedMarketplaceCityNames.map((city) => (
+            <option key={city} value={city}>{city}</option>
+          ))}
+        </select>
       </Field>
     </div>
 
@@ -1736,12 +1741,16 @@ const PreferencesForm = ({
   <div className="space-y-5">
     <div className={cn("grid gap-3", compact ? "md:grid-cols-2" : "md:grid-cols-3")}>
       <Field label="Πόλη / περιοχή">
-        <input
+        <select
           value={workspace.preferences.city}
           onChange={(event) => updatePreferences({ city: event.target.value })}
-          placeholder="π.χ. Αθήνα"
           className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
-        />
+        >
+          <option value="">Δεν έχει οριστεί</option>
+          {allowedMarketplaceCityNames.map((city) => (
+            <option key={city} value={city}>{city}</option>
+          ))}
+        </select>
       </Field>
       <Field label="Τρόπος συμβουλευτικής">
         <select

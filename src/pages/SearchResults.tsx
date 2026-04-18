@@ -50,6 +50,12 @@ import {
   type AvailabilityIntent,
   type LanguageIntent,
 } from "@/lib/marketplace";
+import {
+  allowedMarketplaceCityNames,
+  legalPracticeAreaLabels,
+  normalizeAllowedMarketplaceCity,
+  normalizeLegalPracticeArea,
+} from "@/lib/marketplaceTaxonomy";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
@@ -115,8 +121,8 @@ const getFiltersFromParams = (params: URLSearchParams): LawyerSearchFilters => {
 
   return {
     query: params.get("q") || "",
-    city: params.get("city") || "",
-    specialties: readTextListParam(params.get("specialty")),
+    city: normalizeAllowedMarketplaceCity(params.get("city")) || "",
+    specialties: readTextListParam(params.get("specialty")).map(normalizeLegalPracticeArea).filter(Boolean),
     appointmentTypes: readListParam(params.get("type"), validAppointmentTypes),
     priceRange: price && validPriceRanges.has(price) ? price : defaultLawyerSearchFilters.priceRange,
     sort: sort && validSorts.has(sort) ? sort : defaultLawyerSearchFilters.sort,
@@ -207,14 +213,8 @@ const SearchResults = () => {
     };
   }, [partnerSession?.email]);
 
-  const availableSpecialtyOptions = useMemo(
-    () => Array.from(new Set(lawyerDataset.flatMap((lawyer) => [lawyer.specialty, ...lawyer.specialties]))).filter(Boolean).sort((a, b) => a.localeCompare(b, "el-GR")),
-    [lawyerDataset],
-  );
-  const availableCityOptions = useMemo(
-    () => Array.from(new Set(lawyerDataset.map((lawyer) => lawyer.city))).sort((a, b) => a.localeCompare(b, "el-GR")),
-    [lawyerDataset],
-  );
+  const availableSpecialtyOptions = useMemo(() => [...legalPracticeAreaLabels], []);
+  const availableCityOptions = useMemo(() => [...allowedMarketplaceCityNames], []);
   const results = useMemo(() => searchLawyers(lawyerDataset, filters), [filters, lawyerDataset]);
   const selectedLawyers = useMemo(
     () => workspace.comparedLawyerIds.map((id) => lawyerDataset.find((lawyer) => lawyer.id === id)).filter((lawyer): lawyer is Lawyer => Boolean(lawyer)),
@@ -228,7 +228,7 @@ const SearchResults = () => {
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    updateFilters({ ...filters, query: queryDraft, city: cityDraft });
+    updateFilters({ ...filters, query: queryDraft, city: normalizeAllowedMarketplaceCity(cityDraft) });
     setShowFilters(false);
   };
 
@@ -297,12 +297,16 @@ const SearchResults = () => {
           </div>
           <div className="relative hidden md:block md:w-56">
             <MapPin className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
+            <select
               value={cityDraft}
               onChange={(event) => setCityDraft(event.target.value)}
-              placeholder="Πόλη ή περιοχή"
-              className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
+              className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">Όλες οι πόλεις</option>
+              {availableCityOptions.map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </select>
           </div>
           <Button type="submit" className="h-11 rounded-lg px-6 text-sm font-bold">
             Αναζήτηση
@@ -326,25 +330,48 @@ const SearchResults = () => {
       <div className="mx-auto max-w-7xl px-5 py-6 pb-28 lg:px-8 lg:py-8">
         <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)_18rem]">
           <aside className={cn(showFilters ? "block" : "hidden", "lg:block")}>
-            <div className="sticky top-32 rounded-lg border border-border bg-card p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-bold text-foreground">Φίλτρα απόφασης</h2>
-                <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary">
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  Καθαρισμός
-                </button>
+            <div className="relative overflow-hidden rounded-lg border border-border/80 bg-card shadow-xl shadow-foreground/[0.04] lg:sticky lg:top-32">
+              <div className="border-b border-border/70 bg-card/95 px-4 py-4 backdrop-blur">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Σύγκριση</p>
+                    <h2 className="mt-1 text-sm font-bold text-foreground">Φίλτρα απόφασης</h2>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">Κρατήστε μόνο δικηγόρους που ταιριάζουν στην υπόθεση.</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    {activeFilterCount > 0 ? (
+                      <span className="rounded-md bg-primary px-2 py-1 text-[11px] font-bold text-primary-foreground">
+                        {activeFilterCount} ενεργά
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] font-bold text-foreground transition hover:border-primary/30 hover:text-primary"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Καθαρισμός
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              <div className="mt-5 space-y-5">
-                <div className="md:hidden">
+              <div className="premium-scrollbar max-h-[min(70vh,calc(100vh-13rem))] space-y-0 overflow-y-auto overscroll-contain px-4 py-2 lg:max-h-[calc(100vh-16rem)]">
+                <div className="border-b border-border/70 pb-4 pt-2 md:hidden">
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Πόλη</label>
-                  <input
+                  <select
                     value={cityDraft}
-                    onChange={(event) => setCityDraft(event.target.value)}
-                    onBlur={() => updateFilters({ ...filters, city: cityDraft })}
-                    placeholder="Πόλη ή περιοχή"
+                    onChange={(event) => {
+                      setCityDraft(event.target.value);
+                      updateFilters({ ...filters, city: event.target.value });
+                    }}
                     className="mt-2 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
-                  />
+                  >
+                    <option value="">Όλες οι πόλεις</option>
+                    {availableCityOptions.map((city) => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <FilterGroup label="Πρόθεση κράτησης">
@@ -401,6 +428,7 @@ const SearchResults = () => {
                   ))}
                 </FilterGroup>
               </div>
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card to-transparent" />
             </div>
           </aside>
 
@@ -612,16 +640,23 @@ const SearchResults = () => {
 };
 
 const FilterGroup = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div>
-    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
-    <div className="mt-2.5 space-y-2">{children}</div>
+  <div className="border-t border-border/70 py-4 first:border-t-0 first:pt-2 last:pb-7">
+    <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+    <div className="mt-3 space-y-2">{children}</div>
   </div>
 );
 
 const CheckboxFilter = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) => (
-  <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-foreground">
-    <input type="checkbox" checked={checked} onChange={onChange} className="h-4 w-4 rounded border-border accent-primary" />
-    {label}
+  <label
+    className={cn(
+      "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm font-semibold leading-5 transition",
+      checked
+        ? "border-primary/30 bg-primary/10 text-primary shadow-sm shadow-primary/[0.04]"
+        : "border-border/70 bg-background/70 text-foreground hover:border-primary/25 hover:bg-background",
+    )}
+  >
+    <input type="checkbox" checked={checked} onChange={onChange} className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary" />
+    <span>{label}</span>
   </label>
 );
 
@@ -636,9 +671,16 @@ const RadioFilter = ({
   checked: boolean;
   onChange: () => void;
 }) => (
-  <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-foreground">
-    <input type="radio" name={name} checked={checked} onChange={onChange} className="h-4 w-4 border-border accent-primary" />
-    {label}
+  <label
+    className={cn(
+      "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm font-semibold leading-5 transition",
+      checked
+        ? "border-primary/30 bg-primary/10 text-primary shadow-sm shadow-primary/[0.04]"
+        : "border-border/70 bg-background/70 text-foreground hover:border-primary/25 hover:bg-background",
+    )}
+  >
+    <input type="radio" name={name} checked={checked} onChange={onChange} className="mt-0.5 h-4 w-4 shrink-0 border-border accent-primary" />
+    <span>{label}</span>
   </label>
 );
 

@@ -56,6 +56,7 @@ import {
 } from "@/lib/partnerWorkspace";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { createOperationalCase } from "@/lib/operationsRepository";
+import { allowedMarketplaceCityNames, legalPracticeAreaLabels } from "@/lib/marketplaceTaxonomy";
 
 const navItems = [
   { id: "appointments", label: "Ραντεβού", icon: CalendarDays },
@@ -979,13 +980,21 @@ const ProfileView = ({
           <input className="partner-input" value={workspace.profile.displayName} onChange={(event) => updateProfile({ displayName: event.target.value })} />
         </Field>
         <Field label="Κύρια ειδικότητα">
-          <input className="partner-input" value={workspace.profile.primarySpecialty} onChange={(event) => updateProfile({ primarySpecialty: event.target.value })} />
+          <select className="partner-input" value={workspace.profile.primarySpecialty} onChange={(event) => updateProfile({ primarySpecialty: event.target.value, specialties: Array.from(new Set([event.target.value, ...workspace.profile.specialties])).filter(Boolean) })}>
+            {legalPracticeAreaLabels.map((area) => (
+              <option key={area} value={area}>{area}</option>
+            ))}
+          </select>
         </Field>
         <Field label="Γραφείο">
           <input className="partner-input" value={workspace.profile.officeName} onChange={(event) => updateProfile({ officeName: event.target.value })} />
         </Field>
         <Field label="Πόλη">
-          <input className="partner-input" value={workspace.profile.city} onChange={(event) => updateProfile({ city: event.target.value })} />
+          <select className="partner-input" value={workspace.profile.city} onChange={(event) => updateProfile({ city: event.target.value })}>
+            {allowedMarketplaceCityNames.map((city) => (
+              <option key={city} value={city}>{city}</option>
+            ))}
+          </select>
         </Field>
         <NumberField
           label="Έτη εμπειρίας"
@@ -997,7 +1006,31 @@ const ProfileView = ({
           <input className="partner-input" value={workspace.profile.serviceArea} onChange={(event) => updateProfile({ serviceArea: event.target.value })} />
         </Field>
         <Field label="Ειδικότητες">
-          <input className="partner-input" value={formatListInput(workspace.profile.specialties)} onChange={(event) => updateProfile({ specialties: parseListInput(event.target.value) })} />
+          <div className="flex flex-wrap gap-2 rounded-xl border border-[hsl(var(--partner-line))] bg-white/70 p-3">
+            {legalPracticeAreaLabels.map((area) => {
+              const active = workspace.profile.specialties.includes(area);
+              return (
+                <button
+                  key={area}
+                  type="button"
+                  onClick={() => {
+                    const specialties = active
+                      ? workspace.profile.specialties.filter((item) => item !== area)
+                      : [...workspace.profile.specialties, area];
+                    updateProfile({
+                      specialties,
+                      primarySpecialty: specialties.includes(workspace.profile.primarySpecialty)
+                        ? workspace.profile.primarySpecialty
+                        : specialties[0] || workspace.profile.primarySpecialty,
+                    });
+                  }}
+                  className={`partner-chip ${active ? "partner-chip-active" : ""}`}
+                >
+                  {area}
+                </button>
+              );
+            })}
+          </div>
         </Field>
         <Field label="Γλώσσες">
           <input className="partner-input" value={formatListInput(workspace.profile.languages)} onChange={(event) => updateProfile({ languages: parseListInput(event.target.value) })} />

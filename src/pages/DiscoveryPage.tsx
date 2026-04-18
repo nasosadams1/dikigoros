@@ -80,7 +80,7 @@ const DiscoveryPage = () => {
                   {issue.title}
                 </Link>
               ))}
-              {cityDirectory.slice(0, 2).map((city) => (
+              {cityDirectory.map((city) => (
                 <Link key={city.slug} to={`/lawyers/${config.issue.slug}/${city.slug}`} className="rounded-lg border border-border bg-background p-3 text-sm font-bold text-foreground transition hover:border-primary/25">
                   {config.issue.title} {city.inTitle}
                 </Link>
@@ -171,7 +171,7 @@ const DiscoveryPage = () => {
             Εστίαση πρώτης πυκνότητας
           </h2>
           <p className="mt-2 text-sm leading-7 text-muted-foreground">
-            Η παραγωγική κάλυψη ξεκινά από πυκνότητα σε Αθήνα και Θεσσαλονίκη και επεκτείνεται μόνο όταν η διαθέσιμη, ελεγμένη προσφορά γίνεται πραγματικά κρατήσιμη.
+            Η παραγωγική κάλυψη περιορίζεται σε Αθήνα, Θεσσαλονίκη, Πειραιά, Ηράκλειο και Πάτρα και επεκτείνεται μόνο όταν η διαθέσιμη, ελεγμένη προσφορά γίνεται πραγματικά κρατήσιμη.
           </p>
         </section>
       </main>

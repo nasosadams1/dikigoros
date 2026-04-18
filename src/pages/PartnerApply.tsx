@@ -21,20 +21,10 @@ import {
   type StoredPartnerApplication,
 } from "@/lib/platformRepository";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
+import { allowedMarketplaceCityNames, legalPracticeAreaLabels } from "@/lib/marketplaceTaxonomy";
 import { cn } from "@/lib/utils";
 
-const specialtiesOptions = [
-  "Οικογενειακό Δίκαιο",
-  "Εργατικό Δίκαιο",
-  "Ακίνητα",
-  "Εμπορικό Δίκαιο",
-  "Ποινικό Δίκαιο",
-  "Κληρονομικό Δίκαιο",
-  "Φορολογικό Δίκαιο",
-  "Μεταναστευτικό Δίκαιο",
-  "Διοικητικό Δίκαιο",
-  "Ναυτιλιακό Δίκαιο",
-];
+const specialtiesOptions = [...legalPracticeAreaLabels];
 
 const steps = [
   {
@@ -214,7 +204,7 @@ const PartnerApply = () => {
       fullName: form.fullName.trim().length >= 4 ? "" : "Το πεδίο είναι υποχρεωτικό.",
       workEmail: emailPattern.test(form.workEmail.trim()) ? "" : "Συμπληρώστε έγκυρο επαγγελματικό ηλεκτρονικό ταχυδρομείο.",
       phone: form.phone.replace(/\D/g, "").length >= 10 ? "" : "Συμπληρώστε έγκυρο αριθμό τηλεφώνου.",
-      city: form.city.trim() ? "" : "Το πεδίο είναι υποχρεωτικό.",
+      city: allowedMarketplaceCityNames.includes(form.city) ? "" : "Επιλέξτε μία από τις διαθέσιμες πόλεις.",
       lawFirmName: "",
       websiteOrLinkedIn: "",
       barAssociation: form.barAssociation.trim() ? "" : "Το πεδίο είναι υποχρεωτικό.",
@@ -579,7 +569,12 @@ const PartnerApply = () => {
                     <LabelRow label="Πόλη / Περιοχή" />
                     <div className="relative">
                       <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--partner-navy-soft))]" />
-                      <input className="partner-input pl-10" value={form.city} onChange={(event) => updateField("city", event.target.value)} onBlur={() => markTouched("city")} placeholder="Αθήνα" />
+                      <select className="partner-input pl-10" value={form.city} onChange={(event) => updateField("city", event.target.value)} onBlur={() => markTouched("city")}>
+                        <option value="">Επιλέξτε πόλη</option>
+                        {allowedMarketplaceCityNames.map((city) => (
+                          <option key={city} value={city}>{city}</option>
+                        ))}
+                      </select>
                     </div>
                     {shouldShowError("city") && errors.city ? <p className="text-xs font-medium text-destructive">{errors.city}</p> : null}
                   </div>

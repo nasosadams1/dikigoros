@@ -1,4 +1,9 @@
 import { consultationModeLabels, type ConsultationMode, type Lawyer } from "@/data/lawyers";
+import {
+  normalizeAllowedMarketplaceCity,
+  normalizeLegalPracticeArea,
+  normalizeLegalPracticeAreas,
+} from "@/lib/marketplaceTaxonomy";
 import { isPartnerSessionInvalidError, type PartnerSession } from "@/lib/platformRepository";
 import { publicSupabase } from "@/lib/supabase";
 
@@ -62,7 +67,7 @@ const partnerWorkspacePrefix = "dikigoros.partnerWorkspace.v1";
 export const defaultPartnerWorkspace: PartnerWorkspace = {
   profile: {
     lawyerId: "maria-papadopoulou",
-    primarySpecialty: "Οικογενειακό Δίκαιο",
+    primarySpecialty: "Οικογενειακό δίκαιο",
     bestFor: "Διαζύγια, επιμέλεια τέκνων και οικογενειακές διαφορές.",
     experienceYears: 14,
     videoDescription: "Ασφαλής βιντεοκλήση για πρώτη αξιολόγηση υπόθεσης και άμεσα επόμενα βήματα.",
@@ -73,7 +78,7 @@ export const defaultPartnerWorkspace: PartnerWorkspace = {
     city: "Αθήνα",
     serviceArea: "Αθήνα και διαδικτυακά σε όλη την Ελλάδα",
     bio: "Εξειδίκευση σε οικογενειακό δίκαιο, συμβουλευτική πρώτης γραμμής και καθαρό πλάνο επόμενων ενεργειών.",
-    specialties: ["Οικογενειακό Δίκαιο", "Διαζύγιο", "Επιμέλεια τέκνων"],
+    specialties: ["Οικογενειακό δίκαιο"],
     languages: ["Ελληνικά", "Αγγλικά"],
     consultationModes: ["video", "phone", "inPerson"],
     videoPrice: 60,
@@ -130,29 +135,37 @@ const getPartnerWorkspaceKey = (email?: string | null) =>
 
 const unique = (items: string[]) => Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
 
-const normalizePartnerWorkspace = (workspace?: Partial<PartnerWorkspace> | null): PartnerWorkspace => ({
-  ...defaultPartnerWorkspace,
-  ...workspace,
-  profile: {
-    ...defaultPartnerWorkspace.profile,
-    ...(workspace?.profile || {}),
-    primarySpecialty:
-      workspace?.profile?.primarySpecialty?.trim() ||
-      workspace?.profile?.specialties?.[0] ||
-      defaultPartnerWorkspace.profile.primarySpecialty,
-    specialties: unique(workspace?.profile?.specialties || defaultPartnerWorkspace.profile.specialties),
-    languages: unique(workspace?.profile?.languages || defaultPartnerWorkspace.profile.languages),
-    consultationModes: workspace?.profile?.consultationModes || defaultPartnerWorkspace.profile.consultationModes,
-  },
-  availability: Array.isArray(workspace?.availability)
-    ? workspace.availability
-    : defaultPartnerWorkspace.availability,
-  reviews: Array.isArray(workspace?.reviews) ? workspace.reviews : defaultPartnerWorkspace.reviews,
-  notifications: {
-    ...defaultPartnerWorkspace.notifications,
-    ...(workspace?.notifications || {}),
-  },
-});
+const normalizePartnerWorkspace = (workspace?: Partial<PartnerWorkspace> | null): PartnerWorkspace => {
+  const primarySpecialty =
+    normalizeLegalPracticeArea(workspace?.profile?.primarySpecialty) ||
+    normalizeLegalPracticeArea(workspace?.profile?.specialties?.[0]) ||
+    defaultPartnerWorkspace.profile.primarySpecialty;
+  const specialties = normalizeLegalPracticeAreas(workspace?.profile?.specialties || defaultPartnerWorkspace.profile.specialties);
+
+  return {
+    ...defaultPartnerWorkspace,
+    ...workspace,
+    profile: {
+      ...defaultPartnerWorkspace.profile,
+      ...(workspace?.profile || {}),
+      city:
+        normalizeAllowedMarketplaceCity(workspace?.profile?.city) ||
+        defaultPartnerWorkspace.profile.city,
+      primarySpecialty,
+      specialties: specialties.length ? specialties : [primarySpecialty],
+      languages: unique(workspace?.profile?.languages || defaultPartnerWorkspace.profile.languages),
+      consultationModes: workspace?.profile?.consultationModes || defaultPartnerWorkspace.profile.consultationModes,
+    },
+    availability: Array.isArray(workspace?.availability)
+      ? workspace.availability
+      : defaultPartnerWorkspace.availability,
+    reviews: Array.isArray(workspace?.reviews) ? workspace.reviews : defaultPartnerWorkspace.reviews,
+    notifications: {
+      ...defaultPartnerWorkspace.notifications,
+      ...(workspace?.notifications || {}),
+    },
+  };
+};
 
 export const getPartnerWorkspace = (email?: string | null): PartnerWorkspace => {
   const storage = getStorage();
@@ -252,7 +265,7 @@ const mergeLawyerProfileIntoWorkspace = (
   workspace: PartnerWorkspace,
   lawyer: LawyerProfileWorkspaceRow,
 ): PartnerWorkspace => {
-  const specialties = unique(
+  const specialties = normalizeLegalPracticeAreas(
     lawyer.specialties?.length ? lawyer.specialties : [lawyer.specialty || workspace.profile.specialties[0]],
   );
   const consultationModes = unique(
@@ -265,9 +278,9 @@ const mergeLawyerProfileIntoWorkspace = (
       ...workspace.profile,
       lawyerId: lawyer.id,
       displayName: lawyer.name || workspace.profile.displayName,
-      city: lawyer.city || workspace.profile.city,
+      city: normalizeAllowedMarketplaceCity(lawyer.city) || workspace.profile.city,
       serviceArea: lawyer.best_for || workspace.profile.serviceArea,
-      primarySpecialty: lawyer.specialty || workspace.profile.primarySpecialty,
+      primarySpecialty: normalizeLegalPracticeArea(lawyer.specialty) || workspace.profile.primarySpecialty,
       bestFor: lawyer.best_for || workspace.profile.bestFor,
       bio: lawyer.bio || workspace.profile.bio,
       experienceYears:
@@ -534,10 +547,11 @@ export const applyPartnerWorkspaceToLawyer = (lawyer: Lawyer, workspace: Partner
     ? workspace.profile.consultationModes
     : lawyer.consultationModes;
   const primarySpecialty =
-    workspace.profile.primarySpecialty ||
-    workspace.profile.specialties[0] ||
+    normalizeLegalPracticeArea(workspace.profile.primarySpecialty) ||
+    normalizeLegalPracticeArea(workspace.profile.specialties[0]) ||
+    normalizeLegalPracticeArea(lawyer.specialty) ||
     lawyer.specialty;
-  const specialties = unique([primarySpecialty, ...workspace.profile.specialties]);
+  const specialties = normalizeLegalPracticeAreas([primarySpecialty, ...workspace.profile.specialties]);
   const consultations = consultationModes.map((mode) => ({
     mode,
     type: consultationModeLabels[mode],
@@ -554,7 +568,7 @@ export const applyPartnerWorkspaceToLawyer = (lawyer: Lawyer, workspace: Partner
   return {
     ...lawyer,
     name: workspace.profile.displayName || lawyer.name,
-    city: workspace.profile.city || lawyer.city,
+    city: normalizeAllowedMarketplaceCity(workspace.profile.city) || normalizeAllowedMarketplaceCity(lawyer.city) || lawyer.city,
     specialties: specialties.length ? specialties : lawyer.specialties,
     specialty: primarySpecialty || lawyer.specialty,
     specialtyShort: primarySpecialty || lawyer.specialtyShort,

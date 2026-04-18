@@ -1,6 +1,7 @@
 import type { ConsultationMode } from "@/data/lawyers";
 import { normalizeReviewPublicationState, type ReviewPublicationState } from "@/lib/bookingState";
 import { validateLegalDocumentUpload } from "@/lib/documentPolicy";
+import { normalizeAllowedMarketplaceCity, normalizeLegalPracticeAreas } from "@/lib/marketplaceTaxonomy";
 import { supabase } from "@/lib/supabase";
 
 export type PreferredConsultationMode = ConsultationMode | "any";
@@ -188,7 +189,8 @@ const normalizeWorkspace = (workspace: Partial<UserWorkspace> | null | undefined
   preferences: {
     ...defaultUserWorkspace.preferences,
     ...(workspace?.preferences || {}),
-    legalCategories: unique(workspace?.preferences?.legalCategories || []),
+    city: normalizeAllowedMarketplaceCity(workspace?.preferences?.city) || "",
+    legalCategories: normalizeLegalPracticeAreas(workspace?.preferences?.legalCategories || []),
   },
   privacy: {
     ...defaultUserWorkspace.privacy,

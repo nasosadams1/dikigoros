@@ -22,9 +22,9 @@ const Footer = () => {
             <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-primary-foreground/50">Αγορά</h4>
             <ul className="space-y-3">
               <li><Link to="/search" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Βρες δικηγόρο</Link></li>
-              <li><Link to="/lawyers/divorce" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Δικηγόροι για διαζύγιο</Link></li>
-              <li><Link to="/lawyers/employment/athens" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Εργατικό δίκαιο στην Αθήνα</Link></li>
-              <li><Link to="/lawyers/property/thessaloniki" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Ακίνητα στη Θεσσαλονίκη</Link></li>
+              <li><Link to="/lawyers/family-law" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Οικογενειακό δίκαιο</Link></li>
+              <li><Link to="/lawyers/employment-law/athens" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Εργατικό δίκαιο στην Αθήνα</Link></li>
+              <li><Link to="/lawyers/leases-rent-evictions/thessaloniki" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Μισθώσεις στη Θεσσαλονίκη</Link></li>
             </ul>
           </div>
 

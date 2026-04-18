@@ -7,6 +7,10 @@ import {
   type PaymentState,
   type ReviewPublicationState,
 } from "@/lib/bookingState";
+import {
+  normalizeAllowedMarketplaceCity,
+  normalizeLegalPracticeAreas,
+} from "@/lib/marketplaceTaxonomy";
 
 export type PersistenceSource = "supabase" | "local";
 
@@ -1258,8 +1262,15 @@ export const createPartnerApplication = async (
   payload: PartnerApplicationPayload,
 ): Promise<SubmissionResult<StoredPartnerApplication>> => {
   const createdAt = new Date().toISOString();
+  const normalizedCity = normalizeAllowedMarketplaceCity(payload.city) || payload.city;
+  const normalizedSpecialties = normalizeLegalPracticeAreas(payload.specialties);
+  if (!normalizeAllowedMarketplaceCity(normalizedCity) || normalizedSpecialties.length === 0) {
+    throw new Error("INVALID_MARKETPLACE_TAXONOMY");
+  }
   const application: StoredPartnerApplication = {
     ...payload,
+    city: normalizedCity,
+    specialties: normalizedSpecialties,
     id: createRecordId(),
     referenceId: createReferenceId("PA"),
     status: "under_review",

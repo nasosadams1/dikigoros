@@ -103,32 +103,32 @@ const operationalCaseSelect = [
 ].join(",");
 
 export const operationalAreaLabels: Record<OperationalArea, string> = {
-  payments: "Payments",
-  supply: "Supply density",
-  verification: "Verification",
-  reviews: "Review moderation",
-  bookingDisputes: "Booking disputes",
-  support: "Support",
-  privacyDocuments: "Privacy and documents",
-  security: "Security",
+  payments: "Πληρωμές",
+  supply: "Πυκνότητα αγοράς",
+  verification: "Επαλήθευση",
+  reviews: "Έλεγχος κριτικών",
+  bookingDisputes: "Θέματα κρατήσεων",
+  support: "Υποστήριξη",
+  privacyDocuments: "Απόρρητο και έγγραφα",
+  security: "Ασφάλεια",
 };
 
 export const operationalStatusLabels: Record<OperationalCaseStatus, string> = {
-  new: "New",
-  assigned: "Assigned",
-  waiting_evidence: "Waiting evidence",
-  in_review: "In review",
-  escalated: "Escalated",
-  resolved: "Resolved",
-  rejected: "Rejected",
-  suspended: "Suspended",
+  new: "Νέα",
+  assigned: "Ανατέθηκε",
+  waiting_evidence: "Αναμονή στοιχείων",
+  in_review: "Σε έλεγχο",
+  escalated: "Κλιμακώθηκε",
+  resolved: "Έκλεισε",
+  rejected: "Απορρίφθηκε",
+  suspended: "Ανεστάλη",
 };
 
 export const operationalPriorityLabels: Record<OperationalCasePriority, string> = {
-  urgent: "Urgent",
-  high: "High",
-  normal: "Normal",
-  low: "Low",
+  urgent: "Επείγον",
+  high: "Υψηλή",
+  normal: "Κανονική",
+  low: "Χαμηλή",
 };
 
 const casePrefixes: Record<OperationalArea, string> = {
@@ -228,7 +228,7 @@ export const createOperationalCaseReference = (area: OperationalArea) => {
 
 const defaultOwnerForArea = (area: OperationalArea) =>
   operatingRules.find((rule) => rule.area === area)?.owner ||
-  (area === "supply" ? "Marketplace supply lead" : "Operations lead");
+  (area === "supply" ? "Υπεύθυνος προσφοράς αγοράς" : "Υπεύθυνος λειτουργίας");
 
 const slaHoursFor = (area: OperationalArea, priority: OperationalCasePriority) => {
   if (area === "security") return priority === "urgent" ? 2 : 8;
@@ -295,8 +295,8 @@ const createCase = (input: CreateOperationalCaseInput, createdAt = new Date().to
     timeline: [
       {
         at: createdAt,
-        actor: "Operations",
-        action: status === "new" ? "Case opened" : `Case marked ${operationalStatusLabels[status]}`,
+        actor: "Λειτουργία",
+        action: status === "new" ? "Άνοιγμα υπόθεσης" : `Η υπόθεση σημάνθηκε ως ${operationalStatusLabels[status]}`,
         note: input.summary,
       },
     ],
@@ -307,70 +307,70 @@ const launchReadinessCases = (): OperationalCase[] => [
   createCase(
     {
       area: "payments",
-      title: "Confirm live Stripe settlement path",
-      summary: "Verify live Checkout key, webhook secret, booking payment row, receipt URL, and refund path before national launch.",
+      title: "Επιβεβαίωση live διαδρομής Stripe settlement",
+      summary: "Έλεγχος live Checkout key, webhook secret, εγγραφής πληρωμής κράτησης, URL απόδειξης και διαδρομής επιστροφής πριν το launch.",
       priority: "urgent",
-      evidence: ["Checkout Sessions for booking payments", "Webhook updates paid, failed, and refunded states"],
+      evidence: ["Checkout Sessions για πληρωμές κράτησης", "Το webhook ενημερώνει πληρωμένη, αποτυχημένη και επιστραφείσα κατάσταση"],
     },
     new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
   ),
   createCase(
     {
       area: "supply",
-      title: "Athens and Thessaloniki density check",
-      summary: "Track verified bookable lawyer coverage in family, employment, property, inheritance, and criminal categories.",
+      title: "Έλεγχος πυκνότητας 5 πόλεων και 5 δικαίων",
+      summary: "Παρακολούθηση επαληθευμένης κρατήσιμης κάλυψης σε Αθήνα, Θεσσαλονίκη, Πειραιά, Ηράκλειο και Πάτρα για τα 5 ενεργά δίκαια.",
       priority: "high",
-      evidence: ["Minimum city and category coverage thresholds are calculated from live public profiles"],
+      evidence: ["Τα ελάχιστα thresholds πόλης και δικαίου υπολογίζονται από live δημόσια προφίλ"],
     },
     new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString(),
   ),
   createCase(
     {
       area: "verification",
-      title: "Application review queue",
-      summary: "Assign reviewer for identity, license, bar association, professional details, and profile readiness checks.",
+      title: "Ουρά ελέγχου αιτήσεων συνεργατών",
+      summary: "Ανάθεση ελέγχου για ταυτότητα, άδεια, δικηγορικό σύλλογο, επαγγελματικά στοιχεία και ετοιμότητα προφίλ.",
       priority: "normal",
-      evidence: ["Profiles stay public only after readiness checks pass"],
+      evidence: ["Τα προφίλ μένουν δημόσια μόνο αφού περάσουν οι έλεγχοι ετοιμότητας"],
     },
     new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
   ),
   createCase(
     {
       area: "reviews",
-      title: "Completed-booking review moderation",
-      summary: "Hold new reviews for completed-booking proof, case-detail screening, fraud checks, and lawyer reply handling.",
+      title: "Έλεγχος κριτικής μετά από ολοκληρωμένη κράτηση",
+      summary: "Κράτημα νέων κριτικών για απόδειξη ολοκληρωμένης κράτησης, έλεγχο λεπτομερειών υπόθεσης, έλεγχο απάτης και χειρισμό απάντησης δικηγόρου.",
       priority: "normal",
-      evidence: ["Review request opens only after booking completion"],
+      evidence: ["Το αίτημα κριτικής ανοίγει μόνο μετά την ολοκλήρωση της κράτησης"],
     },
     new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
   ),
   createCase(
     {
       area: "bookingDisputes",
-      title: "Reschedule and no-show decision path",
-      summary: "Confirm cancellation window, payment state, communication history, and refund or reschedule outcome.",
+      title: "Διαδρομή απόφασης για αλλαγή ώρας και μη εμφάνιση",
+      summary: "Επιβεβαίωση παραθύρου ακύρωσης, κατάστασης πληρωμής, ιστορικού επικοινωνίας και αποτελέσματος επιστροφής ή αλλαγής ώρας.",
       priority: "high",
-      evidence: ["Free cancellation or reschedule before the 24-hour window"],
+      evidence: ["Δωρεάν ακύρωση ή αλλαγή ώρας πριν από το παράθυρο 24 ωρών"],
     },
     new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
   ),
   createCase(
     {
       area: "privacyDocuments",
-      title: "Document retention and deletion workflow",
-      summary: "Route access, deletion, visibility, and retention requests with booking/account context.",
+      title: "Ροή διατήρησης και διαγραφής εγγράφων",
+      summary: "Δρομολόγηση αιτημάτων πρόσβασης, διαγραφής, ορατότητας και διατήρησης με context κράτησης/λογαριασμού.",
       priority: "normal",
-      evidence: ["Documents are visible to the booked lawyer only when user visibility allows it"],
+      evidence: ["Τα έγγραφα είναι ορατά στον δικηγόρο της κράτησης μόνο όταν ο χρήστης επιτρέπει την ορατότητα"],
     },
     new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString(),
   ),
   createCase(
     {
       area: "security",
-      title: "Sensitive legal data incident runbook",
-      summary: "Confirm containment, audit context, notification decision, corrective controls, and closure record.",
+      title: "Runbook περιστατικού ευαίσθητων νομικών δεδομένων",
+      summary: "Επιβεβαίωση περιορισμού, audit context, απόφασης ενημέρωσης, διορθωτικών μέτρων και καταγραφής κλεισίματος.",
       priority: "urgent",
-      evidence: ["Security and privacy concerns escalate before normal support handling"],
+      evidence: ["Θέματα ασφάλειας και απορρήτου κλιμακώνονται πριν από τον κανονικό χειρισμό υποστήριξης"],
     },
     new Date(Date.now() - 90 * 60 * 1000).toISOString(),
   ),
@@ -595,10 +595,10 @@ const buildUpdatedCase = (
   const nextPriority = updates.priority || operationalCase.priority;
   const action =
     updates.status && updates.status !== operationalCase.status
-      ? `Status changed to ${operationalStatusLabels[updates.status]}`
+      ? `Η κατάσταση άλλαξε σε ${operationalStatusLabels[updates.status]}`
       : updates.owner && updates.owner !== operationalCase.owner
-        ? `Assigned to ${updates.owner}`
-        : "Case updated";
+        ? `Ανατέθηκε σε ${updates.owner}`
+        : "Η υπόθεση ενημερώθηκε";
   const timelineEntry: OperationalCaseTimelineEntry = {
     at: now,
     actor,
@@ -641,7 +641,7 @@ const updateFallbackCase = (
 export const updateOperationalCase = async (
   caseId: string,
   updates: OperationalCaseUpdates,
-  actor = "Operations",
+  actor = "Λειτουργία",
   note?: string,
 ) => {
   try {
@@ -669,10 +669,10 @@ export const updateOperationalCase = async (
 };
 
 export const assignOperationalCase = (caseId: string, owner: string) =>
-  updateOperationalCase(caseId, { owner, status: "assigned" }, "Operations", "Owner assigned from the operations center.");
+  updateOperationalCase(caseId, { owner, status: "assigned" }, "Λειτουργία", "Ορίστηκε υπεύθυνος από το κέντρο λειτουργίας.");
 
 export const setOperationalCaseStatus = (caseId: string, status: OperationalCaseStatus, note?: string) =>
-  updateOperationalCase(caseId, { status }, "Operations", note);
+  updateOperationalCase(caseId, { status }, "Λειτουργία", note);
 
 export const getOperationalSlaState = (operationalCase: Pick<OperationalCase, "status" | "slaDueAt">): OperationalSlaState => {
   if (closedStatuses.has(operationalCase.status)) return "closed";

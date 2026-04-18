@@ -4,6 +4,7 @@ import {
   getAvailabilitySlotForDate,
   type PartnerAvailabilitySlot,
 } from "@/lib/partnerWorkspace";
+import { allowedMarketplaceCities, legalPracticeAreas } from "@/lib/marketplaceTaxonomy";
 
 export type FeaturedGroupKey = "topRated" | "fastestResponse" | "bestValue" | "availableSoon";
 export type AvailabilityIntent = "any" | "today" | "tomorrow";
@@ -42,83 +43,27 @@ export const publicTrustMechanics = [
   "Η κράτηση πληρώνεται με ασφαλή ροή Stripe Checkout",
 ];
 
-export const popularLegalJourneys = [
-  {
-    title: "Διαζύγιο ή επιμέλεια",
-    description: "Συγκρίνετε δικηγόρους οικογενειακού δικαίου για χωρισμό, επιμέλεια, διατροφή και πρώτα βήματα.",
-    to: "/lawyers/divorce",
-    query: "διαζύγιο",
-  },
-  {
-    title: "Απόλυση ή αποζημίωση",
-    description: "Βρείτε δικηγόρους εργατικού δικαίου για αποζημίωση, μισθούς, συμβάσεις και εργασιακές διαφορές.",
-    to: "/lawyers/employment",
-    query: "απόλυση",
-  },
-  {
-    title: "Κληρονομικά",
-    description: "Οργανώστε αποδοχή, αποποίηση, διαθήκη και κληρονομικές διαφορές με ελεγμένα προφίλ δικηγόρων.",
-    to: "/lawyers/inheritance",
-    query: "κληρονομιά",
-  },
-  {
-    title: "Αγορά ή πώληση ακινήτου",
-    description: "Ελέγξτε τίτλους, συμβάσεις, μισθώσεις και κινδύνους πριν από την υπογραφή.",
-    to: "/lawyers/property",
-    query: "ακίνητα",
-  },
-  {
-    title: "Ποινική υπεράσπιση",
-    description: "Κινηθείτε γρήγορα για υπεράσπιση, μηνύσεις, αυτόφωρο και προετοιμασία δικαστηρίου.",
-    to: "/lawyers/criminal-defense",
-    query: "ποινικό",
-  },
-];
+export const popularLegalJourneys = legalPracticeAreas.map((area) => ({
+  title: area.journeyTitle,
+  description: area.description,
+  to: `/lawyers/${area.slug}`,
+  query: area.query,
+}));
 
-export const issueDirectory = [
-  {
-    slug: "divorce",
-    title: "Δικηγόροι για διαζύγιο",
-    query: "διαζύγιο",
-    specialtyHint: "Οικογενειακό δίκαιο",
-    description: "Συγκρίνετε δικηγόρους για διαζύγιο, επιμέλεια, διατροφή και οικογενειακές περιουσιακές διαφορές.",
-  },
-  {
-    slug: "employment",
-    title: "Δικηγόροι εργατικού δικαίου",
-    query: "εργατικό",
-    specialtyHint: "Εργατικό δίκαιο",
-    description: "Βρείτε δικηγόρους για απόλυση, αποζημίωση, συμβάσεις, οφειλόμενους μισθούς και εργασιακές διαφορές.",
-  },
-  {
-    slug: "property",
-    title: "Δικηγόροι για ακίνητα",
-    query: "ακίνητα",
-    specialtyHint: "Δίκαιο ακινήτων",
-    description: "Κλείστε συμβουλευτική για έλεγχο τίτλων, αγορά, πώληση, μισθώσεις και διαφορές ακινήτων.",
-  },
-  {
-    slug: "inheritance",
-    title: "Δικηγόροι κληρονομικού δικαίου",
-    query: "κληρονομικό",
-    specialtyHint: "Κληρονομικό δίκαιο",
-    description: "Πάρτε καθοδήγηση για διαθήκες, αποδοχή, αποποίηση, διαδικαστικά βήματα και κληρονομικές συγκρούσεις.",
-  },
-  {
-    slug: "criminal-defense",
-    title: "Δικηγόροι ποινικού δικαίου",
-    query: "ποινικό",
-    specialtyHint: "Ποινικό δίκαιο",
-    description: "Συγκρίνετε δικηγόρους για επείγουσα υπεράσπιση, μηνύσεις, ακροάσεις και προετοιμασία δικαστηρίου.",
-  },
-];
+export const issueDirectory = legalPracticeAreas.map((area) => ({
+  slug: area.slug,
+  title: area.discoveryTitle,
+  query: area.query,
+  specialtyHint: area.label,
+  description: area.description,
+}));
 
-export const cityDirectory = [
-  { slug: "athens", title: "Αθήνα", inTitle: "στην Αθήνα", query: "Αθήνα" },
-  { slug: "thessaloniki", title: "Θεσσαλονίκη", inTitle: "στη Θεσσαλονίκη", query: "Θεσσαλονίκη" },
-  { slug: "patra", title: "Πάτρα", inTitle: "στην Πάτρα", query: "Πάτρα" },
-  { slug: "heraklion", title: "Ηράκλειο", inTitle: "στο Ηράκλειο", query: "Ηράκλειο" },
-];
+export const cityDirectory = allowedMarketplaceCities.map((city) => ({
+  slug: city.slug,
+  title: city.title,
+  inTitle: city.inTitle,
+  query: city.query,
+}));
 
 export const formatCurrency = (value: number) =>
   new Intl.NumberFormat("el-GR", {

@@ -104,8 +104,8 @@ values
   (
     'SUPPLY-LAUNCH-DENSITY',
     'supply',
-    'Athens and Thessaloniki density check',
-    'Track verified bookable lawyer coverage in family, employment, property, inheritance, and criminal categories.',
+    'Five-city and five-category density check',
+    'Track verified bookable lawyer coverage in Αθήνα, Θεσσαλονίκη, Πειραιάς, Ηράκλειο and Πάτρα across the 5 active practice areas.',
     'new',
     'high',
     'Marketplace supply lead',

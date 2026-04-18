@@ -48,32 +48,32 @@ import { fetchFunnelEvents, getFunnelMetrics } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
 const areaTabs: Array<{ area: OperationalArea; label: string; icon: LucideIcon }> = [
-  { area: "payments", label: "Payments", icon: CreditCard },
-  { area: "supply", label: "Supply density", icon: UsersRound },
-  { area: "verification", label: "Verification", icon: ShieldCheck },
-  { area: "reviews", label: "Review moderation", icon: Star },
-  { area: "bookingDisputes", label: "Booking disputes", icon: MessageSquareWarning },
-  { area: "support", label: "Support", icon: SearchCheck },
-  { area: "privacyDocuments", label: "Privacy/documents", icon: FileText },
-  { area: "security", label: "Security", icon: LockKeyhole },
+  { area: "payments", label: "Πληρωμές", icon: CreditCard },
+  { area: "supply", label: "Πυκνότητα αγοράς", icon: UsersRound },
+  { area: "verification", label: "Επαλήθευση", icon: ShieldCheck },
+  { area: "reviews", label: "Έλεγχος κριτικών", icon: Star },
+  { area: "bookingDisputes", label: "Θέματα κρατήσεων", icon: MessageSquareWarning },
+  { area: "support", label: "Υποστήριξη", icon: SearchCheck },
+  { area: "privacyDocuments", label: "Απόρρητο/έγγραφα", icon: FileText },
+  { area: "security", label: "Ασφάλεια", icon: LockKeyhole },
 ];
 
 const paymentChecklist = [
-  "Stripe Checkout creates one payment session per confirmed booking.",
-  "Webhook marks booking payment paid, failed, or refunded in booking_payments.",
-  "Booking page returns from Stripe with booking context and human-readable status.",
-  "Account payments tab exposes receipt, retry payment, and payment state.",
-  "Refund decisions follow support policy before processor action.",
+  "Το Stripe Checkout δημιουργεί μία διαδρομή πληρωμής για κάθε επιβεβαιωμένη κράτηση.",
+  "Το webhook ενημερώνει την πληρωμή ως πληρωμένη, αποτυχημένη ή επιστραφείσα.",
+  "Η επιστροφή από Stripe κρατά το context της κράτησης και δείχνει ανθρώπινη κατάσταση.",
+  "Ο λογαριασμός δείχνει απόδειξη, επανάληψη πληρωμής και καθαρή κατάσταση.",
+  "Οι επιστροφές ακολουθούν τον κανόνα υποστήριξης πριν γίνει ενέργεια στον πάροχο.",
 ];
 
 const operationsQueues: Array<{ label: string; area: OperationalArea; priority: "urgent" | "high" | "normal" | "low"; summary: string }> = [
-  { label: "Urgent bookings", area: "bookingDisputes", priority: "urgent", summary: "Slot conflict, booking failure, lawyer cancellation, or no-show within 24 hours." },
-  { label: "Failed payments", area: "payments", priority: "urgent", summary: "Checkout failed, payment abandoned with confusion, duplicate-charge concern, or missing receipt." },
-  { label: "Refund reviews", area: "payments", priority: "high", summary: "Paid cancellation, lawyer cancellation, no-show dispute, or processor refund issue." },
-  { label: "Review moderation", area: "reviews", priority: "normal", summary: "Submitted review needs completion proof, private-detail screening, publication, rejection, or lawyer reply handling." },
-  { label: "Verification pending", area: "verification", priority: "normal", summary: "Partner application or profile change needs identity, license, bar association, and readiness check." },
-  { label: "Complaints pending", area: "bookingDisputes", priority: "high", summary: "Complaint against lawyer, profile accuracy issue, booking disagreement, or behavior report." },
-  { label: "Privacy/security pending", area: "security", priority: "urgent", summary: "Document exposure, account access concern, privacy request, or security incident." },
+  { label: "Επείγουσες κρατήσεις", area: "bookingDisputes", priority: "urgent", summary: "Σύγκρουση ώρας, αποτυχία κράτησης, ακύρωση δικηγόρου ή μη εμφάνιση μέσα στις επόμενες 24 ώρες." },
+  { label: "Αποτυχημένες πληρωμές", area: "payments", priority: "urgent", summary: "Αποτυχία Checkout, εγκαταλειμμένη πληρωμή με ασάφεια, πιθανή διπλή χρέωση ή απόδειξη που λείπει." },
+  { label: "Έλεγχοι επιστροφών", area: "payments", priority: "high", summary: "Πληρωμένη ακύρωση, ακύρωση δικηγόρου, διαφωνία μη εμφάνισης ή θέμα επιστροφής στον πάροχο." },
+  { label: "Έλεγχος κριτικών", area: "reviews", priority: "normal", summary: "Κριτική που χρειάζεται απόδειξη ολοκλήρωσης, έλεγχο ιδιωτικών στοιχείων, δημοσίευση, απόρριψη ή απάντηση δικηγόρου." },
+  { label: "Εκκρεμής επαλήθευση", area: "verification", priority: "normal", summary: "Αίτηση συνεργάτη ή αλλαγή προφίλ που χρειάζεται έλεγχο ταυτότητας, άδειας, συλλόγου και ετοιμότητας." },
+  { label: "Εκκρεμή παράπονα", area: "bookingDisputes", priority: "high", summary: "Παράπονο για δικηγόρο, ακρίβεια προφίλ, διαφωνία κράτησης ή αναφορά συμπεριφοράς." },
+  { label: "Απόρρητο και ασφάλεια", area: "security", priority: "urgent", summary: "Πιθανή έκθεση εγγράφου, θέμα πρόσβασης λογαριασμού, αίτημα απορρήτου ή περιστατικό ασφάλειας." },
 ];
 
 const OperationsCenter = () => {
@@ -147,8 +147,8 @@ const OperationsCenter = () => {
     const rule = getOperationalRulesByArea(area)[0];
     await createOperationalCase({
       area,
-      title: title || `${operationalAreaLabels[area]} operations review`,
-      summary: summary || rule?.trigger || "Operational review opened from the production control center.",
+      title: title || `Έλεγχος λειτουργίας: ${operationalAreaLabels[area]}`,
+      summary: summary || rule?.trigger || "Άνοιξε λειτουργικός έλεγχος από το κέντρο παραγωγής.",
       priority,
       evidence: rule?.actions.slice(0, 2) || [],
     });
@@ -168,45 +168,45 @@ const OperationsCenter = () => {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Production operations | Dikigoros"
-        description="Operational workflows for live payments, supply density, verification, reviews, booking disputes, support, privacy, documents, and security."
+        title="Κέντρο λειτουργίας | Dikigoros"
+        description="Λειτουργικές ροές για πληρωμές, πυκνότητα προσφοράς, επαλήθευση, κριτικές, κρατήσεις, υποστήριξη, απόρρητο, έγγραφα και ασφάλεια."
         path="/operations"
       />
       <Navbar />
       <main className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-16">
         <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
           <section>
-            <p className="text-xs font-bold uppercase tracking-widest text-primary">Production operations</p>
-            <h1 className="mt-3 font-serif text-4xl tracking-tight text-foreground">National launch control center</h1>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary">Κέντρο λειτουργίας</p>
+            <h1 className="mt-3 font-serif text-4xl tracking-tight text-foreground">Έλεγχος launch και καθημερινών υποθέσεων</h1>
             <p className="mt-4 max-w-2xl text-base leading-8 text-muted-foreground">
-              Concrete operating rules for payments, public truth, supply density, verification, reviews, disputes, support, privacy, and security.
+              Συγκεκριμένοι κανόνες για πληρωμές, δημόσια αλήθεια marketplace, πυκνότητα προσφοράς, επαλήθευση, κριτικές, διαφωνίες, υποστήριξη, απόρρητο και ασφάλεια.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Button asChild className="rounded-lg font-bold">
                 <Link to="/trust/verification-standards">
-                  Public trust center
+                  Κέντρο εμπιστοσύνης
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
               <Button asChild variant="outline" className="rounded-lg font-bold">
-                <Link to="/help">Support center</Link>
+                <Link to="/help">Κέντρο υποστήριξης</Link>
               </Button>
             </div>
           </section>
 
           <aside className="rounded-lg border border-border bg-card p-5">
-            <h2 className="text-lg font-bold text-foreground">Launch readiness snapshot</h2>
+            <h2 className="text-lg font-bold text-foreground">Στιγμιότυπο ετοιμότητας launch</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <ReadinessMetric label="Public profiles" value={String(lawyers.length)} ready={lawyers.length >= 10} notReadyLabel="Needs supply" />
-              <ReadinessMetric label="Core cities ready" value={`${supplyReadiness.filter((city) => city.ready).length}/${supplyReadiness.length}`} ready={supplyReadiness.some((city) => city.ready)} notReadyLabel="Needs supply" />
-              <ReadinessMetric label="Open ops cases" value={String(getOperationalCaseMetrics(operationalCases).open)} ready={getOperationalCaseMetrics(operationalCases).overdue === 0} />
-              <ReadinessMetric label="Payment model" value="Full payment" ready={paymentReadinessChecks.every((check) => check.ready)} />
-              <ReadinessMetric label="Funnel events" value={String(funnelMetrics.reduce((sum, metric) => sum + metric.count, 0))} ready={funnelMetrics.some((metric) => metric.count > 0)} notReadyLabel="No data" />
+              <ReadinessMetric label="Δημόσια προφίλ" value={String(lawyers.length)} ready={lawyers.length >= 10} notReadyLabel="Χρειάζεται προσφορά" />
+              <ReadinessMetric label="Έτοιμες πόλεις" value={`${supplyReadiness.filter((city) => city.ready).length}/${supplyReadiness.length}`} ready={supplyReadiness.some((city) => city.ready)} notReadyLabel="Χρειάζεται προσφορά" />
+              <ReadinessMetric label="Ανοιχτές υποθέσεις" value={String(getOperationalCaseMetrics(operationalCases).open)} ready={getOperationalCaseMetrics(operationalCases).overdue === 0} />
+              <ReadinessMetric label="Μοντέλο πληρωμής" value="Πλήρης πληρωμή" ready={paymentReadinessChecks.every((check) => check.ready)} />
+              <ReadinessMetric label="Συμβάντα διαδρομής" value={String(funnelMetrics.reduce((sum, metric) => sum + metric.count, 0))} ready={funnelMetrics.some((metric) => metric.count > 0)} notReadyLabel="Χωρίς δεδομένα" />
               <ReadinessMetric
-                label="Ops source"
-                value={operationalCasesFetching ? "Syncing" : operationalCasesSource === "backend" ? "Backend" : "Fallback"}
+                label="Πηγή λειτουργίας"
+                value={operationalCasesFetching ? "Συγχρονισμός" : operationalCasesSource === "backend" ? "Backend" : "Τοπικό fallback"}
                 ready={!operationalCasesFetching && operationalCasesSource === "backend"}
-                notReadyLabel={operationalCasesFetching ? "Syncing" : "Fallback"}
+                notReadyLabel={operationalCasesFetching ? "Συγχρονισμός" : "Τοπικό fallback"}
               />
             </div>
           </aside>
@@ -215,14 +215,14 @@ const OperationsCenter = () => {
         <section className="mt-10 rounded-lg border border-border bg-card p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-primary">Marketplace funnel</p>
-              <h2 className="mt-2 text-xl font-bold text-foreground">Where demand is being won or lost</h2>
+              <p className="text-xs font-bold uppercase tracking-widest text-primary">Διαδρομή marketplace</p>
+              <h2 className="mt-2 text-xl font-bold text-foreground">Πού κερδίζεται ή χάνεται η ζήτηση</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                First-party events from the public journey, booking flow, reviews, and lawyer onboarding.
+                Γεγονότα πρώτου μέρους από τη δημόσια διαδρομή, την κράτηση, τις κριτικές και την ένταξη δικηγόρων.
               </p>
             </div>
             <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 text-sm font-bold text-foreground">
-              Bottleneck: {funnelBottleneck ? `${funnelBottleneck.label} (${funnelBottleneck.conversionFromPrevious}%)` : "waiting for data"}
+              Σημείο απώλειας: {funnelBottleneck ? `${funnelBottleneck.label} (${funnelBottleneck.conversionFromPrevious}%)` : "αναμονή δεδομένων"}
             </div>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
@@ -265,7 +265,7 @@ const OperationsCenter = () => {
                   <div>
                     <h2 className="text-xl font-bold text-foreground">{city.label}</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {city.count}/{city.minimumVerified} verified bookable profiles
+                      {city.count}/{city.minimumVerified} επαληθευμένα κρατήσιμα προφίλ
                     </p>
                   </div>
                   <StatusBadge ready={city.ready} />
@@ -276,7 +276,7 @@ const OperationsCenter = () => {
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-sm font-bold text-foreground">{category.label}</p>
-                          <p className="mt-1 text-xs font-semibold text-muted-foreground">{category.count}/2 category coverage</p>
+                          <p className="mt-1 text-xs font-semibold text-muted-foreground">{category.count}/2 κάλυψη δικαίου</p>
                         </div>
                         <StatusBadge ready={category.ready} />
                       </div>
@@ -288,14 +288,14 @@ const OperationsCenter = () => {
                           onClick={() =>
                             void openOperationalCase(
                               "supply",
-                              `${city.label} ${category.label} supply gap`,
-                              `Recruit and verify enough bookable ${category.label.toLowerCase()} lawyers in ${city.label}. Current coverage is ${category.count}/2.`,
+                              `Κενό προσφοράς: ${city.label} - ${category.label}`,
+                              `Χρειάζονται αρκετοί επαληθευμένοι και κρατήσιμοι δικηγόροι για ${category.label.toLowerCase()} στην πόλη ${city.label}. Τρέχουσα κάλυψη: ${category.count}/2.`,
                               "high",
                             )
                           }
                           className="mt-3 h-8 rounded-lg text-xs font-bold"
                         >
-                          Open supply case
+                          Άνοιγμα υπόθεσης προσφοράς
                         </Button>
                       ) : null}
                     </div>
@@ -312,20 +312,20 @@ const OperationsCenter = () => {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h2 className="text-xl font-bold text-foreground">{rule.title}</h2>
-                      <p className="mt-1 text-sm font-semibold text-muted-foreground">Owner: {rule.owner} - SLA: {rule.sla}</p>
+                      <p className="mt-1 text-sm font-semibold text-muted-foreground">Υπεύθυνος: {rule.owner} · Χρόνος: {rule.sla}</p>
                     </div>
                     <StatusBadge ready />
                   </div>
                   <p className="mt-4 rounded-lg bg-secondary/50 px-3 py-2 text-sm font-semibold text-foreground">
-                    Trigger: {rule.trigger}
+                    Πότε ανοίγει: {rule.trigger}
                   </p>
                   <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    <RuleDetail title="Evidence" items={rule.evidenceNeeded} />
-                    <RuleDetail title="User outcome" items={[rule.userOutcome]} />
-                    <RuleDetail title="Escalation" items={[rule.escalation]} />
+                    <RuleDetail title="Στοιχεία" items={rule.evidenceNeeded} />
+                    <RuleDetail title="Τι βλέπει ο χρήστης" items={[rule.userOutcome]} />
+                    <RuleDetail title="Κλιμάκωση" items={[rule.escalation]} />
                   </div>
                   <p className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground">
-                    Close condition: {rule.closeCondition}
+                    Κλείνει όταν: {rule.closeCondition}
                   </p>
                   <ul className="mt-4 space-y-2">
                     {rule.actions.map((action) => (
@@ -336,7 +336,7 @@ const OperationsCenter = () => {
                     ))}
                   </ul>
                   <p className="mt-4 rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground">
-                    Client copy: {rule.clientCopy}
+                    Κείμενο προς χρήστη: {rule.clientCopy}
                   </p>
                 </article>
               ))}
@@ -345,15 +345,15 @@ const OperationsCenter = () => {
             <aside className="rounded-lg border border-border bg-card p-5 lg:sticky lg:top-24 lg:self-start">
               <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
                 <AlertTriangle className="h-5 w-5 text-primary" />
-                Operational gates
+                Λειτουργικοί κανόνες
               </h2>
               <div className="mt-4 space-y-3">
                 {(activeArea === "payments" ? paymentChecklist : [
-                  "Every case has an owner and SLA.",
-                  "Client-facing copy stays human-readable.",
-                  "Evidence and status changes are recorded.",
-                  "Privacy or security concerns escalate immediately.",
-                  "Public claims must match live marketplace behavior.",
+                  "Κάθε υπόθεση έχει υπεύθυνο και χρόνο απόκρισης.",
+                  "Το κείμενο προς τον χρήστη μένει ανθρώπινο και κατανοητό.",
+                  "Τα στοιχεία και οι αλλαγές κατάστασης καταγράφονται.",
+                  "Θέματα απορρήτου ή ασφάλειας κλιμακώνονται άμεσα.",
+                  "Οι δημόσιοι ισχυρισμοί πρέπει να συμφωνούν με τη live συμπεριφορά marketplace.",
                 ]).map((item) => (
                   <p key={item} className="flex items-start gap-2 text-sm leading-6 text-muted-foreground">
                     <CheckCircle2 className="mt-1 h-3.5 w-3.5 shrink-0 text-sage" />
@@ -363,7 +363,7 @@ const OperationsCenter = () => {
               </div>
               {activeArea === "payments" ? (
                 <div className="mt-5 border-t border-border pt-5">
-                  <h3 className="text-sm font-bold text-foreground">Live payment gates</h3>
+                  <h3 className="text-sm font-bold text-foreground">Κανόνες live πληρωμών</h3>
                   <div className="mt-3 space-y-2">
                     {paymentReadinessChecks.map((check) => (
                       <ReadinessCheck key={check.label} check={check} />
@@ -376,7 +376,7 @@ const OperationsCenter = () => {
                 onClick={() => void openOperationalCase(activeArea)}
                 className="mt-5 w-full rounded-lg font-bold"
               >
-                Open {operationalAreaLabels[activeArea].toLowerCase()} case
+                Άνοιγμα υπόθεσης: {operationalAreaLabels[activeArea]}
               </Button>
             </aside>
           </section>
@@ -384,13 +384,13 @@ const OperationsCenter = () => {
 
         <section className="mt-8 grid gap-4 lg:grid-cols-[0.75fr_1.25fr]">
           <aside className="rounded-lg border border-border bg-card p-5">
-            <p className="text-xs font-bold uppercase tracking-widest text-primary">Workflow queue</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary">Ουρά εργασίας</p>
             <h2 className="mt-2 text-xl font-bold text-foreground">{operationalAreaLabels[activeArea]}</h2>
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <ReadinessMetric label="Open" value={String(activeMetrics.open)} ready={activeMetrics.overdue === 0} />
-              <ReadinessMetric label="Urgent" value={String(activeMetrics.urgent)} ready={activeMetrics.urgent === 0} />
-              <ReadinessMetric label="Overdue" value={String(activeMetrics.overdue)} ready={activeMetrics.overdue === 0} />
-              <ReadinessMetric label="Closed" value={String(activeMetrics.closed)} ready />
+              <ReadinessMetric label="Ανοιχτές" value={String(activeMetrics.open)} ready={activeMetrics.overdue === 0} />
+              <ReadinessMetric label="Επείγουσες" value={String(activeMetrics.urgent)} ready={activeMetrics.urgent === 0} />
+              <ReadinessMetric label="Εκπρόθεσμες" value={String(activeMetrics.overdue)} ready={activeMetrics.overdue === 0} />
+              <ReadinessMetric label="Κλειστές" value={String(activeMetrics.closed)} ready />
             </div>
             <Button
               type="button"
@@ -398,7 +398,7 @@ const OperationsCenter = () => {
               onClick={() => void openOperationalCase(activeArea)}
               className="mt-4 w-full rounded-lg font-bold"
             >
-              New case
+              Νέα υπόθεση
             </Button>
           </aside>
 
@@ -413,14 +413,14 @@ const OperationsCenter = () => {
                     void updateCaseStatus(
                       operationalCase.id,
                       status,
-                      status === "resolved" ? "Resolved from the operations center." : undefined,
+                      status === "resolved" ? "Έκλεισε από το κέντρο λειτουργίας." : undefined,
                     )
                   }
                 />
               ))
             ) : (
               <div className="rounded-lg border border-dashed border-border bg-card p-6 text-sm leading-6 text-muted-foreground">
-                No active cases for this area. Open one when a launch gate, support request, dispute, verification issue, review flag, privacy request, or security concern needs ownership.
+                Δεν υπάρχουν ενεργές υποθέσεις σε αυτή την περιοχή. Ανοίξτε υπόθεση όταν κανόνας launch, αίτημα υποστήριξης, διαφωνία, θέμα επαλήθευσης, κριτική, αίτημα απορρήτου ή θέμα ασφάλειας χρειάζεται υπεύθυνο.
               </div>
             )}
           </div>
@@ -429,10 +429,10 @@ const OperationsCenter = () => {
         <section className="mt-8 rounded-lg border border-border bg-card p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-primary">Production queues</p>
-              <h2 className="mt-2 text-xl font-bold text-foreground">Work that cannot be improvised</h2>
+              <p className="text-xs font-bold uppercase tracking-widest text-primary">Ουρές παραγωγής</p>
+              <h2 className="mt-2 text-xl font-bold text-foreground">Εργασία που δεν πρέπει να αυτοσχεδιάζεται</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Refunds, moderation, verification, complaints, privacy, and booking exceptions have dedicated queues with owners and SLAs.
+                Επιστροφές, έλεγχος περιεχομένου, επαλήθευση, παράπονα, απόρρητο και εξαιρέσεις κράτησης έχουν ξεχωριστές ουρές με υπεύθυνους και χρόνους απόκρισης.
               </p>
             </div>
           </div>
@@ -449,7 +449,7 @@ const OperationsCenter = () => {
                   onClick={() => void openOperationalCase(queue.area, queue.label, queue.summary, queue.priority)}
                   className="mt-3 rounded-lg text-xs font-bold"
                 >
-                  Open queue case
+                  Άνοιγμα υπόθεσης ουράς
                 </Button>
               </article>
             ))}
@@ -457,8 +457,8 @@ const OperationsCenter = () => {
         </section>
 
         <section className="mt-8 rounded-lg border border-border bg-card p-5">
-          <p className="text-xs font-bold uppercase tracking-widest text-primary">Support workflows</p>
-          <h2 className="mt-2 text-xl font-bold text-foreground">Owner, SLA, evidence, escalation, close condition</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">Ροές υποστήριξης</p>
+          <h2 className="mt-2 text-xl font-bold text-foreground">Υπεύθυνος, χρόνος απόκρισης, στοιχεία, κλιμάκωση και κλείσιμο</h2>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {supportWorkflows.map((workflow) => (
               <article key={workflow.id} className="rounded-lg border border-border bg-background p-4">
@@ -468,23 +468,23 @@ const OperationsCenter = () => {
                 </div>
                 <p className="mt-2 text-xs font-bold uppercase tracking-wider text-primary">{workflow.sla}</p>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{workflow.userFacingResponse}</p>
-                <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Evidence: {workflow.requiredEvidence.join(", ")}</p>
-                <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">Escalation: {workflow.escalationRule}</p>
-                <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">Close: {workflow.closeCondition}</p>
+                <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Στοιχεία: {workflow.requiredEvidence.join(", ")}</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">Κλιμάκωση: {workflow.escalationRule}</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">Κλείνει όταν: {workflow.closeCondition}</p>
               </article>
             ))}
           </div>
         </section>
 
         <section className="mt-8 rounded-lg border border-border bg-card p-5">
-          <p className="text-xs font-bold uppercase tracking-widest text-primary">Hard launch gates</p>
-          <h2 className="mt-2 text-xl font-bold text-foreground">Ready is a checklist, not a feeling</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">Κανόνες launch</p>
+          <h2 className="mt-2 text-xl font-bold text-foreground">Η ετοιμότητα είναι checklist, όχι αίσθηση</h2>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             {dynamicLaunchGates.map((gate) => (
               <article key={gate.label} className="rounded-lg border border-border bg-background p-4">
-                <StatusBadge ready={gate.ready} notReadyLabel="Gate open" />
+                <StatusBadge ready={gate.ready} notReadyLabel="Ανοιχτός κανόνας" />
                 <h3 className="mt-3 text-sm font-bold text-foreground">{gate.label}</h3>
-                <p className="mt-1 text-xs font-semibold text-muted-foreground">Owner: {gate.owner}</p>
+                <p className="mt-1 text-xs font-semibold text-muted-foreground">Υπεύθυνος: {gate.owner}</p>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{gate.evidence}</p>
               </article>
             ))}
@@ -492,37 +492,37 @@ const OperationsCenter = () => {
         </section>
 
         <section className="mt-8 rounded-lg border border-border bg-card p-5">
-          <p className="text-xs font-bold uppercase tracking-widest text-primary">Evidence required</p>
-          <h2 className="mt-2 text-xl font-bold text-foreground">What still must be proven from backend truth</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">Αποδείξεις που απαιτούνται</p>
+          <h2 className="mt-2 text-xl font-bold text-foreground">Τι πρέπει να αποδειχθεί από backend truth</h2>
           <div className="mt-5 grid gap-4 lg:grid-cols-3">
             <EvidenceGroup
-              title="Booking and payment"
+              title="Κράτηση και πληρωμή"
               items={paymentEvidenceChecks.map((check) => ({
                 label: check.label,
                 ready: check.ready,
-                detail: check.ready ? "Closed evidence case found" : "Needs closed live/staged evidence case",
+                detail: check.ready ? "Βρέθηκε κλειστή υπόθεση απόδειξης" : "Χρειάζεται κλειστή live ή δοκιμαστική υπόθεση απόδειξης",
               }))}
             />
             <EvidenceGroup
-              title="Support workflows"
+              title="Ροές υποστήριξης"
               items={supportEvidenceChecks.map((check) => ({
                 label: check.label,
                 ready: check.ready,
-                detail: check.ready ? "Workflow case closed" : "Needs staged or live case closure",
+                detail: check.ready ? "Η ροή έχει κλειστή υπόθεση" : "Χρειάζεται δοκιμαστικό ή live κλείσιμο υπόθεσης",
               }))}
             />
             <EvidenceGroup
-              title="Funnel events"
+              title="Συμβάντα διαδρομής"
               items={[
                 ...funnelCoverage.checks.map((check) => ({
                   label: check.eventName,
                   ready: check.ready,
-                  detail: `${check.count} event(s)`,
+                  detail: `${check.count} συμβάντα`,
                 })),
                 {
-                  label: "7-day data window",
+                  label: "Παράθυρο δεδομένων 7 ημερών",
                   ready: funnelCoverage.observedDays >= 7,
-                  detail: `${funnelCoverage.observedDays.toFixed(1)} observed day(s)`,
+                  detail: `${funnelCoverage.observedDays.toFixed(1)} ημέρες παρατήρησης`,
                 },
               ]}
             />
@@ -534,7 +534,7 @@ const OperationsCenter = () => {
   );
 };
 
-const ReadinessMetric = ({ label, value, ready, notReadyLabel = "Needs work" }: { label: string; value: string; ready: boolean; notReadyLabel?: string }) => (
+const ReadinessMetric = ({ label, value, ready, notReadyLabel = "Χρειάζεται δουλειά" }: { label: string; value: string; ready: boolean; notReadyLabel?: string }) => (
   <div className="rounded-lg border border-border bg-background p-4">
     <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
     <p className="mt-1 text-2xl font-bold text-foreground">{value}</p>
@@ -555,14 +555,14 @@ const RuleDetail = ({ title, items }: { title: string; items: string[] }) => (
   </div>
 );
 
-const StatusBadge = ({ ready, notReadyLabel = "Needs supply" }: { ready: boolean; notReadyLabel?: string }) => (
+const StatusBadge = ({ ready, notReadyLabel = "Χρειάζεται προσφορά" }: { ready: boolean; notReadyLabel?: string }) => (
   <span className={cn("inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold", ready ? "bg-sage/15 text-sage-foreground" : "bg-secondary text-muted-foreground")}>
-    {ready ? "Operational" : notReadyLabel}
+    {ready ? "Λειτουργεί" : notReadyLabel}
   </span>
 );
 
 const defaultQueueOwner = (area: OperationalArea) =>
-  getOperationalRulesByArea(area)[0]?.owner || (area === "supply" ? "Marketplace supply lead" : "Operations lead");
+  getOperationalRulesByArea(area)[0]?.owner || (area === "supply" ? "Υπεύθυνος προσφοράς αγοράς" : "Υπεύθυνος λειτουργίας");
 
 const ReadinessCheck = ({ check }: { check: ReturnType<typeof getPaymentReadinessChecks>[number] }) => (
   <div className="rounded-lg border border-border bg-background p-3">
@@ -596,7 +596,7 @@ const EvidenceGroup = ({
             <p className="text-xs font-bold text-foreground">{item.label}</p>
             <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">{item.detail}</p>
           </div>
-          <StatusBadge ready={item.ready} notReadyLabel="Missing" />
+          <StatusBadge ready={item.ready} notReadyLabel="Λείπει" />
         </div>
       ))}
     </div>
@@ -611,10 +611,10 @@ const slaBadgeClasses: Record<ReturnType<typeof getOperationalSlaState>, string>
 };
 
 const slaBadgeLabels: Record<ReturnType<typeof getOperationalSlaState>, string> = {
-  closed: "Closed",
-  overdue: "Overdue",
-  due_soon: "Due soon",
-  on_track: "On track",
+  closed: "Κλειστή",
+  overdue: "Εκπρόθεσμη",
+  due_soon: "Λήγει σύντομα",
+  on_track: "Εντός χρόνου",
 };
 
 const OperationalCaseCard = ({
@@ -654,8 +654,8 @@ const OperationalCaseCard = ({
         </div>
         <div className="min-w-[190px] rounded-lg border border-border bg-background p-3 text-sm">
           <p className="font-bold text-foreground">{operationalStatusLabels[operationalCase.status]}</p>
-          <p className="mt-1 text-xs font-semibold text-muted-foreground">Owner: {operationalCase.owner}</p>
-          <p className="mt-1 text-xs font-semibold text-muted-foreground">SLA due: {dueLabel}</p>
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">Υπεύθυνος: {operationalCase.owner}</p>
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">Προθεσμία: {dueLabel}</p>
         </div>
       </div>
 
@@ -671,27 +671,27 @@ const OperationalCaseCard = ({
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button type="button" size="sm" variant="outline" onClick={onAssign} className="rounded-lg text-xs font-bold">
-          Assign owner
+          Ανάθεση υπεύθυνου
         </Button>
         <Button type="button" size="sm" variant="outline" onClick={() => onStatus("in_review")} className="rounded-lg text-xs font-bold">
-          Start review
+          Έναρξη ελέγχου
         </Button>
         <Button type="button" size="sm" variant="outline" onClick={() => onStatus("waiting_evidence")} className="rounded-lg text-xs font-bold">
-          Need evidence
+          Αναμονή στοιχείων
         </Button>
         <Button type="button" size="sm" variant="outline" onClick={() => onStatus("escalated")} className="rounded-lg text-xs font-bold">
-          Escalate
+          Κλιμάκωση
         </Button>
         <Button type="button" size="sm" onClick={() => onStatus("resolved")} className="rounded-lg text-xs font-bold">
-          Resolve
+          Κλείσιμο
         </Button>
       </div>
 
       <div className="mt-4 border-t border-border pt-3">
-        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Latest activity</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Τελευταία ενέργεια</p>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
           {operationalCase.timeline[0]?.action}
-          {operationalCase.timeline[0]?.note ? ` - ${operationalCase.timeline[0].note}` : ""}
+          {operationalCase.timeline[0]?.note ? ` · ${operationalCase.timeline[0].note}` : ""}
         </p>
       </div>
     </article>

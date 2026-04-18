@@ -15,7 +15,7 @@ const Navbar = () => {
 
   const links = [
     { label: "Βρες δικηγόρο", path: "/search" },
-    { label: "Νομικά θέματα", path: "/lawyers/divorce" },
+    { label: "Νομικά θέματα", path: "/lawyers/family-law" },
     { label: "Για δικηγόρους", path: "/for-lawyers" },
     { label: "Εμπιστοσύνη", path: "/trust/verification-standards" },
   ];

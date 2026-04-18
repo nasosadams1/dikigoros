@@ -33,6 +33,7 @@ import {
   type FeaturedGroupKey,
   type LanguageIntent,
 } from "@/lib/marketplace";
+import { allowedMarketplaceCityNames, legalPracticeAreas } from "@/lib/marketplaceTaxonomy";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
@@ -140,20 +141,28 @@ const Index = () => {
             <form onSubmit={handleHeroSubmit} className="mt-7 rounded-lg border border-border bg-card p-4 shadow-xl shadow-foreground/[0.05] md:p-5">
               <div className="grid gap-3 md:grid-cols-2">
                 <FieldShell icon={Search} label="Νομικό θέμα">
-                  <input
+                  <select
                     value={legalIssue}
                     onChange={(event) => setLegalIssue(event.target.value)}
-                    placeholder="Διαζύγιο, απόλυση, κληρονομιά..."
                     className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
-                  />
+                  >
+                    <option value="">Επιλέξτε δίκαιο</option>
+                    {legalPracticeAreas.map((area) => (
+                      <option key={area.slug} value={area.query}>{area.label}</option>
+                    ))}
+                  </select>
                 </FieldShell>
                 <FieldShell icon={MapPin} label="Πόλη">
-                  <input
+                  <select
                     value={city}
                     onChange={(event) => setCity(event.target.value)}
-                    placeholder="Αθήνα, Θεσσαλονίκη..."
                     className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
-                  />
+                  >
+                    <option value="">Όλες οι πόλεις</option>
+                    {allowedMarketplaceCityNames.map((cityOption) => (
+                      <option key={cityOption} value={cityOption}>{cityOption}</option>
+                    ))}
+                  </select>
                 </FieldShell>
                 <FieldShell icon={CalendarCheck} label="Τρόπος συμβουλευτικής">
                   <select

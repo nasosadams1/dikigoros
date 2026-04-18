@@ -4,6 +4,11 @@ import {
   fetchPublishedPartnerWorkspaceForLawyer,
   getPublishedPartnerWorkspaceForLawyer,
 } from "@/lib/partnerWorkspace";
+import {
+  normalizeAllowedMarketplaceCity,
+  normalizeLegalPracticeArea,
+  normalizeLegalPracticeAreas,
+} from "@/lib/marketplaceTaxonomy";
 import { publicSupabase } from "@/lib/supabase";
 
 interface LawyerProfileRow {
@@ -66,12 +71,12 @@ const hasMeaningfulText = (value: string | undefined, minLength: number) => {
 const mapLawyerRow = (row: LawyerProfileRow): Lawyer => ({
   id: row.id,
   name: row.name,
-  specialty: row.specialty,
-  specialtyShort: row.specialty_short,
-  specialties: row.specialties || [],
+  specialty: normalizeLegalPracticeArea(row.specialty) || row.specialty,
+  specialtyShort: normalizeLegalPracticeArea(row.specialty_short) || row.specialty_short,
+  specialties: normalizeLegalPracticeAreas(row.specialties || []),
   specialtyKeywords: row.specialty_keywords || [],
   bestFor: row.best_for,
-  city: row.city,
+  city: normalizeAllowedMarketplaceCity(row.city) || row.city,
   rating: Number(row.rating),
   reviews: Number(row.reviews),
   experience: Number(row.experience),
