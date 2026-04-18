@@ -37,6 +37,7 @@ interface BookingRow {
   lawyer_id: string;
   lawyer_name: string;
   consultation_type: string;
+  client_email: string;
   price: number;
   status: "pending_confirmation" | "confirmed_unpaid" | "confirmed_paid" | "completed" | "cancelled" | "confirmed";
 }
@@ -123,6 +124,7 @@ const fetchBooking = async (supabaseUrl: string, serviceRoleKey: string, booking
     "lawyer_id",
     "lawyer_name",
     "consultation_type",
+    "client_email",
     "price",
     "status",
   ].join(",");
@@ -134,6 +136,30 @@ const fetchBooking = async (supabaseUrl: string, serviceRoleKey: string, booking
   if (!response.ok) throw new Error(`Booking lookup failed: ${await response.text()}`);
   const rows = (await response.json()) as BookingRow[];
   return rows[0] || null;
+};
+
+const claimGuestBookingForUser = async (
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  booking: BookingRow,
+  user: AuthUser,
+) => {
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/booking_requests?id=eq.${encodeURIComponent(booking.id)}&user_id=is.null`,
+    {
+      method: "PATCH",
+      headers: {
+        ...serviceHeaders(serviceRoleKey),
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        user_id: user.id,
+        updated_at: new Date().toISOString(),
+      }),
+    },
+  );
+
+  if (!response.ok) throw new Error(`Booking ownership claim failed: ${await response.text()}`);
 };
 
 const fetchPayment = async (supabaseUrl: string, serviceRoleKey: string, bookingId: string) => {
@@ -200,7 +226,18 @@ Deno.serve(async (request) => {
 
     const booking = await fetchBooking(supabaseUrl, serviceRoleKey, String(bookingId));
     if (!booking) return json(request, { error: "Booking not found" }, 404);
-    if (booking.user_id !== user.id) return json(request, { error: "Booking does not belong to this user" }, 403);
+
+    const userEmail = user.email?.trim().toLowerCase() || "";
+    const bookingEmail = booking.client_email.trim().toLowerCase();
+    if (booking.user_id !== user.id) {
+      if (booking.user_id || !userEmail || userEmail !== bookingEmail) {
+        return json(request, { error: "Booking does not belong to this user" }, 403);
+      }
+
+      await claimGuestBookingForUser(supabaseUrl, serviceRoleKey, booking, user);
+      booking.user_id = user.id;
+    }
+
     if (!["confirmed_unpaid", "confirmed"].includes(booking.status)) {
       return json(request, { error: "Only confirmed unpaid bookings can be paid" }, 400);
     }

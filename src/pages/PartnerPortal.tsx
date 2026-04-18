@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  BarChart3,
   BellRing,
   CalendarDays,
   CheckCircle2,
@@ -47,12 +48,17 @@ import {
 import {
   applyPartnerWorkspaceToLawyer,
   fetchPartnerWorkspace,
+  fetchPartnerProfilePhotoState,
   formatListInput,
   getPartnerWorkspace,
+  isSupportedProfilePhotoFile,
   parseListInput,
   syncPartnerWorkspace,
+  submitPartnerProfilePhoto,
   type PartnerAvailabilitySlot,
+  type PartnerProfilePhotoState,
   type PartnerWorkspace,
+  partnerProfilePhotoPolicy,
 } from "@/lib/partnerWorkspace";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { createOperationalCase } from "@/lib/operationsRepository";
@@ -60,6 +66,7 @@ import { allowedMarketplaceCityNames, legalPracticeAreaLabels } from "@/lib/mark
 
 const navItems = [
   { id: "appointments", label: "Ραντεβού", icon: CalendarDays },
+  { id: "performance", label: "Απόδοση συνεργασίας", icon: BarChart3 },
   { id: "availability", label: "Διαθεσιμότητα", icon: Clock3 },
   { id: "profile", label: "Προφίλ", icon: UserRoundCog },
   { id: "earnings", label: "Πληρωμές", icon: CreditCard },
@@ -87,6 +94,10 @@ const viewMeta: Record<PartnerView, { title: string; description: string }> = {
   appointments: {
     title: "Ραντεβού και αιτήματα με καθαρή εικόνα ημέρας.",
     description: "Δείτε κρατήσεις, στοιχεία πελάτη, θέμα, κατάσταση και τις επόμενες ενέργειες.",
+  },
+  performance: {
+    title: "Απόδοση συνεργασίας από μία ενιαία καρτέλα.",
+    description: "Παρακολουθήστε ζήτηση, πληρωμένες κρατήσεις, πρώτες συνεδρίες, κριτικές και λειτουργικές εκκρεμότητες.",
   },
   availability: {
     title: "Διαθεσιμότητα που αποθηκεύεται άμεσα.",
@@ -204,9 +215,15 @@ const PartnerPortal = () => {
   const [partnerPayments, setPartnerPayments] = useState<StoredPayment[]>([]);
   const [partnerReviews, setPartnerReviews] = useState<StoredLawyerReview[]>([]);
   const [partnerDocuments, setPartnerDocuments] = useState<StoredBookingDocument[]>([]);
+  const [profilePhotoState, setProfilePhotoState] = useState<PartnerProfilePhotoState | null>(null);
   const [bookingActionState, setBookingActionState] = useState<Record<string, BookingActionState>>({});
   const [searchVisibilityBaseLawyer, setSearchVisibilityBaseLawyer] = useState<Lawyer | null | undefined>(undefined);
   const [profileSaveState, setProfileSaveState] = useState<SaveState>({
+    loading: false,
+    message: "",
+    tone: "info",
+  });
+  const [profilePhotoUploadState, setProfilePhotoUploadState] = useState<SaveState>({
     loading: false,
     message: "",
     tone: "info",
@@ -307,6 +324,36 @@ const PartnerPortal = () => {
       active = false;
     };
   }, [bookingsVersion, handleExpiredPartnerSession, session, workspace.profile.lawyerId]);
+
+  useEffect(() => {
+    if (!session?.sessionToken || !email) {
+      setProfilePhotoState(null);
+      return;
+    }
+
+    let active = true;
+    void fetchPartnerProfilePhotoState(email, session)
+      .then((nextState) => {
+        if (!active) return;
+        setProfilePhotoState(nextState);
+      })
+      .catch((error) => {
+        if (!active) return;
+        if (isPartnerSessionInvalidError(error)) {
+          handleExpiredPartnerSession();
+          return;
+        }
+        setProfilePhotoUploadState({
+          loading: false,
+          message: "Η κατάσταση φωτογραφίας προφίλ δεν είναι προσωρινά διαθέσιμη από το backend.",
+          tone: "error",
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [email, handleExpiredPartnerSession, session]);
 
   const displayBookings = partnerBookings;
   const paymentForBooking = (bookingId: string) => partnerPayments.find((payment) => payment.bookingId === bookingId);
@@ -468,6 +515,52 @@ const PartnerPortal = () => {
     void cancelBookingPersisted(booking);
   };
 
+  const getProfilePhotoErrorMessage = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error || "");
+
+    if (message.includes("PROFILE_PHOTO_UNSUPPORTED_TYPE")) {
+      return "Η φωτογραφία πρέπει να είναι JPG, PNG ή WebP.";
+    }
+
+    if (message.includes("PROFILE_PHOTO_TOO_LARGE")) {
+      return "Η φωτογραφία πρέπει να είναι έως 5 MB.";
+    }
+
+    if (message.includes("PARTNER_SESSION_INVALID")) {
+      return "Η πρόσβαση συνεργάτη έληξε. Συνδεθείτε ξανά και υποβάλετε τη φωτογραφία.";
+    }
+
+    return "Η φωτογραφία δεν υποβλήθηκε. Δοκιμάστε ξανά ή ζητήστε έλεγχο από την υποστήριξη συνεργατών.";
+  };
+
+  const submitProfilePhotoForReview = async (file: File) => {
+    setProfilePhotoUploadState({
+      loading: true,
+      message: "Υποβολή φωτογραφίας για έγκριση...",
+      tone: "info",
+    });
+
+    try {
+      const nextState = await submitPartnerProfilePhoto(email, session, file);
+      setProfilePhotoState(nextState);
+      setProfilePhotoUploadState({
+        loading: false,
+        message: "Η φωτογραφία υποβλήθηκε για έγκριση. Η δημόσια φωτογραφία δεν αλλάζει μέχρι να εγκριθεί.",
+        tone: "success",
+      });
+    } catch (error) {
+      if (isPartnerSessionInvalidError(error)) {
+        handleExpiredPartnerSession();
+        return;
+      }
+      setProfilePhotoUploadState({
+        loading: false,
+        message: getProfilePhotoErrorMessage(error),
+        tone: "error",
+      });
+    }
+  };
+
   const completeBookingPersisted = async (booking: StoredBooking) => {
     if (!isVerifiedBooking(booking)) {
       setBookingActionState((current) => ({
@@ -611,6 +704,13 @@ const PartnerPortal = () => {
     navigate("/for-lawyers/login", { replace: true });
   };
 
+  const selectPartnerView = (view: PartnerView) => {
+    setActiveView(view);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("view", view);
+    navigate({ search: `?${nextParams.toString()}` }, { replace: true });
+  };
+
   return (
     <PartnerShell>
       <section className="grid gap-6 xl:grid-cols-[0.28fr_0.72fr]">
@@ -629,7 +729,7 @@ const PartnerPortal = () => {
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setActiveView(id)}
+                  onClick={() => selectPartnerView(id)}
                   className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${
                     active ? "bg-white/12 text-white" : "text-white/68 hover:bg-white/6 hover:text-white"
                   }`}
@@ -681,22 +781,24 @@ const PartnerPortal = () => {
             </div>
           </section>
 
-          <PartnerPerformanceDashboard
-            profileViews={null}
-            searchAppearances={null}
-            profileBookingStarts={null}
-            bookingStarts={partnerBookings.length}
-            paidBookings={paidBookings}
-            completedFirstConsultations={completedBookings.length}
-            responseSpeed={workspace.profile.bufferMinutes <= 30 ? "Γρήγορη διαχείριση" : `${workspace.profile.bufferMinutes} λεπτά κενό`}
-            categoryPerformance={workspace.profile.specialties.slice(0, 3)}
-            reviewRate={reviewRate}
-            averageRating={averageReview}
-            availabilityHealth={workspace.availability.filter((slot) => slot.enabled).length}
-            missingProfileProof={searchVisibility.loading ? [] : searchVisibility.issues}
-            pendingModerationItems={pendingModerationCount}
-            pendingPaymentIssues={failedPaymentCount + refundIssueCount}
-          />
+          {activeView === "performance" ? (
+            <PartnerPerformanceDashboard
+              profileViews={null}
+              searchAppearances={null}
+              profileBookingStarts={null}
+              bookingStarts={partnerBookings.length}
+              paidBookings={paidBookings}
+              completedFirstConsultations={completedBookings.length}
+              responseSpeed={workspace.profile.bufferMinutes <= 30 ? "Γρήγορη διαχείριση" : `${workspace.profile.bufferMinutes} λεπτά κενό`}
+              categoryPerformance={workspace.profile.specialties.slice(0, 3)}
+              reviewRate={reviewRate}
+              averageRating={averageReview}
+              availabilityHealth={workspace.availability.filter((slot) => slot.enabled).length}
+              missingProfileProof={searchVisibility.loading ? [] : searchVisibility.issues}
+              pendingModerationItems={pendingModerationCount}
+              pendingPaymentIssues={failedPaymentCount + refundIssueCount}
+            />
+          ) : null}
 
           {activeView === "appointments" ? (
             <AppointmentsView
@@ -725,6 +827,9 @@ const PartnerPortal = () => {
               updateProfile={updateProfile}
               onSave={() => void saveWorkspaceChanges()}
               searchVisibility={searchVisibility}
+              profilePhotoState={profilePhotoState}
+              profilePhotoUploadState={profilePhotoUploadState}
+              onProfilePhotoSubmit={submitProfilePhotoForReview}
               hasUnsavedChanges={hasUnsavedChanges}
               saveState={profileSaveState}
             />
@@ -968,6 +1073,9 @@ const ProfileView = ({
   updateProfile,
   onSave,
   searchVisibility,
+  profilePhotoState,
+  profilePhotoUploadState,
+  onProfilePhotoSubmit,
   hasUnsavedChanges,
   saveState,
 }: {
@@ -979,6 +1087,9 @@ const ProfileView = ({
     ready: boolean;
     issues: string[];
   };
+  profilePhotoState: PartnerProfilePhotoState | null;
+  profilePhotoUploadState: SaveState;
+  onProfilePhotoSubmit: (file: File) => Promise<void>;
   hasUnsavedChanges: boolean;
   saveState: SaveState;
 }) => (
@@ -1071,6 +1182,12 @@ const ProfileView = ({
     </div>
 
     <div className="space-y-6">
+      <ProfilePhotoModerationCard
+        photoState={profilePhotoState}
+        uploadState={profilePhotoUploadState}
+        onSubmit={onProfilePhotoSubmit}
+      />
+
       <SearchVisibilityCard searchVisibility={searchVisibility} hasUnsavedChanges={hasUnsavedChanges} />
 
       <div className="partner-panel p-7">
@@ -1131,6 +1248,145 @@ const ProfileView = ({
     </div>
   </section>
 );
+
+const formatFileSize = (bytes: number) => {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
+
+const ProfilePhotoModerationCard = ({
+  photoState,
+  uploadState,
+  onSubmit,
+}: {
+  photoState: PartnerProfilePhotoState | null;
+  uploadState: SaveState;
+  onSubmit: (file: File) => Promise<void>;
+}) => {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [localError, setLocalError] = useState("");
+  const pendingSubmission = photoState?.pendingSubmission;
+  const latestRejectedSubmission = photoState?.latestRejectedSubmission;
+
+  useEffect(() => {
+    if (!selectedFile) {
+      setPreviewUrl("");
+      return;
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(selectedFile);
+    setPreviewUrl(nextPreviewUrl);
+
+    return () => URL.revokeObjectURL(nextPreviewUrl);
+  }, [selectedFile]);
+
+  const handleFileChange = (file?: File) => {
+    setLocalError("");
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    if (!isSupportedProfilePhotoFile(file)) {
+      setSelectedFile(null);
+      setLocalError("Επιλέξτε φωτογραφία JPG, PNG ή WebP.");
+      return;
+    }
+
+    if (file.size > partnerProfilePhotoPolicy.maxSizeBytes) {
+      setSelectedFile(null);
+      setLocalError("Η φωτογραφία πρέπει να είναι έως 5 MB.");
+      return;
+    }
+
+    setSelectedFile(file);
+  };
+
+  const submitSelectedFile = async () => {
+    if (!selectedFile) return;
+    await onSubmit(selectedFile);
+    setSelectedFile(null);
+  };
+
+  return (
+    <div className="partner-panel p-7">
+      <p className="partner-kicker">Φωτογραφία προφίλ</p>
+      <div className="mt-5 grid gap-4">
+        <div className="flex items-start gap-4">
+          {photoState?.approvedImageUrl ? (
+            <img
+              src={photoState.approvedImageUrl}
+              alt="Εγκεκριμένη φωτογραφία προφίλ"
+              className="h-24 w-24 shrink-0 rounded-lg object-cover ring-1 ring-[hsl(var(--partner-line))]"
+            />
+          ) : (
+            <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-lg border border-dashed border-[hsl(var(--partner-line))] bg-white/60 text-xs font-bold text-muted-foreground">
+              Χωρίς φωτογραφία
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Δημόσια εγκεκριμένη φωτογραφία</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Η νέα φωτογραφία εμφανίζεται στο marketplace μόνο μετά από έλεγχο της ομάδας λειτουργίας.
+            </p>
+          </div>
+        </div>
+
+        {pendingSubmission ? (
+          <div className="rounded-xl border border-amber-300/40 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+            <p className="font-bold">Υπάρχει φωτογραφία σε αναμονή έγκρισης.</p>
+            <p className="mt-1 leading-6">
+              {pendingSubmission.fileName} · {formatFileSize(pendingSubmission.size)} · υποβλήθηκε{" "}
+              {new Date(pendingSubmission.submittedAt).toLocaleDateString("el-GR")}
+            </p>
+          </div>
+        ) : null}
+
+        {!pendingSubmission && latestRejectedSubmission ? (
+          <div className="rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-3 text-sm text-destructive">
+            <p className="font-bold">Η προηγούμενη φωτογραφία απορρίφθηκε.</p>
+            <p className="mt-1 leading-6">{latestRejectedSubmission.reviewReason || "Υποβάλετε νέα φωτογραφία με καθαρό πρόσωπο και επαγγελματικό πλαίσιο."}</p>
+          </div>
+        ) : null}
+
+        <label className="block">
+          <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            Νέα φωτογραφία προς έγκριση
+          </span>
+          <input
+            type="file"
+            accept={partnerProfilePhotoPolicy.accept}
+            onChange={(event) => handleFileChange(event.target.files?.[0])}
+            className="mt-2 block w-full text-sm text-muted-foreground file:mr-4 file:rounded-lg file:border-0 file:bg-[hsl(var(--partner-navy))] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white"
+          />
+        </label>
+
+        {previewUrl && selectedFile ? (
+          <div className="flex items-center gap-4 rounded-xl border border-[hsl(var(--partner-line))] bg-white/65 p-3">
+            <img src={previewUrl} alt="Προεπισκόπηση νέας φωτογραφίας" className="h-20 w-20 rounded-lg object-cover" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-[hsl(var(--partner-ink))]">{selectedFile.name}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{formatFileSize(selectedFile.size)}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {localError ? <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive">{localError}</p> : null}
+        {uploadState.message ? <SaveMessage saveState={uploadState} /> : null}
+
+        <Button
+          type="button"
+          onClick={() => void submitSelectedFile()}
+          disabled={!selectedFile || uploadState.loading}
+          className="h-11 rounded-xl px-5 font-bold"
+        >
+          {uploadState.loading ? "Υποβολή..." : "Υποβολή για έγκριση"}
+        </Button>
+      </div>
+    </div>
+  );
+};
 
 const SearchVisibilityCard = ({
   searchVisibility,

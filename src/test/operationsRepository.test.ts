@@ -7,7 +7,7 @@ import {
 } from "@/lib/operationsRepository";
 import { supabase } from "@/lib/supabase";
 
-const { backendRows, insertCaseMock, updateCaseMock, auditInsertMock } = vi.hoisted(() => ({
+const { backendRows, createCaseRpcMock, updateCaseMock, auditInsertMock } = vi.hoisted(() => ({
   backendRows: [
     {
       id: "11111111-1111-1111-1111-111111111111",
@@ -34,7 +34,7 @@ const { backendRows, insertCaseMock, updateCaseMock, auditInsertMock } = vi.hois
       updated_at: "2026-04-17T09:00:00.000Z",
     },
   ],
-  insertCaseMock: vi.fn(),
+  createCaseRpcMock: vi.fn(),
   updateCaseMock: vi.fn(),
   auditInsertMock: vi.fn(),
 }));
@@ -45,6 +45,28 @@ const thenable = <T,>(response: T) => ({
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    rpc: createCaseRpcMock.mockImplementation((_functionName: string, payload: Record<string, unknown>) =>
+      Promise.resolve({
+        data: {
+          id: payload.p_case_id,
+          reference_id: payload.p_reference_id,
+          area: payload.p_area,
+          title: payload.p_title,
+          summary: payload.p_summary,
+          status: payload.p_status,
+          priority: payload.p_priority,
+          owner: payload.p_owner,
+          requester_email: payload.p_requester_email,
+          related_reference: payload.p_related_reference,
+          evidence: payload.p_evidence,
+          timeline: payload.p_timeline,
+          sla_due_at: payload.p_sla_due_at,
+          created_at: "2026-04-17T10:00:00.000Z",
+          updated_at: "2026-04-17T10:00:00.000Z",
+        },
+        error: null,
+      }),
+    ),
     from: vi.fn((tableName: string) => {
       if (tableName === "operational_audit_events") {
         return {
@@ -67,16 +89,6 @@ vi.mock("@/lib/supabase", () => ({
             single: vi.fn(() =>
               Promise.resolve({
                 data: backendRows.find((row) => row.id === value) || null,
-                error: null,
-              }),
-            ),
-          })),
-        })),
-        insert: insertCaseMock.mockImplementation((payload) => ({
-          select: vi.fn(() => ({
-            single: vi.fn(() =>
-              Promise.resolve({
-                data: payload,
                 error: null,
               }),
             ),
@@ -164,7 +176,7 @@ describe("operations repository", () => {
     );
   });
 
-  it("creates new operational cases through the backend table shape", async () => {
+  it("creates new operational cases through the backend RPC", async () => {
     const created = await createOperationalCase({
       area: "bookingDisputes",
       title: "Σύγκρουση ώρας",
@@ -175,12 +187,18 @@ describe("operations repository", () => {
       evidence: ["Κλειδί ώρας", "Κωδικός κράτησης"],
     });
 
-    expect(insertCaseMock).toHaveBeenCalledTimes(1);
-    const payload = insertCaseMock.mock.calls[0][0];
-    expect(payload.area).toBe("bookingDisputes");
-    expect(payload.status).toBe("new");
-    expect(payload.requester_email).toBe("client@example.com");
-    expect(payload.timeline[0].action).toBe("Άνοιγμα υπόθεσης");
+    expect(createCaseRpcMock).toHaveBeenCalledTimes(1);
+    expect(createCaseRpcMock).toHaveBeenCalledWith(
+      "create_operational_case",
+      expect.objectContaining({
+        p_area: "bookingDisputes",
+        p_status: "new",
+        p_requester_email: "client@example.com",
+        p_related_reference: "BK-20260417-1",
+      }),
+    );
+    const payload = createCaseRpcMock.mock.calls[0][1];
+    expect(payload.p_timeline[0].action).toBe("Άνοιγμα υπόθεσης");
     expect(created.referenceId).toMatch(/^DSP-\d{8}-[A-Z0-9]{1,5}$/);
   });
 });

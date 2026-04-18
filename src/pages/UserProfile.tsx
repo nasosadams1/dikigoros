@@ -491,6 +491,16 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   const handleCancelBookingWithRefund = (bookingId: string) => {
+    if (!userId) {
+      setPaymentSetupState({
+        loading: false,
+        message: "Συνδεθείτε με λογαριασμό πελάτη για να ακυρώσετε επαληθευμένη κράτηση. Δεν έγινε καμία αλλαγή.",
+        tone: "error",
+      });
+      setAuthOpen(true);
+      return;
+    }
+
     const booking = bookings.find((item) => item.id === bookingId);
     const payment = payments.find((item) => item.bookingId === bookingId);
 
@@ -547,6 +557,16 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   const handleCancelBooking = (bookingId: string) => {
+    if (!userId) {
+      setPaymentSetupState({
+        loading: false,
+        message: "Συνδεθείτε με λογαριασμό πελάτη για να ακυρώσετε επαληθευμένη κράτηση. Δεν έγινε καμία αλλαγή.",
+        tone: "error",
+      });
+      setAuthOpen(true);
+      return;
+    }
+
     void cancelBooking(bookingId).then(() => {
       setBookingVersion((version) => version + 1);
     }).catch(() => {
@@ -559,6 +579,16 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   const handlePaymentSetup = async () => {
+    if (!userId) {
+      setPaymentSetupState({
+        loading: false,
+        message: "Συνδεθείτε με λογαριασμό πελάτη για ασφαλή σύνδεση κάρτας μέσω Stripe.",
+        tone: "error",
+      });
+      setAuthOpen(true);
+      return;
+    }
+
     setPaymentSetupState({ loading: true, message: "", tone: "info" });
     try {
       const session = await requestPaymentSetupSession(userId, userEmail);
@@ -593,6 +623,16 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   const handleBookingCheckout = async (booking: StoredBooking) => {
+    if (!userId) {
+      setPaymentSetupState({
+        loading: false,
+        message: "Συνδεθείτε με λογαριασμό πελάτη για να ανοίξει η ασφαλής πληρωμή της κράτησης.",
+        tone: "error",
+      });
+      setAuthOpen(true);
+      return;
+    }
+
     if (!isVerifiedBooking(booking)) {
       setPaymentSetupState({
         loading: false,

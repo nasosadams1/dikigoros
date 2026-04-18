@@ -213,7 +213,14 @@ const createRecordId = () => {
     return crypto.randomUUID();
   }
 
-  return `${Date.now().toString(36)}-${getRandomSegment().toLowerCase()}`;
+  const bytes =
+    typeof crypto !== "undefined" && "getRandomValues" in crypto
+      ? crypto.getRandomValues(new Uint8Array(16))
+      : Uint8Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
 export const createOperationalCaseReference = (area: OperationalArea) => {
@@ -499,17 +506,26 @@ export const createOperationalCase = async (input: CreateOperationalCaseInput) =
   const nextCase = createCase(input);
 
   try {
-    const { data, error } = await supabase
-      .from("operational_cases")
-      .insert(toBackendPayload(nextCase))
-      .select(operationalCaseSelect)
-      .single();
+    const { data, error } = await supabase.rpc("create_operational_case", {
+      p_case_id: nextCase.id,
+      p_reference_id: nextCase.referenceId,
+      p_area: nextCase.area,
+      p_title: nextCase.title,
+      p_summary: nextCase.summary,
+      p_status: nextCase.status,
+      p_priority: nextCase.priority,
+      p_owner: nextCase.owner,
+      p_requester_email: nextCase.requesterEmail || null,
+      p_related_reference: nextCase.relatedReference || null,
+      p_evidence: nextCase.evidence,
+      p_timeline: nextCase.timeline,
+      p_sla_due_at: nextCase.slaDueAt,
+    });
 
     if (error || !data) throw error || new Error("Operational case was not persisted.");
 
     const persistedCase = mapRowToOperationalCase(data as OperationalCaseRow);
     cacheCase(persistedCase);
-    void insertAuditEvent(persistedCase, persistedCase.timeline[0], { source: "case_created", area: persistedCase.area }).catch(() => undefined);
     dispatchOperationsUpdate();
     return persistedCase;
   } catch {

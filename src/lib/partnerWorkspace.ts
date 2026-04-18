@@ -63,7 +63,30 @@ export interface PartnerWorkspace {
   };
 }
 
+export interface PartnerProfilePhotoSubmission {
+  id: string;
+  status: "pending" | "approved" | "rejected" | "superseded";
+  fileName: string;
+  mimeType: string;
+  size: number;
+  submittedAt: string;
+  reviewedAt?: string;
+  reviewReason?: string;
+}
+
+export interface PartnerProfilePhotoState {
+  lawyerId: string;
+  approvedImageUrl: string;
+  pendingSubmission: PartnerProfilePhotoSubmission | null;
+  latestRejectedSubmission: PartnerProfilePhotoSubmission | null;
+}
+
 const partnerWorkspacePrefix = "dikigoros.partnerWorkspace.v1";
+export const partnerProfilePhotoPolicy = {
+  accept: "image/jpeg,image/png,image/webp",
+  maxSizeBytes: 5 * 1024 * 1024,
+  allowedTypes: ["image/jpeg", "image/png", "image/webp"],
+} as const;
 
 export const defaultPartnerWorkspace: PartnerWorkspace = {
   profile: {
@@ -186,6 +209,121 @@ export const savePartnerWorkspace = (email: string | null | undefined, workspace
   const normalized = normalizePartnerWorkspace(workspace);
   storage?.setItem(getPartnerWorkspaceKey(email), JSON.stringify(normalized));
   return normalized;
+};
+
+const normalizePhotoSubmission = (value: unknown): PartnerProfilePhotoSubmission | null => {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<PartnerProfilePhotoSubmission>;
+  if (!candidate.id || !candidate.status || !candidate.fileName || !candidate.submittedAt) return null;
+
+  return {
+    id: String(candidate.id),
+    status: candidate.status,
+    fileName: String(candidate.fileName),
+    mimeType: String(candidate.mimeType || ""),
+    size: Number(candidate.size || 0),
+    submittedAt: String(candidate.submittedAt),
+    reviewedAt: candidate.reviewedAt ? String(candidate.reviewedAt) : undefined,
+    reviewReason: candidate.reviewReason ? String(candidate.reviewReason) : undefined,
+  };
+};
+
+const normalizeProfilePhotoState = (value: unknown): PartnerProfilePhotoState => {
+  const candidate = (value && typeof value === "object" ? value : {}) as Partial<PartnerProfilePhotoState>;
+
+  return {
+    lawyerId: String(candidate.lawyerId || ""),
+    approvedImageUrl: String(candidate.approvedImageUrl || ""),
+    pendingSubmission: normalizePhotoSubmission(candidate.pendingSubmission),
+    latestRejectedSubmission: normalizePhotoSubmission(candidate.latestRejectedSubmission),
+  };
+};
+
+const readFileAsBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("PROFILE_PHOTO_READ_FAILED"));
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      resolve(result.includes(",") ? result.split(",")[1] : result);
+    };
+    reader.readAsDataURL(file);
+  });
+
+const getFunctionErrorPayload = async (error: unknown) => {
+  const context = (error as { context?: Response })?.context;
+  if (!context) return null;
+
+  try {
+    return (await context.clone().json()) as { error?: string };
+  } catch {
+    return null;
+  }
+};
+
+export const isSupportedProfilePhotoFile = (file: File) =>
+  partnerProfilePhotoPolicy.allowedTypes.includes(file.type as (typeof partnerProfilePhotoPolicy.allowedTypes)[number]);
+
+export const fetchPartnerProfilePhotoState = async (
+  email: string | null | undefined,
+  partnerSession?: PartnerSession | null,
+) => {
+  const normalizedEmail = email?.trim().toLowerCase();
+  if (!normalizedEmail || !partnerSession?.sessionToken) {
+    throw failClosedCriticalPath("Partner profile photo");
+  }
+
+  try {
+    const { data, error } = await publicSupabase.rpc("get_partner_profile_photo_state", {
+      p_partner_email: normalizedEmail,
+      p_session_token: partnerSession.sessionToken,
+    });
+
+    if (error) throw error;
+    return normalizeProfilePhotoState(data);
+  } catch (error) {
+    if (isPartnerSessionInvalidError(error)) throw new Error("PARTNER_SESSION_INVALID");
+    throw error;
+  }
+};
+
+export const submitPartnerProfilePhoto = async (
+  email: string | null | undefined,
+  partnerSession: PartnerSession | null | undefined,
+  file: File,
+) => {
+  const normalizedEmail = email?.trim().toLowerCase();
+  if (!normalizedEmail || !partnerSession?.sessionToken) {
+    throw failClosedCriticalPath("Partner profile photo");
+  }
+
+  if (!isSupportedProfilePhotoFile(file)) {
+    throw new Error("PROFILE_PHOTO_UNSUPPORTED_TYPE");
+  }
+
+  if (file.size > partnerProfilePhotoPolicy.maxSizeBytes) {
+    throw new Error("PROFILE_PHOTO_TOO_LARGE");
+  }
+
+  const contentBase64 = await readFileAsBase64(file);
+  const { data, error } = await publicSupabase.functions.invoke("submit-partner-profile-photo", {
+    body: {
+      email: normalizedEmail,
+      sessionToken: partnerSession.sessionToken,
+      fileName: file.name,
+      mimeType: file.type,
+      size: file.size,
+      contentBase64,
+    },
+  });
+
+  if (error) {
+    const payload = await getFunctionErrorPayload(error);
+    throw new Error(payload?.error || error.message);
+  }
+
+  if (data?.error) throw new Error(String(data.error));
+  return normalizeProfilePhotoState(data?.photoState || data);
 };
 
 interface PartnerProfileSettingsRow {

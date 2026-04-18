@@ -34,6 +34,10 @@ const partnerDocumentUrlFunction = readFileSync(
   join(process.cwd(), "supabase", "functions", "create-partner-document-url", "index.ts"),
   "utf8",
 );
+const partnerProfilePhotoFunction = readFileSync(
+  join(process.cwd(), "supabase", "functions", "submit-partner-profile-photo", "index.ts"),
+  "utf8",
+);
 const reconciliationFunction = readFileSync(
   join(process.cwd(), "supabase", "functions", "reconcile-stripe-payments", "index.ts"),
   "utf8",
@@ -63,9 +67,14 @@ describe("Supabase production contracts", () => {
 
   it("keeps browser mutations behind RPCs instead of direct table updates", () => {
     expect(productionSchema).toContain("create or replace function public.cancel_booking_as_user");
+    expect(productionSchema).toContain("AUTH_REQUIRED_FOR_BOOKING");
+    expect(productionSchema).toContain("create or replace function public.create_operational_case");
+    expect(productionSchema).toContain("create or replace function public.submit_partner_application");
     expect(productionSchema).toContain("create or replace function public.update_review_as_partner");
     expect(productionSchema).toContain("create or replace function public.get_partner_document_storage_path");
     expect(productionSchema).toContain("SELF_BOOKING_FORBIDDEN");
+    expect(productionSchema).toContain("OPERATIONAL_CASE_FORBIDDEN");
+    expect(productionSchema).toContain("INVALID_PARTNER_APPLICATION_EMAIL");
     expect(simpleContractMigration).toContain('drop policy if exists "Users can update own booking requests"');
     expect(productionSchema).not.toContain('create policy "Users can update own booking requests"');
     expect(productionSchema).not.toContain('create policy "Partners can update own review replies"');
@@ -78,7 +87,7 @@ describe("Supabase production contracts", () => {
   });
 
   it("restricts browser-callable Edge Functions to configured app origins", () => {
-    [checkoutFunction, setupFunction, partnerCodeFunction, partnerDocumentUrlFunction].forEach((source) => {
+    [checkoutFunction, setupFunction, partnerCodeFunction, partnerDocumentUrlFunction, partnerProfilePhotoFunction].forEach((source) => {
       expect(source).toContain("ALLOWED_APP_ORIGINS");
       expect(source).toContain("http://localhost:8080");
       expect(source).not.toContain('"Access-Control-Allow-Origin": "*"');
@@ -93,6 +102,8 @@ describe("Supabase production contracts", () => {
     expect(checkoutFunction).toContain('existingPayment?.status === "checkout_opened"');
     expect(checkoutFunction).toContain("existingPayment.checkout_session_url");
     expect(checkoutFunction).toContain("This booking has already been paid.");
+    expect(checkoutFunction).toContain("claimGuestBookingForUser");
+    expect(checkoutFunction).toContain("client_email");
   });
 
   it("keeps Stripe settlement replay-safe and reconciled", () => {
@@ -112,6 +123,18 @@ describe("Supabase production contracts", () => {
     expect(productionSchema).toContain("create table if not exists public.document_access_audit_events");
     expect(productionSchema).toContain("ud.malware_scan_status = 'clean'");
     expect(productionSchema).toContain("insert into public.document_access_audit_events");
+  });
+
+  it("keeps partner profile photos pending until operations approval", () => {
+    expect(productionSchema).toContain("create table if not exists public.partner_profile_photo_submissions");
+    expect(productionSchema).toContain("status text not null default 'pending'");
+    expect(productionSchema).toContain("create or replace function public.submit_partner_profile_photo");
+    expect(productionSchema).toContain("create or replace function public.review_partner_profile_photo_submission");
+    expect(productionSchema).toContain("update public.lawyer_profiles");
+    expect(productionSchema).toContain("set image = target_submission.candidate_public_url");
+    expect(partnerProfilePhotoFunction).toContain("get_partner_profile_photo_state");
+    expect(partnerProfilePhotoFunction).toContain("submit_partner_profile_photo");
+    expect(partnerProfilePhotoFunction).toContain("PARTNER_SESSION_INVALID");
   });
 
   it("supports partner cancellation and requires payment before partner completion", () => {

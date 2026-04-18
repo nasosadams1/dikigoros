@@ -44,6 +44,11 @@ import {
   type OperationalCase,
   type OperationalCaseStatus,
 } from "@/lib/operationsRepository";
+import {
+  fetchPendingPartnerProfilePhotoSubmissions,
+  reviewPartnerProfilePhotoSubmission,
+  type PartnerProfilePhotoReviewItem,
+} from "@/lib/partnerProfilePhotos";
 import { fetchFunnelEvents, getFunnelMetrics } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
@@ -80,10 +85,19 @@ const OperationsCenter = () => {
   const [activeArea, setActiveArea] = useState<OperationalArea>("payments");
   const [funnelVersion, setFunnelVersion] = useState(0);
   const [operationsError, setOperationsError] = useState("");
+  const [profilePhotoReviewActionId, setProfilePhotoReviewActionId] = useState("");
   const { data: lawyers = [] } = useQuery({ queryKey: ["lawyers"], queryFn: getLawyers });
   const { data: funnelEvents = [] } = useQuery({
     queryKey: ["funnel-events", funnelVersion],
     queryFn: fetchFunnelEvents,
+  });
+  const {
+    data: pendingProfilePhotoSubmissions = [],
+    refetch: refetchPendingProfilePhotoSubmissions,
+  } = useQuery({
+    queryKey: ["partner-profile-photo-submissions", activeArea],
+    queryFn: fetchPendingPartnerProfilePhotoSubmissions,
+    enabled: activeArea === "verification",
   });
   const {
     data: operationalCasesSnapshot = { cases: [], source: "unavailable" as const },
@@ -178,6 +192,26 @@ const OperationsCenter = () => {
       await refetchOperationalCases();
     } catch {
       setOperationsError("Η ανάθεση υπόθεσης είναι προσωρινά μη διαθέσιμη από το backend.");
+    }
+  };
+
+  const reviewProfilePhoto = async (submissionId: string, status: "approved" | "rejected") => {
+    try {
+      setOperationsError("");
+      setProfilePhotoReviewActionId(submissionId);
+      await reviewPartnerProfilePhotoSubmission(
+        submissionId,
+        status,
+        status === "approved"
+          ? "Η φωτογραφία εγκρίθηκε για δημόσια εμφάνιση."
+          : "Η φωτογραφία δεν πληροί τα κριτήρια δημόσιας εμφάνισης.",
+      );
+      await refetchPendingProfilePhotoSubmissions();
+      await refetchOperationalCases();
+    } catch {
+      setOperationsError("Η έγκριση φωτογραφίας είναι προσωρινά μη διαθέσιμη από το backend.");
+    } finally {
+      setProfilePhotoReviewActionId("");
     }
   };
 
@@ -329,6 +363,15 @@ const OperationsCenter = () => {
         ) : (
           <section className="mt-6 grid gap-4 lg:grid-cols-[1fr_0.85fr]">
             <div className="space-y-4">
+              {activeArea === "verification" ? (
+                <ProfilePhotoReviewQueue
+                  submissions={pendingProfilePhotoSubmissions}
+                  actionId={profilePhotoReviewActionId}
+                  onApprove={(submissionId) => void reviewProfilePhoto(submissionId, "approved")}
+                  onReject={(submissionId) => void reviewProfilePhoto(submissionId, "rejected")}
+                />
+              ) : null}
+
               {rules.map((rule) => (
                 <article key={rule.title} className="rounded-lg border border-border bg-card p-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -555,6 +598,94 @@ const OperationsCenter = () => {
     </div>
   );
 };
+
+const formatPhotoSize = (bytes: number) => {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
+
+const ProfilePhotoReviewQueue = ({
+  submissions,
+  actionId,
+  onApprove,
+  onReject,
+}: {
+  submissions: PartnerProfilePhotoReviewItem[];
+  actionId: string;
+  onApprove: (submissionId: string) => void;
+  onReject: (submissionId: string) => void;
+}) => (
+  <article className="rounded-lg border border-border bg-card p-5">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest text-primary">Φωτογραφίες προφίλ</p>
+        <h2 className="mt-2 text-xl font-bold text-foreground">Έγκριση πριν από δημόσια εμφάνιση</h2>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          Η τρέχουσα δημόσια φωτογραφία δεν αλλάζει μέχρι να εγκριθεί η υποβολή.
+        </p>
+      </div>
+      <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+        {submissions.length} σε αναμονή
+      </span>
+    </div>
+
+    <div className="mt-5 space-y-3">
+      {submissions.length > 0 ? (
+        submissions.map((submission) => {
+          const loading = actionId === submission.id;
+
+          return (
+            <div key={submission.id} className="rounded-lg border border-border bg-background p-4">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="flex min-w-0 gap-4">
+                  <img
+                    src={submission.candidatePublicUrl}
+                    alt="Φωτογραφία προς έγκριση"
+                    className="h-24 w-24 shrink-0 rounded-lg object-cover ring-1 ring-border"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-foreground">{submission.fileName}</p>
+                    <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                      {submission.lawyerId} · {submission.partnerEmail}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                      {formatPhotoSize(submission.size)} · {new Date(submission.submittedAt).toLocaleDateString("el-GR")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => onApprove(submission.id)}
+                    disabled={loading}
+                    className="rounded-lg text-xs font-bold"
+                  >
+                    Έγκριση
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onReject(submission.id)}
+                    disabled={loading}
+                    className="rounded-lg text-xs font-bold"
+                  >
+                    Απόρριψη
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      ) : (
+        <div className="rounded-lg border border-dashed border-border bg-background p-4 text-sm leading-6 text-muted-foreground">
+          Δεν υπάρχουν φωτογραφίες προφίλ σε αναμονή έγκρισης.
+        </div>
+      )}
+    </div>
+  </article>
+);
 
 const ReadinessMetric = ({ label, value, ready, notReadyLabel = "Χρειάζεται δουλειά" }: { label: string; value: string; ready: boolean; notReadyLabel?: string }) => (
   <div className="rounded-lg border border-border bg-background p-4">

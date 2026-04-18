@@ -345,6 +345,12 @@ const Booking = () => {
     if (!canContinue) return;
 
     if (currentStep === 2 && lawyer && selectedConsultation && selectedDateLabel && selectedTime) {
+      if (!user?.id) {
+        setSubmitError("Συνδεθείτε ή δημιουργήστε λογαριασμό πριν δεσμεύσουμε την ώρα, ώστε η κράτηση και η πληρωμή να συνδεθούν με επαληθευμένο λογαριασμό.");
+        setAuthOpen(true);
+        return;
+      }
+
       setIsSubmitting(true);
       setSubmitError("");
 

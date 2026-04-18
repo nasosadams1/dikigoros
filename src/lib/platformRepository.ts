@@ -1,4 +1,4 @@
-import { publicSupabase, supabase } from "@/lib/supabase";
+import { getCurrentSession, publicSupabase, supabase } from "@/lib/supabase";
 import {
   normalizeBookingState,
   normalizePaymentState,
@@ -132,7 +132,7 @@ export interface PartnerApplicationPayload {
 export interface StoredPartnerApplication extends PartnerApplicationPayload {
   id: string;
   referenceId: string;
-  status: "under_review";
+  status: "under_review" | "needs_more_info" | "approved" | "rejected";
   createdAt: string;
   persistenceSource: PersistenceSource;
 }
@@ -163,8 +163,6 @@ const paymentStorageKey = "dikigoros.bookingPayments.v1";
 const applicationStorageKey = "dikigoros.partnerApplications.v1";
 const partnerSessionStorageKey = "dikigoros.partnerSession.v1";
 const bookingTableName = (import.meta.env.VITE_SUPABASE_BOOKINGS_TABLE as string | undefined) || "booking_requests";
-const applicationTableName =
-  (import.meta.env.VITE_SUPABASE_PARTNER_APPLICATIONS_TABLE as string | undefined) || "partner_applications";
 const isTestMode = import.meta.env.MODE === "test";
 const requireLivePayments = import.meta.env.VITE_REQUIRE_LIVE_PAYMENTS === "true";
 const enableLocalBookingFallback =
@@ -288,12 +286,23 @@ const getRandomSegment = () => {
   return Math.random().toString(36).slice(2, 7).toUpperCase();
 };
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuid = (value?: string | null) => Boolean(value && uuidPattern.test(value));
+
 const createRecordId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
 
-  return `${Date.now().toString(36)}-${getRandomSegment().toLowerCase()}`;
+  const bytes =
+    typeof crypto !== "undefined" && "getRandomValues" in crypto
+      ? crypto.getRandomValues(new Uint8Array(16))
+      : Uint8Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
 export const createReferenceId = (prefix: "BK" | "PA") => {
@@ -394,6 +403,25 @@ interface PaymentRow {
   paid_at?: string | null;
   created_at: string;
   updated_at?: string | null;
+}
+
+interface PartnerApplicationRow {
+  id: string;
+  reference_id: string;
+  full_name: string;
+  work_email: string;
+  phone: string;
+  city: string;
+  law_firm_name?: string | null;
+  website_or_linkedin?: string | null;
+  bar_association: string;
+  registration_number: string;
+  years_of_experience: string;
+  specialties: unknown;
+  professional_bio: string;
+  document_metadata: unknown;
+  status: string;
+  created_at: string;
 }
 
 interface ReviewRow {
@@ -508,6 +536,46 @@ const documentFromRow = (row: BookingDocumentRow): StoredBookingDocument => ({
   malwareScanStatus: row.malware_scan_status || "pending",
   uploadedAt: row.created_at,
   storagePath: row.storage_path || undefined,
+  persistenceSource: "supabase",
+});
+
+const normalizeDocumentMetadata = (value: unknown): PartnerApplicationPayload["documents"] => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const candidate = item as { name?: unknown; size?: unknown; type?: unknown };
+      if (typeof candidate.name !== "string") return null;
+      return {
+        name: candidate.name,
+        size: Number(candidate.size || 0),
+        type: typeof candidate.type === "string" ? candidate.type : "unknown",
+      };
+    })
+    .filter((item): item is PartnerApplicationPayload["documents"][number] => Boolean(item));
+};
+
+const partnerApplicationFromRow = (row: PartnerApplicationRow): StoredPartnerApplication => ({
+  id: row.id,
+  referenceId: row.reference_id,
+  fullName: row.full_name,
+  workEmail: row.work_email,
+  phone: row.phone,
+  city: row.city,
+  lawFirmName: row.law_firm_name || undefined,
+  websiteOrLinkedIn: row.website_or_linkedin || undefined,
+  barAssociation: row.bar_association,
+  registrationNumber: row.registration_number,
+  yearsOfExperience: row.years_of_experience,
+  specialties: Array.isArray(row.specialties) ? row.specialties.filter((item): item is string => typeof item === "string") : [],
+  professionalBio: row.professional_bio,
+  documents: normalizeDocumentMetadata(row.document_metadata),
+  status:
+    row.status === "needs_more_info" || row.status === "approved" || row.status === "rejected"
+      ? row.status
+      : "under_review",
+  createdAt: row.created_at,
   persistenceSource: "supabase",
 });
 
@@ -1002,12 +1070,11 @@ const persistLocalApplication = (application: StoredPartnerApplication) => {
   writeStoredList(applicationStorageKey, [application, ...getStoredPartnerApplications()]);
 };
 
-const insertSupabaseRecord = async (tableName: string, payload: Record<string, unknown>) => {
-  const { error } = await supabase.from(tableName).insert(payload);
-  if (error) throw error;
-};
-
 export const createBooking = async (payload: BookingPayload): Promise<SubmissionResult<StoredBooking>> => {
+  if (!isUuid(payload.userId)) {
+    throw new Error("AUTH_REQUIRED_FOR_BOOKING");
+  }
+
   const createdAt = new Date().toISOString();
   const booking: StoredBooking = {
     ...payload,
@@ -1021,7 +1088,7 @@ export const createBooking = async (payload: BookingPayload): Promise<Submission
   try {
     const { error } = await supabase.rpc("reserve_booking_slot", {
       p_booking_id: booking.id,
-      p_user_id: booking.userId || null,
+      p_user_id: booking.userId,
       p_reference_id: booking.referenceId,
       p_lawyer_id: booking.lawyerId,
       p_lawyer_name: booking.lawyerName,
@@ -1069,6 +1136,11 @@ export const requestPaymentSetupSession = async (
   const requestedAt = new Date().toISOString();
 
   try {
+    const { session } = await getCurrentSession();
+    if (!session?.access_token || !userId || session.user.id !== userId) {
+      throw new Error("AUTH_REQUIRED");
+    }
+
     const { data, error } = await supabase.functions.invoke("create-payment-setup-session", {
       body: {
         userId,
@@ -1113,6 +1185,16 @@ export const requestBookingCheckoutSession = async (
   const requestedAt = new Date().toISOString();
 
   try {
+    const { session } = await getCurrentSession();
+    const sessionEmail = session?.user.email?.trim().toLowerCase() || "";
+    const bookingEmail = booking.clientEmail.trim().toLowerCase();
+    const ownsBookingById = Boolean(booking.userId && session?.user.id === booking.userId);
+    const canClaimGuestBooking = Boolean(!booking.userId && sessionEmail && sessionEmail === bookingEmail);
+
+    if (!session?.access_token || (!ownsBookingById && !canClaimGuestBooking)) {
+      throw new Error("BOOKING_OWNER_AUTH_REQUIRED");
+    }
+
     const { data, error } = await supabase.functions.invoke("create-booking-checkout-session", {
       body: {
         bookingId: booking.id,
@@ -1241,28 +1323,27 @@ export const createPartnerApplication = async (
     persistenceSource: "local",
   };
 
-  const supabasePayload = {
-    id: application.id,
-    reference_id: application.referenceId,
-    full_name: application.fullName,
-    work_email: application.workEmail,
-    phone: application.phone,
-    city: application.city,
-    law_firm_name: application.lawFirmName || null,
-    website_or_linkedin: application.websiteOrLinkedIn || null,
-    bar_association: application.barAssociation,
-    registration_number: application.registrationNumber,
-    years_of_experience: application.yearsOfExperience,
-    specialties: application.specialties,
-    professional_bio: application.professionalBio,
-    document_metadata: application.documents,
-    status: application.status,
-    created_at: application.createdAt,
-  };
-
   try {
-    await insertSupabaseRecord(applicationTableName, supabasePayload);
-    const syncedApplication = { ...application, persistenceSource: "supabase" as const };
+    const { data, error } = await publicSupabase.rpc("submit_partner_application", {
+      p_application_id: application.id,
+      p_reference_id: application.referenceId,
+      p_full_name: application.fullName,
+      p_work_email: application.workEmail,
+      p_phone: application.phone,
+      p_city: application.city,
+      p_law_firm_name: application.lawFirmName || null,
+      p_website_or_linkedin: application.websiteOrLinkedIn || null,
+      p_bar_association: application.barAssociation,
+      p_registration_number: application.registrationNumber,
+      p_years_of_experience: application.yearsOfExperience,
+      p_specialties: application.specialties,
+      p_professional_bio: application.professionalBio,
+      p_document_metadata: application.documents,
+    });
+
+    if (error || !data) throw error || new Error("Partner application was not persisted.");
+
+    const syncedApplication = partnerApplicationFromRow(data as PartnerApplicationRow);
     persistLocalApplication(syncedApplication);
     return { record: syncedApplication, source: "supabase" };
   } catch (error) {

@@ -132,10 +132,10 @@ const Index = () => {
               Ελεγμένα προφίλ, πραγματική διαθεσιμότητα, αξιολογήσεις μετά από κράτηση
             </p>
             <h1 className="mt-5 max-w-3xl font-serif text-[2.65rem] leading-[1.06] tracking-tight text-foreground md:text-[3.4rem]">
-              Περιγράψτε το θέμα. Συγκρίνετε δικηγόρους. Κλείστε ραντεβού με πληρωμή.
+              Συγκρίνετε επιλογές, βρείτε δικηγόρο και κλείστε online ραντεβού.
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
-              Ξεκινήστε από όσα αλλάζουν την επιλογή: θέμα, πόλη, τρόπο συμβουλευτικής και γλώσσα. Προσθέστε λεπτομέρειες μόνο όταν βοηθούν την προετοιμασία.
+              Ξεκινήστε από το θέμα, την πόλη, τον τρόπο ραντεβού και τη γλώσσα.
             </p>
 
             <form onSubmit={handleHeroSubmit} className="mt-7 rounded-lg border border-border bg-card p-4 shadow-xl shadow-foreground/[0.05] md:p-5">
@@ -218,7 +218,7 @@ const Index = () => {
               <div className="flex items-start gap-4">
                 <img src={heroLawyer.image} alt={heroLawyer.name} className="h-20 w-20 rounded-lg object-cover shadow-md ring-2 ring-background" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold uppercase tracking-wider text-sage">Διαθέσιμο προφίλ αγοράς</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-sage">Επαληθευμένο προφίλ</p>
                   <h2 className="mt-1 truncate text-lg font-bold text-foreground">{heroLawyer.name}</h2>
                   <p className="text-sm font-semibold text-primary">{heroLawyer.specialty}</p>
                   <p className="mt-1 text-xs font-semibold text-muted-foreground">{heroLawyer.city} · {heroLawyer.experience} χρόνια</p>
@@ -238,7 +238,7 @@ const Index = () => {
                 ))}
               </div>
               <Button asChild className="mt-5 h-11 w-full rounded-lg font-bold">
-                <Link to={`/lawyer/${heroLawyer.id}`}>Προβολή προφίλ απόφασης</Link>
+                <Link to={`/lawyer/${heroLawyer.id}`}>Δείτε προφίλ</Link>
               </Button>
             </aside>
           ) : null}
@@ -257,10 +257,10 @@ const Index = () => {
       <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-sage">Ομάδες αγοράς</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-sage">Προτεινόμενοι δικηγόροι</p>
             <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Προτάσεις από ζωντανά δημόσια προφίλ</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Οι ομάδες υπολογίζονται από αξιολογήσεις, αριθμό κριτικών, χρόνο απάντησης, τιμή και διαθεσιμότητα, με τα ίδια δεδομένα που χρησιμοποιούνται στην αναζήτηση και στα προφίλ.
+              Οι προτάσεις βασίζονται στα στοιχεία που βλέπετε στα προφίλ, όπως αξιολογήσεις, χρόνος απάντησης, τιμή και διαθεσιμότητα.
             </p>
           </div>
           <Button asChild variant="outline" className="rounded-lg font-bold">
@@ -318,7 +318,7 @@ const Index = () => {
 
       <section id="categories" className="border-y border-border bg-secondary/35">
         <div className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
-          <p className="text-xs font-bold uppercase tracking-widest text-sage">Συχνές νομικές διαδρομές</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">Συχνές νομικές ανάγκες</p>
           <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Ξεκινήστε από το πρόβλημα, όχι από κατάλογο κατηγοριών</h2>
           <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
             {popularLegalJourneys.map((journey) => (
@@ -337,7 +337,7 @@ const Index = () => {
 
       <section id="how-it-works" className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
         <div className="text-center">
-          <p className="text-xs font-bold uppercase tracking-widest text-sage">Διαδρομή κράτησης</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">Πώς λειτουργεί</p>
           <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Περιγραφή, σύγκριση, κράτηση και πληρωμή</h2>
         </div>
         <div className="mx-auto mt-7 grid max-w-5xl gap-3 md:grid-cols-3">
@@ -360,7 +360,7 @@ const Index = () => {
           <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-sage">Κανόνες εμπιστοσύνης</p>
-              <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Απόδειξη που ακολουθεί το σύστημα κρατήσεων</h2>
+              <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Τι ελέγχουμε για εσάς</h2>
               <div className="mt-5 space-y-2">
                 {publicTrustMechanics.map((item) => (
                   <p key={item} className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -386,7 +386,7 @@ const Index = () => {
       {reviewBackedLawyers.length > 0 ? (
         <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
           <p className="text-xs font-bold uppercase tracking-widest text-sage">Απόδειξη από αξιολογήσεις</p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Δημοσιευμένα σήματα αξιολόγησης, όχι μαρτυρίες βιτρίνας</h2>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Αξιολογήσεις από ολοκληρωμένα ραντεβού</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             {reviewBackedLawyers.map((lawyer) => (
               <Link key={lawyer.id} to={`/lawyer/${lawyer.id}`} className="rounded-lg border border-border bg-card p-5 transition hover:border-primary/25">
