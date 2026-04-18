@@ -1,14 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   completeStoredBooking,
-  createLocalPartnerAccessCode,
   createPartnerSession,
   createReferenceId,
   getBookingSlotKey,
   getStoredPaymentsForUser,
   getPartnerSession,
-  isLocalApprovedPartner,
-  localPartnerAccessCode,
   recordLocalCheckoutReturn,
 } from "@/lib/platformRepository";
 import { buildAvailabilityTimeSlots } from "@/lib/partnerWorkspace";
@@ -34,23 +31,19 @@ describe("platform repository contracts", () => {
   });
 
   it("persists partner verification session with normalized email", () => {
-    createPartnerSession(" Partner@LawFirm.GR ");
+    createPartnerSession(
+      " Partner@LawFirm.GR ",
+      "server-issued-token",
+      new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    );
 
     expect(getPartnerSession()?.email).toBe("partner@lawfirm.gr");
     expect(getPartnerSession()?.role).toBe("partner");
+    expect(getPartnerSession()?.sessionToken).toBe("server-issued-token");
   });
 
-  it("seeds a local partner access code for the approved dev account", () => {
-    const codeRecord = createLocalPartnerAccessCode(" NasoosAdamopoylos@gmail.com ");
-
-    expect(isLocalApprovedPartner("nasoosadamopoylos@gmail.com")).toBe(true);
-    expect(codeRecord?.email).toBe("nasoosadamopoylos@gmail.com");
-    expect(codeRecord?.code).toBe(localPartnerAccessCode);
-  });
-
-  it("does not issue local partner codes for unapproved emails", () => {
-    expect(isLocalApprovedPartner("visitor@example.com")).toBe(false);
-    expect(createLocalPartnerAccessCode("visitor@example.com")).toBeNull();
+  it("refuses partner sessions that are not issued by the backend", () => {
+    expect(() => createPartnerSession("partner@lawfirm.gr")).toThrow("PARTNER_SESSION_REQUIRES_BACKEND_TOKEN");
   });
 
   it("generates booking slots from partner availability and buffer time", () => {

@@ -5,6 +5,7 @@ import {
   normalizeLegalPracticeAreas,
 } from "@/lib/marketplaceTaxonomy";
 import { isPartnerSessionInvalidError, type PartnerSession } from "@/lib/platformRepository";
+import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
 import { publicSupabase } from "@/lib/supabase";
 
 export interface PartnerProfileSettings {
@@ -317,7 +318,10 @@ const fetchLawyerProfileForWorkspace = async (lawyerId?: string | null) => {
 export const fetchPartnerWorkspace = async (email?: string | null) => {
   const localWorkspace = getPartnerWorkspace(email);
   const normalizedEmail = email?.trim().toLowerCase();
-  if (!normalizedEmail) return localWorkspace;
+  if (!normalizedEmail) {
+    if (allowLocalCriticalFallback) return localWorkspace;
+    throw failClosedCriticalPath("Partner workspace");
+  }
 
   try {
     const { data, error } = await publicSupabase
@@ -327,7 +331,10 @@ export const fetchPartnerWorkspace = async (email?: string | null) => {
       .maybeSingle();
 
     if (error) throw error;
-    if (!data) return localWorkspace;
+    if (!data) {
+      if (allowLocalCriticalFallback) return localWorkspace;
+      throw failClosedCriticalPath("Partner workspace");
+    }
 
     const row = data as PartnerProfileSettingsRow;
     let remoteWorkspace = normalizePartnerWorkspace({
@@ -353,6 +360,9 @@ export const fetchPartnerWorkspace = async (email?: string | null) => {
 
     return savePartnerWorkspace(normalizedEmail, remoteWorkspace);
   } catch {
+    if (!allowLocalCriticalFallback) {
+      throw failClosedCriticalPath("Partner workspace");
+    }
     return localWorkspace;
   }
 };
@@ -367,48 +377,35 @@ export const syncPartnerWorkspace = async (
   partnerSession?: PartnerSession | null,
   options?: PartnerWorkspaceSyncOptions,
 ) => {
-  const normalized = savePartnerWorkspace(email, workspace);
+  const normalized = normalizePartnerWorkspace(workspace);
   const normalizedEmail = email?.trim().toLowerCase();
-  if (!normalizedEmail) return normalized;
+  if (!normalizedEmail || !partnerSession?.sessionToken) {
+    throw failClosedCriticalPath("Partner workspace");
+  }
 
   try {
-    if (partnerSession?.sessionToken) {
-      const { error } = await publicSupabase.rpc("save_partner_workspace_as_partner", {
-        p_partner_email: normalizedEmail,
-        p_session_token: partnerSession.sessionToken,
-        p_profile: normalized.profile,
-        p_availability: normalized.availability,
-        p_notifications: normalized.notifications,
-        p_reviews: normalized.reviews,
-      });
+    const { error } = await publicSupabase.rpc("save_partner_workspace_as_partner", {
+      p_partner_email: normalizedEmail,
+      p_session_token: partnerSession.sessionToken,
+      p_profile: normalized.profile,
+      p_availability: normalized.availability,
+      p_notifications: normalized.notifications,
+      p_reviews: normalized.reviews,
+    });
 
-      if (error) throw error;
-    } else {
-      const { error } = await publicSupabase.from("partner_profile_settings").upsert({
-        partner_email: normalizedEmail,
-        lawyer_id: normalized.profile.lawyerId,
-        profile: normalized.profile,
-        availability: normalized.availability,
-        reviews: normalized.reviews,
-        notifications: normalized.notifications,
-        published_profile: normalized.profile,
-        published_availability: normalized.availability,
-        is_public: true,
-        updated_at: new Date().toISOString(),
-      });
-
-      if (error) throw error;
-    }
+    if (error) throw error;
   } catch (error) {
     if (isPartnerSessionInvalidError(error)) throw new Error("PARTNER_SESSION_INVALID");
     if (options?.throwOnRemoteError) throw error;
-    // Local persistence keeps the portal usable while backend wiring catches up.
+    throw error;
   }
 
-  return normalized;
+  return savePartnerWorkspace(email, normalized);
 };
 
 export const getPublishedPartnerWorkspaceForLawyer = (lawyerId: string) => {
+  if (!allowLocalCriticalFallback) return null;
+
   const storage = getStorage();
   if (!storage) return defaultPartnerWorkspace.profile.lawyerId === lawyerId ? defaultPartnerWorkspace : null;
 
@@ -462,6 +459,9 @@ export const fetchPublishedPartnerWorkspaceForLawyer = async (lawyerId: string) 
       },
     });
   } catch {
+    if (!allowLocalCriticalFallback) {
+      throw failClosedCriticalPath("Published partner profile");
+    }
     return localWorkspace;
   }
 };
@@ -515,18 +515,18 @@ export const buildAvailabilityTimeSlots = (
 export const getPartnerAvailabilityRulesForLawyer = (lawyerId: string) => {
   const workspace = getPublishedPartnerWorkspaceForLawyer(lawyerId);
   return {
-    availability: workspace?.availability || defaultPartnerWorkspace.availability,
-    bookingWindowDays: workspace?.profile.bookingWindowDays || defaultPartnerWorkspace.profile.bookingWindowDays,
-    bufferMinutes: workspace?.profile.bufferMinutes || defaultPartnerWorkspace.profile.bufferMinutes,
+    availability: workspace?.availability || [],
+    bookingWindowDays: workspace?.profile.bookingWindowDays || 0,
+    bufferMinutes: workspace?.profile.bufferMinutes || 0,
   };
 };
 
 export const fetchPartnerAvailabilityRulesForLawyer = async (lawyerId: string) => {
   const workspace = await fetchPublishedPartnerWorkspaceForLawyer(lawyerId);
   return {
-    availability: workspace?.availability || defaultPartnerWorkspace.availability,
-    bookingWindowDays: workspace?.profile.bookingWindowDays || defaultPartnerWorkspace.profile.bookingWindowDays,
-    bufferMinutes: workspace?.profile.bufferMinutes || defaultPartnerWorkspace.profile.bufferMinutes,
+    availability: workspace?.availability || [],
+    bookingWindowDays: workspace?.profile.bookingWindowDays || 0,
+    bufferMinutes: workspace?.profile.bufferMinutes || 0,
   };
 };
 

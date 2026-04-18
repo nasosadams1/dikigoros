@@ -9,6 +9,7 @@ import {
   normalizeLegalPracticeArea,
   normalizeLegalPracticeAreas,
 } from "@/lib/marketplaceTaxonomy";
+import { allowLocalCriticalFallback } from "@/lib/runtimeGuards";
 import { publicSupabase } from "@/lib/supabase";
 
 interface LawyerProfileRow {
@@ -57,6 +58,12 @@ export interface PublicLawyerProfileReadiness {
 
 const lawyerTableName = (import.meta.env.VITE_SUPABASE_LAWYERS_TABLE as string | undefined) || "lawyer_profiles";
 const genericProfileValues = new Set(["legal consultation", "legal services", "unknown user"]);
+const emptyVerification: Lawyer["verification"] = {
+  barAssociation: "",
+  registryLabel: "",
+  checkedAt: "",
+  evidence: [],
+};
 
 const isConsultationMode = (value: string): value is ConsultationMode =>
   value === "video" || value === "phone" || value === "inPerson";
@@ -91,11 +98,12 @@ const mapLawyerRow = (row: LawyerProfileRow): Lawyer => ({
   credentials: row.credentials || [],
   verification:
     row.verification ||
-    fallbackLawyers.find((lawyer) => lawyer.id === row.id)?.verification ||
-    fallbackLawyers[0].verification,
+    (allowLocalCriticalFallback
+      ? fallbackLawyers.find((lawyer) => lawyer.id === row.id)?.verification || fallbackLawyers[0].verification
+      : emptyVerification),
   consultations:
     row.consultations ||
-    fallbackLawyers.find((lawyer) => lawyer.id === row.id)?.consultations ||
+    (allowLocalCriticalFallback ? fallbackLawyers.find((lawyer) => lawyer.id === row.id)?.consultations : undefined) ||
     [],
   image: row.image,
 });
@@ -156,6 +164,14 @@ export const getPublicLawyerProfileReadiness = (lawyer: Lawyer): PublicLawyerPro
     issues.push("Συμπληρώστε τουλάχιστον μία συνεδρία με έγκυρη τιμή, τίτλο και περιγραφή.");
   }
 
+  if (
+    !hasMeaningfulText(lawyer.verification.barAssociation, 4) ||
+    !hasMeaningfulText(lawyer.verification.registryLabel, 4) ||
+    lawyer.verification.evidence.length === 0
+  ) {
+    issues.push("Η δημόσια παρουσία απαιτεί επαληθευμένο σύλλογο, μητρώο και αποδεικτικά ελέγχου.");
+  }
+
   return {
     ready: issues.length === 0,
     issues,
@@ -178,10 +194,10 @@ export const getLawyerBaseProfileById = async (id?: string) => {
     if (error) throw error;
     if (data) return mapLawyerRow(data as LawyerProfileRow);
   } catch {
-    // Fallback data keeps the partner preview useful offline.
+    if (!allowLocalCriticalFallback) return null;
   }
 
-  return fallbackLawyers.find((lawyer) => lawyer.id === id) || null;
+  return allowLocalCriticalFallback ? fallbackLawyers.find((lawyer) => lawyer.id === id) || null : null;
 };
 
 export const getLawyers = async () => {
@@ -194,13 +210,13 @@ export const getLawyers = async () => {
 
     if (error) throw error;
     if (!data || data.length === 0) {
-      return Promise.all(fallbackLawyers.map(applyPublishedPartnerProfileRemote));
+      return allowLocalCriticalFallback ? Promise.all(fallbackLawyers.map(applyPublishedPartnerProfileRemote)) : [];
     }
 
     const remoteLawyers = await Promise.all((data as LawyerProfileRow[]).map(mapLawyerRow).map(applyPublishedPartnerProfileRemote));
     return remoteLawyers.filter(isPublicLawyerProfileReady);
   } catch {
-    return Promise.all(fallbackLawyers.map(applyPublishedPartnerProfileRemote));
+    return allowLocalCriticalFallback ? Promise.all(fallbackLawyers.map(applyPublishedPartnerProfileRemote)) : [];
   }
 };
 
@@ -217,14 +233,14 @@ export const getLawyerById = async (id?: string) => {
 
     if (error) throw error;
     if (!data) {
-      const fallbackLawyer = fallbackLawyers.find((lawyer) => lawyer.id === id);
+      const fallbackLawyer = allowLocalCriticalFallback ? fallbackLawyers.find((lawyer) => lawyer.id === id) : null;
       return fallbackLawyer ? applyPublishedPartnerProfileRemote(fallbackLawyer) : undefined;
     }
 
     const lawyer = await applyPublishedPartnerProfileRemote(mapLawyerRow(data as LawyerProfileRow));
     return isPublicLawyerProfileReady(lawyer) ? lawyer : undefined;
   } catch {
-    const fallbackLawyer = fallbackLawyers.find((lawyer) => lawyer.id === id);
+    const fallbackLawyer = allowLocalCriticalFallback ? fallbackLawyers.find((lawyer) => lawyer.id === id) : null;
     return fallbackLawyer ? applyPublishedPartnerProfileRemote(fallbackLawyer) : undefined;
   }
 };

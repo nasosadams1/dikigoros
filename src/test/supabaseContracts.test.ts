@@ -34,6 +34,10 @@ const partnerDocumentUrlFunction = readFileSync(
   join(process.cwd(), "supabase", "functions", "create-partner-document-url", "index.ts"),
   "utf8",
 );
+const reconciliationFunction = readFileSync(
+  join(process.cwd(), "supabase", "functions", "reconcile-stripe-payments", "index.ts"),
+  "utf8",
+);
 
 describe("Supabase production contracts", () => {
   it("ships the verified review RPC used by the account profile", () => {
@@ -45,6 +49,10 @@ describe("Supabase production contracts", () => {
     expect(productionSchema).toContain("create table if not exists public.partner_sessions");
     expect(productionSchema).toContain("ps.session_token_hash = crypt(p_session_token, ps.session_token_hash)");
     expect(productionSchema).toContain("create or replace function public.complete_booking_as_partner");
+    expect(productionSchema).toContain("now() + interval '2 hours'");
+    expect(productionSchema).toContain("create table if not exists public.partner_session_audit_events");
+    expect(productionSchema).toContain("'session_issued'");
+    expect(productionSchema).not.toContain("'742913'");
   });
 
   it("ships a partner-session RPC for saving lawyer profile workspaces", () => {
@@ -85,6 +93,25 @@ describe("Supabase production contracts", () => {
     expect(checkoutFunction).toContain('existingPayment?.status === "checkout_opened"');
     expect(checkoutFunction).toContain("existingPayment.checkout_session_url");
     expect(checkoutFunction).toContain("This booking has already been paid.");
+  });
+
+  it("keeps Stripe settlement replay-safe and reconciled", () => {
+    expect(productionSchema).toContain("create table if not exists public.booking_payment_events");
+    expect(productionSchema).toContain("create table if not exists public.payment_reconciliation_runs");
+    expect(productionSchema).toContain("create table if not exists public.payment_reconciliation_mismatches");
+    expect(webhookFunction).toContain("verifyStripeSignature");
+    expect(webhookFunction).toContain('request.headers.get("stripe-signature")');
+    expect(webhookFunction).toContain("replay: true");
+    expect(webhookFunction).toContain("orphan_stripe_event");
+    expect(reconciliationFunction).toContain("state_mismatch");
+    expect(reconciliationFunction).toContain("missing_receipt");
+  });
+
+  it("blocks document access until malware scan is clean and audit logged", () => {
+    expect(productionSchema).toContain("malware_scan_status text not null default 'pending'");
+    expect(productionSchema).toContain("create table if not exists public.document_access_audit_events");
+    expect(productionSchema).toContain("ud.malware_scan_status = 'clean'");
+    expect(productionSchema).toContain("insert into public.document_access_audit_events");
   });
 
   it("supports partner cancellation and requires payment before partner completion", () => {

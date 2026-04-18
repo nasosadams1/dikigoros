@@ -58,7 +58,7 @@ export interface LaunchGateInputs {
   lawyers: Lawyer[];
   funnelEvents: FunnelEvent[];
   operationalCases: LaunchEvidenceCase[];
-  operationalCasesSource: "backend" | "fallback";
+  operationalCasesSource: "backend" | "fallback" | "unavailable";
 }
 
 export interface PaymentReadinessCheck {
@@ -635,7 +635,7 @@ export const getDynamicLaunchGates = ({
       label: "Οι λειτουργίες είναι backend-first",
       owner: "Υπεύθυνος λειτουργίας",
       ready: operationalCasesSource === "backend",
-      evidence: operationalCasesSource === "backend" ? "Οι υποθέσεις και οι μετρήσεις λειτουργίας διαβάζονται από Supabase." : "Οι υποθέσεις λειτουργίας χρησιμοποιούν ακόμα τοπική fallback cache.",
+      evidence: operationalCasesSource === "backend" ? "Οι υποθέσεις και οι μετρήσεις λειτουργίας διαβάζονται από Supabase." : "Οι υποθέσεις λειτουργίας είναι προσωρινά μη διαθέσιμες και δεν χρησιμοποιείται τοπική αλήθεια παραγωγής.",
     },
   ];
 };

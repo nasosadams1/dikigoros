@@ -368,7 +368,7 @@ const PartnerApply = () => {
       });
       setSubmitted(true);
     } catch {
-      setSubmitError("Δεν ήταν δυνατή η υποβολή της αίτησης. Προσπαθήστε ξανά.");
+      setSubmitError("Η υποβολή αίτησης συνεργάτη είναι προσωρινά μη διαθέσιμη. Η αίτηση δεν αποθηκεύτηκε τοπικά.");
     } finally {
       setIsSubmitting(false);
     }

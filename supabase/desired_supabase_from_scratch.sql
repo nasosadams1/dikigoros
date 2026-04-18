@@ -177,11 +177,28 @@ create table if not exists public.user_documents (
   category text not null default 'Legal document',
   storage_path text not null unique,
   visible_to_lawyer boolean not null default true,
+  malware_scan_status text not null default 'pending' check (malware_scan_status in ('pending','clean','blocked','failed')),
+  malware_scan_provider text,
+  malware_scan_checked_at timestamptz,
   created_at timestamptz not null default now()
 );
 
 create index if not exists user_documents_user_idx on public.user_documents (user_id,created_at desc);
 create index if not exists user_documents_booking_idx on public.user_documents (booking_id) where visible_to_lawyer = true;
+
+create table if not exists public.document_access_audit_events (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid references public.user_documents(id) on delete cascade,
+  actor_user_id uuid references auth.users(id) on delete set null,
+  actor_label text not null,
+  action text not null,
+  reason_code text not null,
+  created_at timestamptz not null default now(),
+  metadata jsonb not null default '{}'::jsonb
+);
+
+create index if not exists document_access_audit_document_idx
+  on public.document_access_audit_events (document_id,created_at desc);
 
 create table if not exists public.partner_applications (
   id uuid primary key default gen_random_uuid(),
@@ -240,6 +257,19 @@ create table if not exists public.partner_sessions (
 );
 
 create index if not exists partner_sessions_email_idx on public.partner_sessions (lower(email),expires_at desc);
+
+create table if not exists public.partner_session_audit_events (
+  id uuid primary key default gen_random_uuid(),
+  partner_email text not null,
+  session_id uuid references public.partner_sessions(id) on delete set null,
+  event_type text not null check (event_type in ('access_code_failed','previous_sessions_revoked','session_issued')),
+  actor_label text not null default 'verify_partner_access_code',
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists partner_session_audit_email_idx
+  on public.partner_session_audit_events (lower(partner_email),created_at desc);
 
 create table if not exists public.partner_profile_settings (
   partner_email text primary key,
@@ -612,8 +642,10 @@ set search_path = public, extensions
 as $$
 declare
   matching_code uuid;
+  partner_session_id uuid;
   partner_session_token text;
   partner_session_expires_at timestamptz;
+  revoked_session_count integer := 0;
 begin
   select id into matching_code
   from public.partner_access_codes
@@ -625,10 +657,36 @@ begin
   limit 1;
 
   if matching_code is null then
+    insert into public.partner_session_audit_events (partner_email,event_type,actor_label,metadata)
+    values (
+      lower(p_email),
+      'access_code_failed',
+      'verify_partner_access_code',
+      jsonb_build_object('reason','invalid_or_expired_code')
+    );
+
     return jsonb_build_object('ok', false);
   end if;
 
   update public.partner_access_codes set consumed_at = now() where id = matching_code;
+
+  update public.partner_sessions
+  set revoked_at = now()
+  where lower(email) = lower(p_email)
+    and revoked_at is null
+    and expires_at > now();
+
+  get diagnostics revoked_session_count = row_count;
+
+  if revoked_session_count > 0 then
+    insert into public.partner_session_audit_events (partner_email,event_type,actor_label,metadata)
+    values (
+      lower(p_email),
+      'previous_sessions_revoked',
+      'verify_partner_access_code',
+      jsonb_build_object('revokedSessionCount',revoked_session_count)
+    );
+  end if;
 
   delete from public.partner_sessions
   where lower(email) = lower(p_email)
@@ -637,8 +695,17 @@ begin
   partner_session_token := encode(gen_random_bytes(32), 'hex');
 
   insert into public.partner_sessions (email,session_token_hash,expires_at)
-  values (lower(p_email), crypt(partner_session_token, gen_salt('bf')), now() + interval '12 hours')
-  returning expires_at into partner_session_expires_at;
+  values (lower(p_email), crypt(partner_session_token, gen_salt('bf')), now() + interval '2 hours')
+  returning id, expires_at into partner_session_id, partner_session_expires_at;
+
+  insert into public.partner_session_audit_events (partner_email,session_id,event_type,actor_label,metadata)
+  values (
+    lower(p_email),
+    partner_session_id,
+    'session_issued',
+    'verify_partner_access_code',
+    jsonb_build_object('expiresAt',partner_session_expires_at)
+  );
 
   return jsonb_build_object(
     'ok', true,
@@ -647,8 +714,6 @@ begin
   );
 end;
 $$;
-
-select public.create_partner_access_code('nasoosadamopoylos@gmail.com','742913');
 
 create or replace function public.complete_booking_as_partner(
   p_partner_email text,
@@ -889,6 +954,7 @@ returns table (
   category text,
   storage_path text,
   visible_to_lawyer boolean,
+  malware_scan_status text,
   created_at timestamptz,
   reference_id text,
   client_name text
@@ -906,6 +972,7 @@ as $$
     ud.category,
     ud.storage_path,
     ud.visible_to_lawyer,
+    ud.malware_scan_status,
     ud.created_at,
     br.reference_id,
     br.client_name
@@ -913,6 +980,7 @@ as $$
   join public.booking_requests br on br.id = ud.booking_id
   where br.lawyer_id = p_lawyer_id
     and ud.visible_to_lawyer
+    and ud.malware_scan_status = 'clean'
     and exists (
       select 1
       from public.partner_accounts pa
@@ -946,6 +1014,7 @@ begin
   join public.booking_requests br on br.id = ud.booking_id
   where ud.id = p_document_id
     and ud.visible_to_lawyer
+    and ud.malware_scan_status = 'clean'
     and exists (
       select 1
       from public.partner_accounts pa
@@ -962,6 +1031,21 @@ begin
   if document_path is null then
     raise exception 'DOCUMENT_NOT_FOUND_OR_FORBIDDEN' using errcode = '42501';
   end if;
+
+  insert into public.document_access_audit_events (
+    document_id,
+    actor_label,
+    action,
+    reason_code,
+    metadata
+  )
+  values (
+    p_document_id,
+    lower(p_partner_email),
+    'signed_url_created',
+    'partner_case_access',
+    jsonb_build_object('source', 'create-partner-document-url')
+  );
 
   return document_path;
 end;
@@ -1505,6 +1589,14 @@ $$;
 
 grant execute on function public.is_operations_user() to anon, authenticated;
 
+alter table public.partner_session_audit_events enable row level security;
+drop policy if exists "Operations can read partner session audit events" on public.partner_session_audit_events;
+create policy "Operations can read partner session audit events" on public.partner_session_audit_events
+  for select to authenticated
+  using (public.is_operations_user());
+revoke all on public.partner_session_audit_events from anon, authenticated;
+grant select on public.partner_session_audit_events to authenticated;
+
 drop policy if exists "Users can create own support cases" on public.operational_cases;
 drop policy if exists "Users can read own support cases" on public.operational_cases;
 drop policy if exists "Anyone can create operational support cases" on public.operational_cases;
@@ -1548,17 +1640,6 @@ create policy "Operations can insert operational audit events" on public.operati
 grant insert on public.operational_cases to anon;
 grant select,insert,update on public.operational_cases to authenticated;
 grant select,insert on public.operational_audit_events to authenticated;
-
-insert into public.operational_cases (reference_id,area,title,summary,status,priority,owner,evidence,timeline,sla_due_at,created_at,updated_at)
-values
-  ('PAY-LAUNCH-STRIPE','payments','Confirm live Stripe settlement path','Verify live Checkout key, webhook secret, booking payment row, receipt URL, and refund path before national launch.','new','urgent','Payments owner',jsonb_build_array('Checkout Sessions for booking payments','Webhook updates paid, failed, and refunded states'),jsonb_build_array(jsonb_build_object('at',now() - interval '3 hours','actor','Operations','action','Launch gate opened','note','Payment reconciliation must be proven from backend state.')),now() + interval '4 hours',now() - interval '3 hours',now() - interval '3 hours'),
-  ('SUPPLY-LAUNCH-DENSITY','supply','Five-city and five-category density check','Track verified bookable lawyer coverage in Αθήνα, Θεσσαλονίκη, Πειραιάς, Ηράκλειο and Πάτρα across the 5 active practice areas.','new','high','Marketplace supply lead',jsonb_build_array('Minimum city and category coverage thresholds are calculated from live public profiles'),jsonb_build_array(jsonb_build_object('at',now() - interval '9 hours','actor','Operations','action','Launch gate opened','note','Core supply density must be proven before wider rollout.')),now() + interval '24 hours',now() - interval '9 hours',now() - interval '9 hours'),
-  ('VER-LAUNCH-QUEUE','verification','Application review queue','Assign reviewer for identity, license, bar association, professional details, and profile readiness checks.','new','normal','Verification lead',jsonb_build_array('Profiles stay public only after readiness checks pass'),jsonb_build_array(jsonb_build_object('at',now() - interval '26 hours','actor','Operations','action','Launch gate opened','note','Partner verification needs owned review before public activation.')),now() + interval '48 hours',now() - interval '26 hours',now() - interval '26 hours'),
-  ('REV-LAUNCH-MODERATION','reviews','Completed-booking review moderation','Hold new reviews for completed-booking proof, case-detail screening, fraud checks, and lawyer reply handling.','new','normal','Trust and reviews lead',jsonb_build_array('Review request opens only after booking completion'),jsonb_build_array(jsonb_build_object('at',now() - interval '18 hours','actor','Operations','action','Launch gate opened','note','Published reviews must depend on completed consultation proof.')),now() + interval '48 hours',now() - interval '18 hours',now() - interval '18 hours'),
-  ('DSP-LAUNCH-RESCHEDULE','bookingDisputes','Reschedule and no-show decision path','Confirm cancellation window, payment state, communication history, and refund or reschedule outcome.','new','high','Booking support lead',jsonb_build_array('Free cancellation or reschedule before the 24-hour window'),jsonb_build_array(jsonb_build_object('at',now() - interval '7 hours','actor','Operations','action','Launch gate opened','note','Booking exceptions need a shared queue and closure rule.')),now() + interval '24 hours',now() - interval '7 hours',now() - interval '7 hours'),
-  ('PRV-LAUNCH-DOCUMENTS','privacyDocuments','Document retention and deletion workflow','Route access, deletion, visibility, and retention requests with booking/account context.','new','normal','Privacy and documents lead',jsonb_build_array('Documents are visible to the booked lawyer only when user visibility allows it'),jsonb_build_array(jsonb_build_object('at',now() - interval '16 hours','actor','Operations','action','Launch gate opened','note','Document visibility and deletion require audit-friendly handling.')),now() + interval '48 hours',now() - interval '16 hours',now() - interval '16 hours'),
-  ('SEC-LAUNCH-RUNBOOK','security','Sensitive legal data incident runbook','Confirm containment, audit context, notification decision, corrective controls, and closure record.','new','urgent','Security and privacy lead',jsonb_build_array('Security and privacy concerns escalate before normal support handling'),jsonb_build_array(jsonb_build_object('at',now() - interval '90 minutes','actor','Operations','action','Launch gate opened','note','Security incidents must bypass normal support triage.')),now() + interval '2 hours',now() - interval '90 minutes',now() - interval '90 minutes')
-on conflict (reference_id) do nothing;
 
 -- Production stage-4 hardening overlay: canonical states and backend funnel analytics.
 create table if not exists public.funnel_events (
@@ -1638,6 +1719,87 @@ alter table public.user_documents add column if not exists retention_until times
 alter table public.user_documents add column if not exists deletion_status text not null default 'active';
 alter table public.user_documents add column if not exists access_audit jsonb not null default '[]'::jsonb;
 alter table public.user_documents add column if not exists visibility_history jsonb not null default '[]'::jsonb;
+alter table public.user_documents add column if not exists malware_scan_status text not null default 'pending'
+  check (malware_scan_status in ('pending','clean','blocked','failed'));
+alter table public.user_documents add column if not exists malware_scan_provider text;
+alter table public.user_documents add column if not exists malware_scan_checked_at timestamptz;
+
+alter table public.funnel_events add column if not exists contract_version integer not null default 2;
+alter table public.funnel_events add column if not exists delivery_state text not null default 'persisted'
+  check (delivery_state in ('persisted','retry','dropped'));
+alter table public.funnel_events add column if not exists filtered_reason text;
+create index if not exists funnel_events_contract_window_idx on public.funnel_events (contract_version,occurred_at desc);
+
+create table if not exists public.payment_reconciliation_runs (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null default 'stripe',
+  status text not null default 'running' check (status in ('running','completed','failed')),
+  started_at timestamptz not null default now(),
+  completed_at timestamptz,
+  checked_count integer not null default 0,
+  mismatch_count integer not null default 0,
+  notes text
+);
+
+create table if not exists public.payment_reconciliation_mismatches (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid references public.payment_reconciliation_runs(id) on delete set null,
+  booking_payment_id uuid references public.booking_payments(id) on delete set null,
+  booking_id uuid references public.booking_requests(id) on delete set null,
+  stripe_checkout_session_id text,
+  stripe_payment_intent_id text,
+  mismatch_type text not null,
+  expected_state text,
+  observed_state text,
+  severity text not null default 'high' check (severity in ('low','medium','high','critical')),
+  details jsonb not null default '{}'::jsonb,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists payment_reconciliation_mismatches_open_idx
+  on public.payment_reconciliation_mismatches (created_at desc)
+  where resolved_at is null;
+
+create table if not exists public.document_access_audit_events (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid references public.user_documents(id) on delete cascade,
+  actor_user_id uuid references auth.users(id) on delete set null,
+  actor_label text not null,
+  action text not null,
+  reason_code text not null,
+  created_at timestamptz not null default now(),
+  metadata jsonb not null default '{}'::jsonb
+);
+
+create index if not exists document_access_audit_document_idx
+  on public.document_access_audit_events (document_id,created_at desc);
+
+alter table public.payment_reconciliation_runs enable row level security;
+alter table public.payment_reconciliation_mismatches enable row level security;
+alter table public.document_access_audit_events enable row level security;
+
+drop policy if exists "Operations can read payment reconciliation runs" on public.payment_reconciliation_runs;
+create policy "Operations can read payment reconciliation runs" on public.payment_reconciliation_runs for select
+  to authenticated
+  using (public.is_operations_user());
+
+drop policy if exists "Operations can read payment reconciliation mismatches" on public.payment_reconciliation_mismatches;
+create policy "Operations can read payment reconciliation mismatches" on public.payment_reconciliation_mismatches for select
+  to authenticated
+  using (public.is_operations_user());
+
+drop policy if exists "Operations can read document access audit" on public.document_access_audit_events;
+create policy "Operations can read document access audit" on public.document_access_audit_events for select
+  to authenticated
+  using (public.is_operations_user());
+
+revoke all on public.payment_reconciliation_runs from anon, authenticated;
+revoke all on public.payment_reconciliation_mismatches from anon, authenticated;
+revoke all on public.document_access_audit_events from anon, authenticated;
+grant select on public.payment_reconciliation_runs to authenticated;
+grant select on public.payment_reconciliation_mismatches to authenticated;
+grant select on public.document_access_audit_events to authenticated;
 
 notify pgrst, 'reload schema';
 
@@ -1656,9 +1818,13 @@ from (
     ('partner_accounts', to_regclass('public.partner_accounts') is not null),
     ('partner_access_codes', to_regclass('public.partner_access_codes') is not null),
     ('partner_sessions', to_regclass('public.partner_sessions') is not null),
+    ('partner_session_audit_events', to_regclass('public.partner_session_audit_events') is not null),
     ('partner_applications', to_regclass('public.partner_applications') is not null),
     ('operational_cases', to_regclass('public.operational_cases') is not null),
     ('booking_payment_events', to_regclass('public.booking_payment_events') is not null),
+    ('payment_reconciliation_runs', to_regclass('public.payment_reconciliation_runs') is not null),
+    ('payment_reconciliation_mismatches', to_regclass('public.payment_reconciliation_mismatches') is not null),
+    ('document_access_audit_events', to_regclass('public.document_access_audit_events') is not null),
     ('funnel_events', to_regclass('public.funnel_events') is not null),
     ('submit_booking_review_rpc', to_regprocedure('public.submit_booking_review(uuid,text,integer,integer,integer,text)') is not null),
     ('save_partner_workspace_rpc', to_regprocedure('public.save_partner_workspace_as_partner(text,text,jsonb,jsonb,jsonb,jsonb)') is not null),

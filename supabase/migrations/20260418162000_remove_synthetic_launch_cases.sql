@@ -1,0 +1,10 @@
+delete from public.operational_cases
+where reference_id in (
+  'PAY-LAUNCH-STRIPE',
+  'SUPPLY-LAUNCH-DENSITY',
+  'VER-LAUNCH-QUEUE',
+  'REV-LAUNCH-MODERATION',
+  'DSP-LAUNCH-RESCHEDULE',
+  'PRV-LAUNCH-DOCUMENTS',
+  'SEC-LAUNCH-RUNBOOK'
+);

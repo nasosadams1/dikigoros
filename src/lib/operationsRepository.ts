@@ -1,4 +1,5 @@
 import { operatingRules, type OperationalArea } from "@/lib/operations";
+import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
 import { supabase } from "@/lib/supabase";
 
 export type OperationalCaseStatus =
@@ -14,7 +15,7 @@ export type OperationalCaseStatus =
 export type OperationalCasePriority = "urgent" | "high" | "normal" | "low";
 
 export type OperationalSlaState = "closed" | "overdue" | "due_soon" | "on_track";
-export type OperationalCasesSource = "backend" | "fallback";
+export type OperationalCasesSource = "backend" | "fallback" | "unavailable";
 
 export interface OperationalCaseTimelineEntry {
   at: string;
@@ -303,79 +304,6 @@ const createCase = (input: CreateOperationalCaseInput, createdAt = new Date().to
   };
 };
 
-const launchReadinessCases = (): OperationalCase[] => [
-  createCase(
-    {
-      area: "payments",
-      title: "Επιβεβαίωση live διαδρομής Stripe settlement",
-      summary: "Έλεγχος live Checkout key, webhook secret, εγγραφής πληρωμής κράτησης, URL απόδειξης και διαδρομής επιστροφής πριν το launch.",
-      priority: "urgent",
-      evidence: ["Checkout Sessions για πληρωμές κράτησης", "Το webhook ενημερώνει πληρωμένη, αποτυχημένη και επιστραφείσα κατάσταση"],
-    },
-    new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-  ),
-  createCase(
-    {
-      area: "supply",
-      title: "Έλεγχος πυκνότητας 5 πόλεων και 5 δικαίων",
-      summary: "Παρακολούθηση επαληθευμένης κρατήσιμης κάλυψης σε Αθήνα, Θεσσαλονίκη, Πειραιά, Ηράκλειο και Πάτρα για τα 5 ενεργά δίκαια.",
-      priority: "high",
-      evidence: ["Τα ελάχιστα thresholds πόλης και δικαίου υπολογίζονται από live δημόσια προφίλ"],
-    },
-    new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString(),
-  ),
-  createCase(
-    {
-      area: "verification",
-      title: "Ουρά ελέγχου αιτήσεων συνεργατών",
-      summary: "Ανάθεση ελέγχου για ταυτότητα, άδεια, δικηγορικό σύλλογο, επαγγελματικά στοιχεία και ετοιμότητα προφίλ.",
-      priority: "normal",
-      evidence: ["Τα προφίλ μένουν δημόσια μόνο αφού περάσουν οι έλεγχοι ετοιμότητας"],
-    },
-    new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
-  ),
-  createCase(
-    {
-      area: "reviews",
-      title: "Έλεγχος κριτικής μετά από ολοκληρωμένη κράτηση",
-      summary: "Κράτημα νέων κριτικών για απόδειξη ολοκληρωμένης κράτησης, έλεγχο λεπτομερειών υπόθεσης, έλεγχο απάτης και χειρισμό απάντησης δικηγόρου.",
-      priority: "normal",
-      evidence: ["Το αίτημα κριτικής ανοίγει μόνο μετά την ολοκλήρωση της κράτησης"],
-    },
-    new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
-  ),
-  createCase(
-    {
-      area: "bookingDisputes",
-      title: "Διαδρομή απόφασης για αλλαγή ώρας και μη εμφάνιση",
-      summary: "Επιβεβαίωση παραθύρου ακύρωσης, κατάστασης πληρωμής, ιστορικού επικοινωνίας και αποτελέσματος επιστροφής ή αλλαγής ώρας.",
-      priority: "high",
-      evidence: ["Δωρεάν ακύρωση ή αλλαγή ώρας πριν από το παράθυρο 24 ωρών"],
-    },
-    new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
-  ),
-  createCase(
-    {
-      area: "privacyDocuments",
-      title: "Ροή διατήρησης και διαγραφής εγγράφων",
-      summary: "Δρομολόγηση αιτημάτων πρόσβασης, διαγραφής, ορατότητας και διατήρησης με context κράτησης/λογαριασμού.",
-      priority: "normal",
-      evidence: ["Τα έγγραφα είναι ορατά στον δικηγόρο της κράτησης μόνο όταν ο χρήστης επιτρέπει την ορατότητα"],
-    },
-    new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString(),
-  ),
-  createCase(
-    {
-      area: "security",
-      title: "Runbook περιστατικού ευαίσθητων νομικών δεδομένων",
-      summary: "Επιβεβαίωση περιορισμού, audit context, απόφασης ενημέρωσης, διορθωτικών μέτρων και καταγραφής κλεισίματος.",
-      priority: "urgent",
-      evidence: ["Θέματα ασφάλειας και απορρήτου κλιμακώνονται πριν από τον κανονικό χειρισμό υποστήριξης"],
-    },
-    new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-  ),
-];
-
 interface LegacySupportCase {
   type?: string;
   urgency?: string;
@@ -423,6 +351,8 @@ const migrateLegacySupportCases = () =>
   });
 
 const ensureFallbackOperationalCases = () => {
+  if (!allowLocalCriticalFallback) return [];
+
   const cachedCases = readStoredList<OperationalCase>(operationsStorageKey);
   if (cachedCases.length > 0) return cachedCases;
 
@@ -432,7 +362,7 @@ const ensureFallbackOperationalCases = () => {
     return legacyCases;
   }
 
-  const cases = [...migrateLegacySupportCases(), ...launchReadinessCases()];
+  const cases = migrateLegacySupportCases();
   writeStoredCases(cases);
   return cases;
 };
@@ -543,6 +473,8 @@ const insertAuditEvent = async (
 };
 
 const getFallbackOperationalCases = (area?: OperationalArea) => {
+  if (!allowLocalCriticalFallback) return [];
+
   const cases = ensureFallbackOperationalCases();
   return sortCases(area ? cases.filter((item) => item.area === area) : cases);
 };
@@ -553,6 +485,9 @@ export const fetchOperationalCasesSnapshot = async (area?: OperationalArea): Pro
   try {
     return { cases: await fetchBackendCases(area), source: "backend" };
   } catch {
+    if (!allowLocalCriticalFallback) {
+      return { cases: [], source: "unavailable" };
+    }
     return { cases: getFallbackOperationalCases(area), source: "fallback" };
   }
 };
@@ -578,6 +513,10 @@ export const createOperationalCase = async (input: CreateOperationalCaseInput) =
     dispatchOperationsUpdate();
     return persistedCase;
   } catch {
+    if (!allowLocalCriticalFallback) {
+      throw failClosedCriticalPath("Operational case creation");
+    }
+
     cacheCase(nextCase);
     dispatchOperationsUpdate();
     return nextCase;
@@ -662,6 +601,10 @@ export const updateOperationalCase = async (
     dispatchOperationsUpdate();
     return persistedCase;
   } catch {
+    if (!allowLocalCriticalFallback) {
+      throw failClosedCriticalPath("Operational case update");
+    }
+
     const fallbackCase = updateFallbackCase(caseId, updates, actor, note);
     dispatchOperationsUpdate();
     return fallbackCase;

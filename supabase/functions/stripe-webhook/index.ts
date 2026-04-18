@@ -58,11 +58,15 @@ const getStripeModeError = () => {
   return "";
 };
 
-const patchPayment = async (bookingId: string, updates: Record<string, unknown>) => {
+const getSupabaseCredentials = () => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) throw new Error("Missing Supabase service credentials");
+  return { supabaseUrl, serviceRoleKey };
+};
 
+const patchPayment = async (bookingId: string, updates: Record<string, unknown>) => {
+  const { supabaseUrl, serviceRoleKey } = getSupabaseCredentials();
   const response = await fetch(
     `${supabaseUrl}/rest/v1/booking_payments?booking_id=eq.${encodeURIComponent(bookingId)}`,
     {
@@ -86,9 +90,7 @@ const patchPayment = async (bookingId: string, updates: Record<string, unknown>)
 };
 
 const patchBooking = async (bookingId: string, updates: Record<string, unknown>) => {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) throw new Error("Missing Supabase service credentials");
+  const { supabaseUrl, serviceRoleKey } = getSupabaseCredentials();
 
   const response = await fetch(
     `${supabaseUrl}/rest/v1/booking_requests?id=eq.${encodeURIComponent(bookingId)}&status=in.(confirmed_unpaid,confirmed_paid,confirmed)`,
@@ -113,12 +115,9 @@ const patchBooking = async (bookingId: string, updates: Record<string, unknown>)
 };
 
 const recordPaymentEvent = async (bookingId: string, event: Record<string, unknown>, type: string, object: Record<string, unknown>) => {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) return;
-
+  const { supabaseUrl, serviceRoleKey } = getSupabaseCredentials();
   const stripeEventId = String(event.id || "");
-  if (!stripeEventId) return;
+  if (!stripeEventId) return false;
 
   const response = await fetch(
     `${supabaseUrl}/rest/v1/booking_payment_events?on_conflict=stripe_event_id`,
@@ -128,7 +127,7 @@ const recordPaymentEvent = async (bookingId: string, event: Record<string, unkno
         apikey: serviceRoleKey,
         Authorization: `Bearer ${serviceRoleKey}`,
         "Content-Type": "application/json",
-        Prefer: "resolution=ignore-duplicates,return=minimal",
+        Prefer: "resolution=ignore-duplicates,return=representation",
       },
       body: JSON.stringify({
         booking_id: bookingId,
@@ -146,14 +145,83 @@ const recordPaymentEvent = async (bookingId: string, event: Record<string, unkno
   );
 
   if (!response.ok) {
-    console.error("Payment event record failed", await response.text());
+    throw new Error(`Payment event record failed: ${await response.text()}`);
+  }
+
+  const insertedRows = await response.json().catch(() => []);
+  return Array.isArray(insertedRows) && insertedRows.length > 0;
+};
+
+const recordPaymentMismatch = async (
+  mismatchType: string,
+  object: Record<string, unknown>,
+  event: Record<string, unknown>,
+  details: Record<string, unknown> = {},
+) => {
+  const { supabaseUrl, serviceRoleKey } = getSupabaseCredentials();
+  const response = await fetch(`${supabaseUrl}/rest/v1/payment_reconciliation_mismatches`, {
+    method: "POST",
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      booking_id: details.bookingId || null,
+      stripe_checkout_session_id: object.object === "checkout.session" ? object.id || null : null,
+      stripe_payment_intent_id: object.payment_intent || object.id || null,
+      mismatch_type: mismatchType,
+      expected_state: details.expectedState || null,
+      observed_state: details.observedState || String(object.payment_status || object.status || ""),
+      severity: details.severity || "high",
+      details: {
+        stripeApiVersion,
+        eventId: event.id || "",
+        eventType: event.type || "",
+        objectId: object.id || "",
+        ...details,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    console.error("Payment mismatch record failed", await response.text());
   }
 };
 
+const findBookingIdForStripeObject = async (object: Record<string, unknown>) => {
+  const metadata =
+    typeof object.metadata === "object" && object.metadata ? (object.metadata as Record<string, unknown>) : {};
+  const directBookingId = String(object.client_reference_id || metadata.booking_id || "");
+  if (directBookingId) return directBookingId;
+
+  const paymentIntentId = String(object.payment_intent || (object.object === "payment_intent" ? object.id : "") || "");
+  const checkoutSessionId = String(object.object === "checkout.session" ? object.id || "" : "");
+  if (!paymentIntentId && !checkoutSessionId) return "";
+
+  const { supabaseUrl, serviceRoleKey } = getSupabaseCredentials();
+  const filters = paymentIntentId
+    ? `stripe_payment_intent_id=eq.${encodeURIComponent(paymentIntentId)}`
+    : `stripe_checkout_session_id=eq.${encodeURIComponent(checkoutSessionId)}`;
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/booking_payments?select=booking_id&${filters}&limit=1`,
+    {
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) return "";
+  const rows = await response.json().catch(() => []);
+  return String(rows?.[0]?.booking_id || "");
+};
+
 const patchUserPaymentPreferences = async (userId: string, preferences: Record<string, unknown>) => {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) throw new Error("Missing Supabase service credentials");
+  const { supabaseUrl, serviceRoleKey } = getSupabaseCredentials();
 
   const response = await fetch(
     `${supabaseUrl}/rest/v1/user_profiles?id=eq.${encodeURIComponent(userId)}`,
@@ -230,10 +298,14 @@ Deno.serve(async (request) => {
     return json({ received: true });
   }
 
-  const bookingId = String(object.client_reference_id || object.metadata?.booking_id || "");
-  if (!bookingId) return json({ received: true, ignored: "missing booking id" });
+  const bookingId = await findBookingIdForStripeObject(object);
+  if (!bookingId) {
+    await recordPaymentMismatch("orphan_stripe_event", object, event, { severity: "critical" });
+    return json({ received: true, queued: "orphan_stripe_event" });
+  }
 
-  await recordPaymentEvent(bookingId, event, type, object);
+  const isNewEvent = await recordPaymentEvent(bookingId, event, type, object);
+  if (!isNewEvent) return json({ received: true, replay: true });
 
   if (type === "charge.refunded" || (type === "refund.updated" && object.status === "succeeded")) {
     await patchPayment(bookingId, {
@@ -250,13 +322,17 @@ Deno.serve(async (request) => {
     return json({ received: true });
   }
 
-  if (type === "checkout.session.completed" || type === "checkout.session.async_payment_succeeded") {
+  if (
+    type === "checkout.session.completed" ||
+    type === "checkout.session.async_payment_succeeded" ||
+    type === "payment_intent.succeeded"
+  ) {
     const receiptUrl = await fetchReceiptUrl(object.payment_intent);
 
     await patchPayment(bookingId, {
       status: "paid",
       stripe_checkout_session_id: object.id,
-      stripe_payment_intent_id: object.payment_intent,
+      stripe_payment_intent_id: object.payment_intent || object.id,
       receipt_url: receiptUrl,
       paid_at: new Date().toISOString(),
       provider_payload: {
@@ -270,11 +346,15 @@ Deno.serve(async (request) => {
     });
   }
 
-  if (type === "checkout.session.expired" || type === "checkout.session.async_payment_failed") {
+  if (
+    type === "checkout.session.expired" ||
+    type === "checkout.session.async_payment_failed" ||
+    type === "payment_intent.payment_failed"
+  ) {
     await patchPayment(bookingId, {
       status: "failed",
-      stripe_checkout_session_id: object.id,
-      stripe_payment_intent_id: object.payment_intent,
+      stripe_checkout_session_id: object.object === "checkout.session" ? object.id : undefined,
+      stripe_payment_intent_id: object.payment_intent || object.id,
       provider_payload: {
         stripeApiVersion,
         eventId: event.id,

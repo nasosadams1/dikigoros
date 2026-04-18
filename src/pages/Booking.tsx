@@ -40,6 +40,7 @@ import {
   type StoredBooking,
 } from "@/lib/platformRepository";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
+import { allowLocalCriticalFallback } from "@/lib/runtimeGuards";
 import { cn } from "@/lib/utils";
 
 const steps = ["Τύπος", "Ημερομηνία", "Στοιχεία", "Πληρωμή", "Επιβεβαίωση"];
@@ -49,10 +50,11 @@ const shortMonths = ["Ιαν", "Φεβ", "Μαρ", "Απρ", "Μαΐ", "Ιουν
 const longMonths = ["Ιανουαρίου", "Φεβρουαρίου", "Μαρτίου", "Απριλίου", "Μαΐου", "Ιουνίου", "Ιουλίου", "Αυγούστου", "Σεπτεμβρίου", "Οκτωβρίου", "Νοεμβρίου", "Δεκεμβρίου"];
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const allowLocalCheckoutReturnRecording =
-  import.meta.env.MODE === "test" ||
+  allowLocalCriticalFallback &&
+  (import.meta.env.MODE === "test" ||
   (import.meta.env.DEV &&
     import.meta.env.VITE_REQUIRE_LIVE_PAYMENTS !== "true" &&
-    import.meta.env.VITE_ENABLE_LOCAL_BOOKING_FALLBACK === "true");
+    import.meta.env.VITE_ENABLE_LOCAL_BOOKING_FALLBACK === "true"));
 
 const buildBookingDates = (bookingWindowDays: number) =>
   Array.from({ length: Math.max(1, bookingWindowDays) }, (_, index) => {
@@ -217,7 +219,7 @@ const Booking = () => {
       }
     }
 
-    if (checkout === "success") {
+    if (checkout === "success" && allowLocalCheckoutReturnRecording) {
       trackFunnelEvent("payment_completed", {
         bookingId,
         lawyerId: storedBooking?.lawyerId || id,
@@ -226,6 +228,17 @@ const Booking = () => {
       });
       setPaymentState({ loading: false, error: "", action: "" });
       setCurrentStep(4);
+      return;
+    }
+
+    if (checkout === "success") {
+      setPaymentState({
+        loading: false,
+        error:
+          "Η πληρωμή επέστρεψε από το Stripe και επιβεβαιώνεται από το backend. Η κράτηση, η απόδειξη και η κατάσταση πληρωμής θα εμφανιστούν στον λογαριασμό σας μόλις καταγραφεί το webhook.",
+        action: "",
+      });
+      setCurrentStep(3);
       return;
     }
 
@@ -509,6 +522,7 @@ const Booking = () => {
                     <button
                       key={consultation.mode}
                       type="button"
+                      data-testid={`consultation-option-${index}`}
                       onClick={() => setSelectedType(index)}
                       className={cn(
                         "flex w-full items-center gap-4 rounded-xl border-2 p-5 text-left transition-all",
@@ -552,6 +566,7 @@ const Booking = () => {
                   <button
                     key={date.full}
                     type="button"
+                    data-testid={`booking-date-${index}`}
                     onClick={() => {
                       setSelectedDate(index);
                       setSelectedTime(null);
@@ -582,6 +597,7 @@ const Booking = () => {
                         <button
                           key={time}
                           type="button"
+                          data-testid={`booking-time-${time.replace(":", "")}`}
                           onClick={() => {
                             if (!isReserved) setSelectedTime(time);
                           }}
@@ -631,6 +647,7 @@ const Booking = () => {
               <div className="mt-5 space-y-4">
                 <TextField
                   label="Ονοματεπώνυμο"
+                  testId="booking-full-name"
                   value={details.fullName}
                   onChange={(value) => setDetails((current) => ({ ...current, fullName: value }))}
                   onBlur={() => setTouched((current) => ({ ...current, fullName: true }))}
@@ -639,6 +656,7 @@ const Booking = () => {
                 />
                 <TextField
                   label="Ηλεκτρονικό ταχυδρομείο"
+                  testId="booking-email"
                   type="email"
                   value={details.email}
                   onChange={(value) => setDetails((current) => ({ ...current, email: value }))}
@@ -648,6 +666,7 @@ const Booking = () => {
                 />
                 <TextField
                   label="Τηλέφωνο"
+                  testId="booking-phone"
                   type="tel"
                   value={details.phone}
                   onChange={(value) => setDetails((current) => ({ ...current, phone: value }))}
@@ -660,6 +679,7 @@ const Booking = () => {
                     Σύντομη περιγραφή θέματος <span className="font-medium text-muted-foreground">(προαιρετικό)</span>
                   </label>
                   <textarea
+                    data-testid="booking-issue"
                     value={details.issue}
                     onChange={(event) => setDetails((current) => ({ ...current, issue: event.target.value }))}
                     placeholder="Περιγράψτε σε λίγες γραμμές το θέμα σας."
@@ -788,6 +808,7 @@ const Booking = () => {
             </Button>
             <Button
               onClick={handleNext}
+              data-testid="booking-next"
               disabled={!canContinue || isSubmitting || paymentState.loading}
               className="rounded-xl px-8 text-sm font-bold shadow-lg shadow-primary/20 disabled:shadow-none"
             >
@@ -835,6 +856,7 @@ const TextField = ({
   value,
   placeholder,
   error,
+  testId,
   onChange,
   onBlur,
 }: {
@@ -843,6 +865,7 @@ const TextField = ({
   value: string;
   placeholder: string;
   error?: string;
+  testId?: string;
   onChange: (value: string) => void;
   onBlur: () => void;
 }) => (
@@ -850,6 +873,7 @@ const TextField = ({
     <label className="text-sm font-bold text-foreground">{label}</label>
     <input
       type={type}
+      data-testid={testId}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}

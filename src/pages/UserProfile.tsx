@@ -59,7 +59,6 @@ import {
   reviewPublicationStateLabels,
 } from "@/lib/bookingState";
 import {
-  addUserDocuments,
   createUserDocumentDownloadUrl,
   fetchUserWorkspace,
   formatFileSize,
@@ -228,7 +227,13 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
 
   useEffect(() => {
     setWorkspace(getUserWorkspace(workspaceKey));
-    void fetchUserWorkspace(workspaceKey, userId).then(setWorkspace);
+    void fetchUserWorkspace(workspaceKey, userId).then(setWorkspace).catch(() => {
+      setPaymentSetupState({
+        loading: false,
+        message: "Τα στοιχεία λογαριασμού είναι προσωρινά μη διαθέσιμα. Ανανεώστε σε λίγο για να δείτε κρατήσεις, πληρωμές και έγγραφα από το backend.",
+        tone: "error",
+      });
+    });
   }, [userId, workspaceKey]);
 
   useEffect(() => {
@@ -257,13 +262,6 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
       message: notice.message,
       tone: notice.tone,
     });
-    if (searchParams.get("checkout") === "success") {
-      trackFunnelEvent("payment_completed", {
-        bookingId: searchParams.get("bookingId") || undefined,
-        userId,
-        surface: "account",
-      });
-    }
     setBookingVersion((version) => version + 1);
     setSearchParams(clearPaymentReturnParams(searchParams), { replace: true });
   }, [searchParams, setSearchParams, userId]);
@@ -278,6 +276,15 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
       if (!active) return;
       setBookings(nextBookings);
       setPayments(nextPayments);
+    }).catch(() => {
+      if (!active) return;
+      setBookings([]);
+      setPayments([]);
+      setPaymentSetupState({
+        loading: false,
+        message: "Οι κρατήσεις και οι πληρωμές είναι προσωρινά μη διαθέσιμες. Δεν εμφανίζουμε τοπική κατάσταση όταν το backend δεν απαντά.",
+        tone: "error",
+      });
     });
 
     return () => {
@@ -318,7 +325,13 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
   const persistWorkspace = (nextWorkspace: UserWorkspace) => {
     const normalized = saveUserWorkspace(workspaceKey, nextWorkspace);
     setWorkspace(normalized);
-    void syncUserWorkspace(workspaceKey, normalized, userId);
+    void syncUserWorkspace(workspaceKey, normalized, userId).catch(() => {
+      setPaymentSetupState({
+        loading: false,
+        message: "Δεν έγινε αποθήκευση στο backend. Οι αλλαγές λογαριασμού δεν θεωρούνται οριστικές.",
+        tone: "error",
+      });
+    });
   };
 
   const updateProfileDraft = (updates: Partial<AccountProfileDraft>) => {
@@ -440,7 +453,6 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
         : "Ανεβάζουμε τα έγγραφα με ασφαλή σύνδεση.",
       tone: "info",
     });
-    setWorkspace(addUserDocuments(workspaceKey, validation.acceptedFiles, "Έγγραφο υπόθεσης", nextBooking?.id));
     void uploadUserDocuments(workspaceKey, validation.acceptedFiles, "Έγγραφο υπόθεσης", nextBooking?.id, userId)
       .then((nextWorkspace) => {
         setWorkspace(nextWorkspace);
@@ -1120,6 +1132,16 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               {getDocumentVisibilityExplanation(document)}
                             </p>
                             <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
+                              Έλεγχος ασφαλείας:{" "}
+                              {document.malwareScanStatus === "clean"
+                                ? "καθαρό"
+                                : document.malwareScanStatus === "blocked"
+                                  ? "μπλοκαρισμένο"
+                                  : document.malwareScanStatus === "failed"
+                                    ? "χρειάζεται έλεγχο υποστήριξης"
+                                    : "σε εξέλιξη"}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
                               Διατήρηση έως {new Date(document.retentionUntil || document.uploadedAt).toLocaleDateString("el-GR")} · Κατάσταση διαγραφής: {document.deletionStatus === "deletion_requested" ? "ζητήθηκε διαγραφή" : document.deletionStatus === "deleted" ? "διαγράφηκε" : document.deletionStatus === "retained_for_legal_reason" ? "κρατείται με αιτιολογία" : "ενεργό"}
                             </p>
                             {document.visibilityHistory?.[0] ? (
@@ -1133,12 +1155,25 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               type="button"
                               variant="outline"
                               size="sm"
-                              disabled={document.deletionStatus === "deletion_requested" || (!document.storagePath && !document.downloadUrl)}
+                              disabled={document.deletionStatus === "deletion_requested" || document.malwareScanStatus !== "clean" || (!document.storagePath && !document.downloadUrl)}
                               onClick={() =>
                                 void createUserDocumentDownloadUrl(document).then((url) => {
                                   if (url && typeof window !== "undefined") {
                                     window.open(url, "_blank", "noopener,noreferrer");
+                                    return;
                                   }
+
+                                  setDocumentUploadState({
+                                    loading: false,
+                                    tone: "info",
+                                    message: "Το έγγραφο θα είναι διαθέσιμο μόνο αφού ολοκληρωθεί ο έλεγχος ασφαλείας στο backend.",
+                                  });
+                                }).catch(() => {
+                                  setDocumentUploadState({
+                                    loading: false,
+                                    tone: "error",
+                                    message: "Η λήψη είναι προσωρινά μη διαθέσιμη. Δεν δημιουργήθηκε τοπικός σύνδεσμος πρόσβασης.",
+                                  });
                                 })
                               }
                               className="rounded-xl font-bold"
@@ -1150,7 +1185,24 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => void setUserDocumentVisibilityPersisted(workspaceKey, document.id, !document.visibleToLawyer, userId).then(setWorkspace)}
+                              onClick={() =>
+                                void setUserDocumentVisibilityPersisted(workspaceKey, document.id, !document.visibleToLawyer, userId)
+                                  .then((nextWorkspace) => {
+                                    setWorkspace(nextWorkspace);
+                                    setDocumentUploadState({
+                                      loading: false,
+                                      tone: "success",
+                                      message: "Η ορατότητα ενημερώθηκε στο backend.",
+                                    });
+                                  })
+                                  .catch(() => {
+                                    setDocumentUploadState({
+                                      loading: false,
+                                      tone: "error",
+                                      message: "Η αλλαγή ορατότητας είναι προσωρινά μη διαθέσιμη. Δεν αποθηκεύτηκε τοπική κατάσταση.",
+                                    });
+                                  })
+                              }
                               aria-pressed={document.visibleToLawyer}
                               disabled={document.deletionStatus === "deletion_requested"}
                               className="rounded-xl font-bold"
@@ -1166,6 +1218,11 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                               onClick={() =>
                                 void removeUserDocumentPersisted(workspaceKey, document.id, userId).then((nextWorkspace) => {
                                   setWorkspace(nextWorkspace);
+                                  setDocumentUploadState({
+                                    loading: false,
+                                    tone: "success",
+                                    message: "Το αίτημα διαγραφής καταγράφηκε στο backend.",
+                                  });
                                   void createOperationalCase({
                                     area: "privacyDocuments",
                                     title: "Καταγραφή αιτήματος διαγραφής εγγράφου",
@@ -1177,6 +1234,18 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                                       `Κατηγορία εγγράφου: ${document.category}`,
                                       `Ορατό στον δικηγόρο πριν τη διαγραφή: ${document.visibleToLawyer ? "ναι" : "όχι"}`,
                                     ],
+                                  }).catch(() => {
+                                    setDocumentUploadState({
+                                      loading: false,
+                                      tone: "error",
+                                      message: "Το αίτημα διαγραφής αποθηκεύτηκε, αλλά η υπόθεση υποστήριξης δεν δημιουργήθηκε. Η ομάδα λειτουργιών πρέπει να ελέγξει το audit log.",
+                                    });
+                                  });
+                                }).catch(() => {
+                                  setDocumentUploadState({
+                                    loading: false,
+                                    tone: "error",
+                                    message: "Η διαγραφή είναι προσωρινά μη διαθέσιμη. Δεν έγινε τοπική αλλαγή στο έγγραφο.",
                                   });
                                 })
                               }

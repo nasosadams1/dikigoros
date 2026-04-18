@@ -11,6 +11,8 @@
     "preview": "vite preview",
     "launch:audit": "node scripts/launch-readiness.mjs",
     "launch:audit:strict": "node scripts/launch-readiness.mjs --strict",
+    "release:gate": "npm run test && npm run test:e2e && npm run build && npm run launch:audit:strict",
+    "test:e2e": "playwright test",
     "test": "vitest run",
     "test:watch": "vitest"
   },

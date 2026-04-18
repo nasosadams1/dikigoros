@@ -28,8 +28,8 @@ export const getPaymentReturnNotice = (params: URLSearchParams): ProfileActionNo
 
   if (checkout === "success") {
     return {
-      tone: "success",
-      message: "Η πληρωμή ολοκληρώθηκε. Ανανεώνουμε τις αποδείξεις και την κατάσταση της κράτησης.",
+      tone: "info",
+      message: "Επιστρέψατε από το Stripe. Η κατάσταση πληρωμής και η απόδειξη εμφανίζονται μόνο αφού επιβεβαιωθούν από το backend.",
     };
   }
 
@@ -42,8 +42,8 @@ export const getPaymentReturnNotice = (params: URLSearchParams): ProfileActionNo
 
   if (setup === "success") {
     return {
-      tone: "success",
-      message: "Η μέθοδος πληρωμής συνδέθηκε με ασφάλεια μέσω Stripe.",
+      tone: "info",
+      message: "Επιστρέψατε από το Stripe. Η μέθοδος πληρωμής θα εμφανιστεί όταν επιβεβαιωθεί από το backend.",
     };
   }
 

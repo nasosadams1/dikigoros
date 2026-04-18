@@ -481,6 +481,7 @@ const LawyerProfile = () => {
               <Button asChild className="mt-4 h-12 w-full rounded-xl text-[15px] font-bold">
                 <Link
                   to={`/booking/${lawyer.id}?source=profile`}
+                  data-testid="profile-booking-link"
                   onClick={() => trackFunnelEvent("profile_booking_start", { lawyerId: lawyer.id, specialty: lawyer.specialty })}
                 >
                   Κλείσε ραντεβού

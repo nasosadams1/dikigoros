@@ -2,6 +2,7 @@ import type { ConsultationMode } from "@/data/lawyers";
 import { normalizeReviewPublicationState, type ReviewPublicationState } from "@/lib/bookingState";
 import { validateLegalDocumentUpload } from "@/lib/documentPolicy";
 import { normalizeAllowedMarketplaceCity, normalizeLegalPracticeAreas } from "@/lib/marketplaceTaxonomy";
+import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
 import { supabase } from "@/lib/supabase";
 
 export type PreferredConsultationMode = ConsultationMode | "any";
@@ -40,6 +41,7 @@ export interface UserDocument {
   deletionStatus?: "active" | "deletion_requested" | "deleted" | "retained_for_legal_reason";
   accessAudit?: Array<{ at: string; actor: string; action: string }>;
   visibilityHistory?: Array<{ at: string; visibleToLawyer: boolean; actor: string }>;
+  malwareScanStatus?: "pending" | "clean" | "blocked" | "failed";
   storagePath?: string;
   downloadUrl?: string;
   persistenceSource?: "supabase" | "local";
@@ -156,6 +158,7 @@ interface UserDocumentRow {
   deletion_status?: string | null;
   access_audit?: Array<{ at: string; actor: string; action: string }> | null;
   visibility_history?: Array<{ at: string; visibleToLawyer: boolean; actor: string }> | null;
+  malware_scan_status?: "pending" | "clean" | "blocked" | "failed" | null;
   storage_path: string | null;
   created_at: string;
 }
@@ -259,6 +262,7 @@ const documentFromRow = (row: UserDocumentRow): UserDocument => ({
   visibilityHistory: row.visibility_history || [
     { at: row.created_at, visibleToLawyer: row.visible_to_lawyer, actor: "Client" },
   ],
+  malwareScanStatus: row.malware_scan_status || "pending",
   storagePath: row.storage_path || undefined,
   persistenceSource: "supabase",
 });
@@ -348,7 +352,7 @@ export const fetchUserWorkspace = async (userId?: string | null, remoteUserId?: 
       (Array.isArray(documentRows) ? (documentRows as UserDocumentRow[]).map(documentFromRow) : []).map(
         async (document) => ({
           ...document,
-          downloadUrl: await createSignedDocumentUrl(document.storagePath),
+          downloadUrl: document.malwareScanStatus === "clean" ? await createSignedDocumentUrl(document.storagePath) : undefined,
         }),
       ),
     );
@@ -367,6 +371,9 @@ export const fetchUserWorkspace = async (userId?: string | null, remoteUserId?: 
 
     return saveUserWorkspace(userId, withDocuments);
   } catch {
+    if (resolvedRemoteUserId && !allowLocalCriticalFallback) {
+      throw failClosedCriticalPath("Account workspace");
+    }
     return localWorkspace;
   }
 };
@@ -395,7 +402,9 @@ export const syncUserWorkspace = async (
       ...workspaceToProfileUpdates(normalized),
     });
   } catch {
-    // Local storage remains the offline fallback; callers keep the optimistic UI.
+    if (!allowLocalCriticalFallback) {
+      throw failClosedCriticalPath("Account workspace");
+    }
   }
 
   return normalized;
@@ -470,6 +479,7 @@ export const addUserDocuments = (
           deletionStatus: "active" as const,
           accessAudit: [{ at: new Date().toISOString(), actor: "Client", action: "Uploaded" }],
           visibilityHistory: [{ at: new Date().toISOString(), visibleToLawyer: true, actor: "Client" }],
+          malwareScanStatus: "pending" as const,
           persistenceSource: "local" as const,
         })),
         ...workspace.documents,
@@ -486,7 +496,10 @@ export const uploadUserDocuments = async (
 ) => {
   const { acceptedFiles } = validateLegalDocumentUpload(files);
   const resolvedRemoteUserId = resolveRemoteUserId(userId, remoteUserId);
-  if (!resolvedRemoteUserId) return addUserDocuments(userId, acceptedFiles, category, linkedBookingId);
+  if (!resolvedRemoteUserId) {
+    if (allowLocalCriticalFallback) return addUserDocuments(userId, acceptedFiles, category, linkedBookingId);
+    throw failClosedCriticalPath("Document upload");
+  }
   if (acceptedFiles.length === 0) return getUserWorkspace(userId);
 
   const uploadedDocuments: UserDocument[] = [];
@@ -507,6 +520,7 @@ export const uploadUserDocuments = async (
       deletionStatus: "active",
       accessAudit: [{ at: new Date().toISOString(), actor: "Client", action: "Uploaded" }],
       visibilityHistory: [{ at: new Date().toISOString(), visibleToLawyer: true, actor: "Client" }],
+      malwareScanStatus: "pending",
       storagePath,
       persistenceSource: "local",
     };
@@ -532,11 +546,15 @@ export const uploadUserDocuments = async (
         deletion_status: "active",
         access_audit: document.accessAudit,
         visibility_history: document.visibilityHistory,
+        malware_scan_status: "pending",
       });
       if (metadataError) throw metadataError;
 
       uploadedDocuments.push({ ...document, persistenceSource: "supabase" });
     } catch {
+      if (!allowLocalCriticalFallback) {
+        throw failClosedCriticalPath("Document upload");
+      }
       uploadedDocuments.push(document);
     }
   }
@@ -577,7 +595,7 @@ export const removeUserDocument = (userId: string | null | undefined, documentId
   }));
 
 export const createUserDocumentDownloadUrl = async (document: UserDocument) =>
-  document.downloadUrl || createSignedDocumentUrl(document.storagePath);
+  document.malwareScanStatus === "clean" ? document.downloadUrl || createSignedDocumentUrl(document.storagePath) : undefined;
 
 export const removeUserDocumentPersisted = async (
   userId: string | null | undefined,
@@ -585,7 +603,6 @@ export const removeUserDocumentPersisted = async (
   remoteUserId?: string | null,
 ) => {
   const existingDocument = getUserWorkspace(userId).documents.find((document) => document.id === documentId);
-  const nextWorkspace = removeUserDocument(userId, documentId);
   const resolvedRemoteUserId = resolveRemoteUserId(userId, remoteUserId);
 
   if (resolvedRemoteUserId && existingDocument?.persistenceSource === "supabase") {
@@ -603,11 +620,15 @@ export const removeUserDocumentPersisted = async (
         .eq("id", documentId)
         .eq("user_id", resolvedRemoteUserId);
     } catch {
-      // Keep optimistic local deletion; backend retry can be added by the job queue later.
+      if (!allowLocalCriticalFallback) {
+        throw failClosedCriticalPath("Document deletion request");
+      }
     }
+  } else if (!allowLocalCriticalFallback) {
+    throw failClosedCriticalPath("Document deletion request");
   }
 
-  return nextWorkspace;
+  return removeUserDocument(userId, documentId);
 };
 
 export const setUserDocumentVisibility = (
@@ -637,9 +658,10 @@ export const setUserDocumentVisibilityPersisted = async (
   visibleToLawyer: boolean,
   remoteUserId?: string | null,
 ) => {
-  const nextWorkspace = setUserDocumentVisibility(userId, documentId, visibleToLawyer);
+  const currentWorkspace = getUserWorkspace(userId);
+  const existingDocument = currentWorkspace.documents.find((document) => document.id === documentId);
   const resolvedRemoteUserId = resolveRemoteUserId(userId, remoteUserId);
-  if (resolvedRemoteUserId) {
+  if (resolvedRemoteUserId && existingDocument?.persistenceSource === "supabase") {
     try {
       await supabase
         .from("user_documents")
@@ -647,17 +669,21 @@ export const setUserDocumentVisibilityPersisted = async (
           visible_to_lawyer: visibleToLawyer,
           visibility_history: [
             { at: new Date().toISOString(), visibleToLawyer, actor: "Client" },
-            ...(nextWorkspace.documents.find((document) => document.id === documentId)?.visibilityHistory?.slice(1) || []),
+            ...(existingDocument.visibilityHistory || []),
           ],
         })
         .eq("id", documentId)
         .eq("user_id", resolvedRemoteUserId);
     } catch {
-      // Local state is already updated for the user.
+      if (!allowLocalCriticalFallback) {
+        throw failClosedCriticalPath("Document visibility");
+      }
     }
+  } else if (!allowLocalCriticalFallback) {
+    throw failClosedCriticalPath("Document visibility");
   }
 
-  return nextWorkspace;
+  return setUserDocumentVisibility(userId, documentId, visibleToLawyer);
 };
 
 export const updateUserPaymentMethod = (

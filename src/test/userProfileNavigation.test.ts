@@ -13,7 +13,8 @@ describe("user profile navigation", () => {
 
   it("maps Stripe checkout returns to user-facing notices", () => {
     expect(getPaymentReturnNotice(new URLSearchParams("checkout=success"))).toMatchObject({
-      tone: "success",
+      tone: "info",
+      message: expect.stringContaining("backend"),
     });
     expect(getPaymentReturnNotice(new URLSearchParams("setup=cancelled"))).toMatchObject({
       tone: "info",

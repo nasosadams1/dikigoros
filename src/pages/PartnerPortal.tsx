@@ -235,6 +235,13 @@ const PartnerPortal = () => {
       if (!active) return;
       setWorkspace(nextWorkspace);
       setSavedWorkspace(nextWorkspace);
+    }).catch(() => {
+      if (!active) return;
+      setProfileSaveState({
+        loading: false,
+        message: "Ο χώρος συνεργάτη είναι προσωρινά μη διαθέσιμος. Δεν χρησιμοποιείται τοπικό προφίλ όταν το backend δεν απαντά.",
+        tone: "error",
+      });
     });
 
     return () => {
@@ -283,6 +290,17 @@ const PartnerPortal = () => {
       .catch((error) => {
         if (!active) return;
         if (isPartnerSessionInvalidError(error)) handleExpiredPartnerSession();
+        else {
+          setPartnerBookings([]);
+          setPartnerPayments([]);
+          setPartnerReviews([]);
+          setPartnerDocuments([]);
+          setProfileSaveState({
+            loading: false,
+            message: "Τα ραντεβού, οι πληρωμές και τα έγγραφα συνεργάτη είναι προσωρινά μη διαθέσιμα από το backend.",
+            tone: "error",
+          });
+        }
       });
 
     return () => {
@@ -664,9 +682,9 @@ const PartnerPortal = () => {
           </section>
 
           <PartnerPerformanceDashboard
-            profileViews={partnerReviews.length * 18 + paidBookings * 12 + confirmedBookings.length * 6}
-            searchAppearances={Math.max(0, workspace.availability.filter((slot) => slot.enabled).length * 22)}
-            profileBookingStarts={confirmedBookings.length + paidBookings}
+            profileViews={null}
+            searchAppearances={null}
+            profileBookingStarts={null}
             bookingStarts={partnerBookings.length}
             paidBookings={paidBookings}
             completedFirstConsultations={completedBookings.length}
@@ -1487,9 +1505,9 @@ const PartnerPerformanceDashboard = ({
   pendingModerationItems,
   pendingPaymentIssues,
 }: {
-  profileViews: number;
-  searchAppearances: number;
-  profileBookingStarts: number;
+  profileViews: number | null;
+  searchAppearances: number | null;
+  profileBookingStarts: number | null;
   bookingStarts: number;
   paidBookings: number;
   completedFirstConsultations: number;
@@ -1517,9 +1535,9 @@ const PartnerPerformanceDashboard = ({
     </div>
 
     <div className="mt-6 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
-      <Metric label="Προβολές προφίλ" value={String(profileViews)} helper="από αναζήτηση/προφίλ" />
-      <Metric label="Εμφανίσεις" value={String(searchAppearances)} helper="σε σχετικά αποτελέσματα" />
-      <Metric label="Προς κράτηση" value={String(profileBookingStarts)} helper="ενάρξεις από προφίλ" />
+      <Metric label="Προβολές προφίλ" value={profileViews === null ? "—" : String(profileViews)} helper="μόνο από backend analytics" />
+      <Metric label="Εμφανίσεις" value={searchAppearances === null ? "—" : String(searchAppearances)} helper="μόνο από backend analytics" />
+      <Metric label="Προς κράτηση" value={profileBookingStarts === null ? "—" : String(profileBookingStarts)} helper="μόνο από backend analytics" />
       <Metric label="Κρατήσεις" value={String(bookingStarts)} helper={`${paidBookings} πληρωμένες`} />
       <Metric label="Πρώτες συνεδρίες" value={String(completedFirstConsultations)} helper="ολοκληρωμένες" />
     </div>

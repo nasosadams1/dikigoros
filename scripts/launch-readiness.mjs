@@ -273,8 +273,74 @@ const getPaymentConfigChecks = (env) => {
   ];
 };
 
+const readRepoFile = (relativePath) => {
+  try {
+    return readFileSync(join(rootDir, relativePath), "utf8");
+  } catch {
+    return "";
+  }
+};
+
+const getSourceHardeningChecks = () => {
+  const platformRepository = readRepoFile("src/lib/platformRepository.ts");
+  const operationsRepository = readRepoFile("src/lib/operationsRepository.ts");
+  const desiredSchema = readRepoFile("supabase/desired_supabase_from_scratch.sql");
+  const syntheticLaunchCleanupMigration = readRepoFile("supabase/migrations/20260418162000_remove_synthetic_launch_cases.sql");
+  const webhookFunction = readRepoFile("supabase/functions/stripe-webhook/index.ts");
+  const reconciliationFunction = readRepoFile("supabase/functions/reconcile-stripe-payments/index.ts");
+  const reconciliationWorkflow = readRepoFile(".github/workflows/daily-stripe-reconciliation.yml");
+  const workflow = readRepoFile(".github/workflows/stage4-release-gate.yml");
+
+  return [
+    {
+      label: "Δεν υπάρχει τοπικό partner auth bypass",
+      ready:
+        !platformRepository.includes("localPartnerAccessCode") &&
+        !platformRepository.includes("isLocalApprovedPartner") &&
+        !platformRepository.includes("VITE_ENABLE_LOCAL_PARTNER_FALLBACK") &&
+        !platformRepository.includes("742913") &&
+        platformRepository.includes("PARTNER_SESSION_REQUIRES_BACKEND_TOKEN") &&
+        desiredSchema.includes("partner_session_audit_events") &&
+        desiredSchema.includes("session_issued"),
+    },
+    {
+      label: "Οι λειτουργίες δεν σπέρνουν fallback launch cases στην παραγωγή",
+      ready:
+        operationsRepository.includes("allowLocalCriticalFallback") &&
+        operationsRepository.includes('source: "unavailable"') &&
+        !operationsRepository.includes("launchReadinessCases") &&
+        !desiredSchema.includes("insert into public.operational_cases") &&
+        syntheticLaunchCleanupMigration.includes("PAY-LAUNCH-STRIPE"),
+    },
+    {
+      label: "Το Stripe webhook είναι replay-safe και κρατά mismatch queue",
+      ready:
+        webhookFunction.includes("replay: true") &&
+        webhookFunction.includes("payment_reconciliation_mismatches") &&
+        webhookFunction.includes("orphan_stripe_event"),
+    },
+    {
+      label: "Υπάρχει daily reconciliation worker για Stripe",
+      ready:
+        reconciliationFunction.includes("payment_reconciliation_runs") &&
+        reconciliationFunction.includes("state_mismatch") &&
+        reconciliationFunction.includes("missing_receipt") &&
+        reconciliationWorkflow.includes("reconcile-stripe-payments") &&
+        reconciliationWorkflow.includes("schedule:"),
+    },
+    {
+      label: "Το CI τρέχει strict launch audit ως release gate",
+      ready:
+        workflow.includes("npm run release:gate") &&
+        workflow.includes("REQUIRE_LIVE_STRIPE") &&
+        readRepoFile("package.json").includes("npm run test:e2e"),
+    },
+  ];
+};
+
 const getGateReport = ({ env, lawyers, operationalCases, operationalSource, funnelEvents }) => {
   const paymentConfigChecks = getPaymentConfigChecks(env);
+  const sourceHardeningChecks = getSourceHardeningChecks();
   const paymentEvidenceChecks = getPaymentEvidenceChecks(operationalCases);
   const supportEvidenceChecks = getSupportEvidenceChecks(operationalCases);
   const funnelCoverage = getFunnelCoverage(funnelEvents);
@@ -284,7 +350,7 @@ const getGateReport = ({ env, lawyers, operationalCases, operationalSource, funn
     {
       label: "Οι εξαιρέσεις κράτησης και πληρωμής έχουν ελεγχθεί end-to-end",
       owner: "Υπεύθυνος πληρωμών",
-      ready: paymentConfigChecks.every((check) => check.ready) && paymentEvidenceChecks.every((check) => check.ready),
+      ready: paymentConfigChecks.every((check) => check.ready) && sourceHardeningChecks.every((check) => check.ready) && paymentEvidenceChecks.every((check) => check.ready),
       evidence: `${paymentEvidenceChecks.filter((check) => check.ready).length}/${paymentEvidenceChecks.length} σενάρια πληρωμής έχουν κλείσει με στοιχεία.`,
     },
     {
@@ -356,6 +422,7 @@ const getGateReport = ({ env, lawyers, operationalCases, operationalSource, funn
     },
     gates,
     paymentConfigChecks,
+    sourceHardeningChecks,
     paymentEvidenceChecks,
     supportEvidenceChecks,
     funnelCoverage,
@@ -386,6 +453,10 @@ const toMarkdown = (report) => {
     "## Ρύθμιση πληρωμών",
     "",
     ...report.paymentConfigChecks.map((check) => `- ${formatMark(check.ready)}: ${check.label} - ${check.detail}`),
+    "",
+    "## Στατικός έλεγχος hardening",
+    "",
+    ...report.sourceHardeningChecks.map((check) => `- ${formatMark(check.ready)}: ${check.label}`),
     "",
     "## Αποδείξεις πληρωμών",
     "",
@@ -472,7 +543,7 @@ const main = async () => {
       ];
 
   const [operationalCasesResult, funnelEventsResult] = protectedResults;
-  const operationalSource = operationalCasesResult.error ? "blocked" : "backend";
+  const operationalSource = operationalCasesResult.error ? "unavailable" : "backend";
 
   const report = getGateReport({
     env,

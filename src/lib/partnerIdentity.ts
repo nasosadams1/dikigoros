@@ -12,6 +12,10 @@ export const getStoredPartnerLawyerId = (email?: string | null) => {
 
 export const fetchPartnerLawyerId = async (email?: string | null) => {
   if (!email) return null;
-  const workspace = await fetchPartnerWorkspace(email);
-  return workspace.profile.lawyerId || null;
+  try {
+    const workspace = await fetchPartnerWorkspace(email);
+    return workspace.profile.lawyerId || null;
+  } catch {
+    return null;
+  }
 };

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
 
 export type FunnelEventName =
   | "homepage_search"
@@ -36,8 +37,10 @@ export interface FunnelMetric {
 }
 
 const pendingFunnelStorageKey = "dikigoros.funnelEvents.pending.v1";
+const droppedFunnelStorageKey = "dikigoros.funnelEvents.dropped.v1";
 const funnelSessionKey = "dikigoros.funnelSession.v1";
 const maxStoredEvents = 600;
+const funnelContractVersion = 2;
 
 export const funnelSteps: Array<{ name: FunnelEventName; label: string }> = [
   { name: "homepage_search", label: "Αρχική -> αναζήτηση" },
@@ -71,6 +74,26 @@ const writePendingEvents = (events: FunnelEvent[]) => {
   window.localStorage.setItem(pendingFunnelStorageKey, JSON.stringify(events.slice(0, maxStoredEvents)));
 };
 
+const writeDroppedEvent = (event: FunnelEvent, reason: string) => {
+  if (!canUseStorage()) return;
+  const droppedEvents = readStoredEvents(droppedFunnelStorageKey);
+  window.localStorage.setItem(
+    droppedFunnelStorageKey,
+    JSON.stringify([{ ...event, metadata: { ...(event.metadata || {}), dropReason: reason } }, ...droppedEvents].slice(0, maxStoredEvents)),
+  );
+};
+
+const readStoredEvents = (key: string): FunnelEvent[] => {
+  if (!canUseStorage()) return [];
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((event): event is FunnelEvent => Boolean(event?.name && event?.occurredAt)) : [];
+  } catch {
+    return [];
+  }
+};
+
 const getFunnelSessionId = () => {
   if (!canUseStorage()) return "server";
   const existing = window.localStorage.getItem(funnelSessionKey);
@@ -85,6 +108,16 @@ const getStringMetadata = (metadata: FunnelEvent["metadata"], key: string) => {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 };
 
+const sanitizeMetadata = (metadata: FunnelEvent["metadata"]) =>
+  Object.fromEntries(Object.entries(metadata || {}).filter(([, value]) => value !== undefined));
+
+const isInternalOrBotTraffic = (metadata: FunnelEvent["metadata"]) => {
+  if (metadata?.internal === true || metadata?.source === "internal" || metadata?.source === "ops") return true;
+  if (typeof navigator === "undefined") return false;
+  if (navigator.webdriver) return true;
+  return /bot|crawler|spider|headless|preview|lighthouse/i.test(navigator.userAgent || "");
+};
+
 const funnelEventToRow = (event: FunnelEvent) => ({
   event_name: event.name,
   occurred_at: event.occurredAt,
@@ -95,7 +128,10 @@ const funnelEventToRow = (event: FunnelEvent) => ({
   city: event.city || getStringMetadata(event.metadata, "city"),
   category: event.category || getStringMetadata(event.metadata, "category") || getStringMetadata(event.metadata, "specialty"),
   source: event.source || getStringMetadata(event.metadata, "source") || getStringMetadata(event.metadata, "surface"),
-  metadata: event.metadata || {},
+  metadata: {
+    ...sanitizeMetadata(event.metadata),
+    contractVersion: funnelContractVersion,
+  },
 });
 
 const rowToFunnelEvent = (row: Record<string, unknown>): FunnelEvent => ({
@@ -118,6 +154,8 @@ const persistFunnelEvent = async (event: FunnelEvent) => {
 };
 
 const flushPendingFunnelEvents = async () => {
+  if (!allowLocalCriticalFallback) return;
+
   const pendingEvents = readPendingEvents();
   if (pendingEvents.length === 0) return;
 
@@ -133,6 +171,8 @@ const flushPendingFunnelEvents = async () => {
 };
 
 export const trackFunnelEvent = (name: FunnelEventName, metadata?: FunnelEvent["metadata"]) => {
+  if (isInternalOrBotTraffic(metadata)) return null;
+
   const event: FunnelEvent = {
     id: `fe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     name,
@@ -144,12 +184,18 @@ export const trackFunnelEvent = (name: FunnelEventName, metadata?: FunnelEvent["
     city: getStringMetadata(metadata, "city"),
     category: getStringMetadata(metadata, "category") || getStringMetadata(metadata, "specialty"),
     source: getStringMetadata(metadata, "source") || getStringMetadata(metadata, "surface"),
-    metadata,
+    metadata: sanitizeMetadata(metadata),
   };
 
   void persistFunnelEvent(event)
     .then(flushPendingFunnelEvents)
-    .catch(() => writePendingEvents([event, ...readPendingEvents()]));
+    .catch(() => {
+      if (allowLocalCriticalFallback) {
+        writePendingEvents([event, ...readPendingEvents()]);
+      } else {
+        writeDroppedEvent(event, "backend_write_failed");
+      }
+    });
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("dikigoros:funnel-event", { detail: event }));
@@ -159,6 +205,8 @@ export const trackFunnelEvent = (name: FunnelEventName, metadata?: FunnelEvent["
 };
 
 export const getFunnelEvents = () => readPendingEvents();
+
+export const getDroppedFunnelEvents = () => readStoredEvents(droppedFunnelStorageKey);
 
 export const fetchFunnelEvents = async (): Promise<FunnelEvent[]> => {
   try {
@@ -171,6 +219,7 @@ export const fetchFunnelEvents = async (): Promise<FunnelEvent[]> => {
     if (error) throw error;
     return (data || []).map((row) => rowToFunnelEvent(row as Record<string, unknown>));
   } catch {
+    if (!allowLocalCriticalFallback) throw failClosedCriticalPath("Funnel analytics");
     return readPendingEvents();
   }
 };
@@ -196,4 +245,5 @@ export const getFunnelMetrics = (events: FunnelEvent[] = getFunnelEvents()): Fun
 export const clearFunnelEvents = () => {
   if (!canUseStorage()) return;
   window.localStorage.removeItem(pendingFunnelStorageKey);
+  window.localStorage.removeItem(droppedFunnelStorageKey);
 };

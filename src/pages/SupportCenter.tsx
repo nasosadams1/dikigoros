@@ -110,6 +110,7 @@ const priorityByUrgency: Record<string, OperationalCasePriority> = {
 
 const SupportCenter = () => {
   const [caseReference, setCaseReference] = useState("");
+  const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
     type: "booking",
@@ -122,6 +123,7 @@ const SupportCenter = () => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
+    setSubmitError("");
     const area = areaBySupportType[form.type] || "support";
     const topicTitle = supportTopics.find((topic) => topic.type === form.type)?.title || "Υποστήριξη";
     try {
@@ -140,6 +142,9 @@ const SupportCenter = () => {
 
       setCaseReference(supportCase.referenceId);
       setForm((current) => ({ ...current, reference: "", message: "" }));
+    } catch {
+      setCaseReference("");
+      setSubmitError("Η υποστήριξη είναι προσωρινά μη διαθέσιμη. Το αίτημα δεν αποθηκεύτηκε τοπικά.");
     } finally {
       setIsSubmitting(false);
     }
@@ -257,6 +262,11 @@ const SupportCenter = () => {
             {caseReference ? (
               <p className="mt-3 rounded-lg border border-sage/20 bg-sage/10 px-3 py-2 text-sm font-bold text-sage-foreground">
                 Η υπόθεση καταχωρίστηκε: {caseReference}
+              </p>
+            ) : null}
+            {submitError ? (
+              <p className="mt-3 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm font-bold text-destructive">
+                {submitError}
               </p>
             ) : null}
           </div>

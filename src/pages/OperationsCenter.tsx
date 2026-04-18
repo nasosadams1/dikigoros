@@ -79,13 +79,14 @@ const operationsQueues: Array<{ label: string; area: OperationalArea; priority: 
 const OperationsCenter = () => {
   const [activeArea, setActiveArea] = useState<OperationalArea>("payments");
   const [funnelVersion, setFunnelVersion] = useState(0);
+  const [operationsError, setOperationsError] = useState("");
   const { data: lawyers = [] } = useQuery({ queryKey: ["lawyers"], queryFn: getLawyers });
   const { data: funnelEvents = [] } = useQuery({
     queryKey: ["funnel-events", funnelVersion],
     queryFn: fetchFunnelEvents,
   });
   const {
-    data: operationalCasesSnapshot = { cases: [], source: "fallback" as const },
+    data: operationalCasesSnapshot = { cases: [], source: "unavailable" as const },
     refetch: refetchOperationalCases,
     isFetching: operationalCasesFetching,
   } = useQuery({
@@ -145,24 +146,39 @@ const OperationsCenter = () => {
     priority: "urgent" | "high" | "normal" | "low" = area === "security" || area === "payments" ? "urgent" : "normal",
   ) => {
     const rule = getOperationalRulesByArea(area)[0];
-    await createOperationalCase({
-      area,
-      title: title || `Έλεγχος λειτουργίας: ${operationalAreaLabels[area]}`,
-      summary: summary || rule?.trigger || "Άνοιξε λειτουργικός έλεγχος από το κέντρο παραγωγής.",
-      priority,
-      evidence: rule?.actions.slice(0, 2) || [],
-    });
-    await refetchOperationalCases();
+    try {
+      setOperationsError("");
+      await createOperationalCase({
+        area,
+        title: title || `Έλεγχος λειτουργίας: ${operationalAreaLabels[area]}`,
+        summary: summary || rule?.trigger || "Άνοιξε λειτουργικός έλεγχος από το κέντρο παραγωγής.",
+        priority,
+        evidence: rule?.actions.slice(0, 2) || [],
+      });
+      await refetchOperationalCases();
+    } catch {
+      setOperationsError("Οι λειτουργίες είναι προσωρινά μη διαθέσιμες. Δεν δημιουργήθηκε τοπική υπόθεση.");
+    }
   };
 
   const updateCaseStatus = async (caseId: string, status: OperationalCaseStatus, note?: string) => {
-    await setOperationalCaseStatus(caseId, status, note);
-    await refetchOperationalCases();
+    try {
+      setOperationsError("");
+      await setOperationalCaseStatus(caseId, status, note);
+      await refetchOperationalCases();
+    } catch {
+      setOperationsError("Η ενημέρωση υπόθεσης είναι προσωρινά μη διαθέσιμη από το backend.");
+    }
   };
 
   const assignCase = async (caseId: string, owner: string) => {
-    await assignOperationalCase(caseId, owner);
-    await refetchOperationalCases();
+    try {
+      setOperationsError("");
+      await assignOperationalCase(caseId, owner);
+      await refetchOperationalCases();
+    } catch {
+      setOperationsError("Η ανάθεση υπόθεσης είναι προσωρινά μη διαθέσιμη από το backend.");
+    }
   };
 
   return (
@@ -204,13 +220,19 @@ const OperationsCenter = () => {
               <ReadinessMetric label="Συμβάντα διαδρομής" value={String(funnelMetrics.reduce((sum, metric) => sum + metric.count, 0))} ready={funnelMetrics.some((metric) => metric.count > 0)} notReadyLabel="Χωρίς δεδομένα" />
               <ReadinessMetric
                 label="Πηγή λειτουργίας"
-                value={operationalCasesFetching ? "Συγχρονισμός" : operationalCasesSource === "backend" ? "Backend" : "Τοπικό fallback"}
+                value={operationalCasesFetching ? "Συγχρονισμός" : operationalCasesSource === "backend" ? "Backend" : "Μη διαθέσιμο"}
                 ready={!operationalCasesFetching && operationalCasesSource === "backend"}
-                notReadyLabel={operationalCasesFetching ? "Συγχρονισμός" : "Τοπικό fallback"}
+                notReadyLabel={operationalCasesFetching ? "Συγχρονισμός" : "Backend unavailable"}
               />
             </div>
           </aside>
         </div>
+
+        {operationsError ? (
+          <div className="mt-6 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-bold text-destructive">
+            {operationsError}
+          </div>
+        ) : null}
 
         <section className="mt-10 rounded-lg border border-border bg-card p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

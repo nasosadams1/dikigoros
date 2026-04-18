@@ -526,7 +526,7 @@ const SearchResults = () => {
                   const isOwnLawyerProfile = areLawyerIdsEqual(currentPartnerLawyerId, lawyer.id);
 
                   return (
-                    <article key={lawyer.id} className="overflow-hidden rounded-lg border border-border bg-card transition hover:border-primary/20 hover:shadow-xl hover:shadow-foreground/[0.05]">
+                    <article key={lawyer.id} data-testid={`lawyer-result-${lawyer.id}`} className="overflow-hidden rounded-lg border border-border bg-card transition hover:border-primary/20 hover:shadow-xl hover:shadow-foreground/[0.05]">
                       <div className="p-5 md:p-6">
                         <div className="flex flex-col gap-5 md:flex-row md:items-start">
                           <div className="relative shrink-0">
@@ -596,6 +596,7 @@ const SearchResults = () => {
                           <Button asChild variant="outline" size="sm" className="h-9 rounded-lg px-4 text-xs font-bold">
                             <Link
                               to={`/lawyer/${lawyer.id}`}
+                              data-testid={`lawyer-profile-${lawyer.id}`}
                               onClick={() => trackFunnelEvent("search_profile_opened", { lawyerId: lawyer.id, resultCount: results.length })}
                             >
                               Προφίλ απόφασης
@@ -607,6 +608,7 @@ const SearchResults = () => {
                             <Button asChild size="sm" className="h-9 rounded-lg px-5 text-xs font-bold">
                               <Link
                                 to={`/booking/${lawyer.id}?source=search`}
+                                data-testid={`lawyer-booking-${lawyer.id}`}
                                 onClick={() => trackFunnelEvent("profile_booking_start", { lawyerId: lawyer.id, source: "search_direct" })}
                               >
                                 Κράτηση

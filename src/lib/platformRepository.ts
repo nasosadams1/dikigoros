@@ -11,6 +11,7 @@ import {
   normalizeAllowedMarketplaceCity,
   normalizeLegalPracticeAreas,
 } from "@/lib/marketplaceTaxonomy";
+import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
 
 export type PersistenceSource = "supabase" | "local";
 
@@ -84,6 +85,7 @@ export interface StoredBookingDocument {
   type: string;
   category: string;
   visibleToLawyer: boolean;
+  malwareScanStatus?: "pending" | "clean" | "blocked" | "failed";
   uploadedAt: string;
   storagePath?: string;
   downloadUrl?: string;
@@ -160,25 +162,21 @@ const bookingStorageKey = "dikigoros.bookingRequests.v1";
 const paymentStorageKey = "dikigoros.bookingPayments.v1";
 const applicationStorageKey = "dikigoros.partnerApplications.v1";
 const partnerSessionStorageKey = "dikigoros.partnerSession.v1";
-const partnerAccessCodeStorageKey = "dikigoros.partnerAccessCodes.v1";
-export const localPartnerAccessCode = "742913";
-const approvedLocalPartnerEmails = new Set(["partner@lawfirm.gr", "nasoosadamopoylos@gmail.com"]);
 const bookingTableName = (import.meta.env.VITE_SUPABASE_BOOKINGS_TABLE as string | undefined) || "booking_requests";
 const applicationTableName =
   (import.meta.env.VITE_SUPABASE_PARTNER_APPLICATIONS_TABLE as string | undefined) || "partner_applications";
 const isTestMode = import.meta.env.MODE === "test";
 const requireLivePayments = import.meta.env.VITE_REQUIRE_LIVE_PAYMENTS === "true";
 const enableLocalBookingFallback =
-  isTestMode ||
+  allowLocalCriticalFallback &&
+  (isTestMode ||
   (import.meta.env.DEV &&
     !requireLivePayments &&
-    import.meta.env.VITE_ENABLE_LOCAL_BOOKING_FALLBACK === "true");
-const requirePartnerBackend = import.meta.env.VITE_REQUIRE_PARTNER_BACKEND === "true";
-const enableLocalPartnerFallback =
-  isTestMode || import.meta.env.VITE_ENABLE_LOCAL_PARTNER_FALLBACK === "true";
-const usePartnerAccessCodeFunction =
-  import.meta.env.VITE_USE_PARTNER_ACCESS_CODE_FUNCTION === "true" ||
-  (!import.meta.env.DEV && import.meta.env.VITE_USE_PARTNER_ACCESS_CODE_FUNCTION !== "false");
+    import.meta.env.VITE_ENABLE_LOCAL_BOOKING_FALLBACK === "true"));
+const enableLocalApplicationFallback =
+  allowLocalCriticalFallback &&
+  (isTestMode || (import.meta.env.DEV && import.meta.env.VITE_ENABLE_LOCAL_PARTNER_APPLICATION_FALLBACK === "true"));
+const partnerSessionMaxAgeMs = 2 * 60 * 60 * 1000;
 
 export const isVerifiedBooking = (booking?: Pick<StoredBooking, "persistenceSource"> | null) =>
   booking?.persistenceSource === "supabase";
@@ -231,53 +229,7 @@ const mergeById = <T extends { id: string; createdAt?: string; uploadedAt?: stri
   return sortNewestFirst(merged);
 };
 
-interface LocalPartnerAccessCode {
-  email: string;
-  code: string;
-  expiresAt: string;
-}
-
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
-
-export const isLocalApprovedPartner = (email: string) =>
-  enableLocalPartnerFallback && approvedLocalPartnerEmails.has(normalizeEmail(email));
-
-const getLocalPartnerCodeExpiry = () => new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-const getLocalPartnerAccessCode = (email: string) => {
-  const normalizedEmail = normalizeEmail(email);
-  const now = Date.now();
-
-  return (
-    readStoredList<LocalPartnerAccessCode>(partnerAccessCodeStorageKey).find(
-      (record) => record.email === normalizedEmail && new Date(record.expiresAt).getTime() > now,
-    ) || null
-  );
-};
-
-export const createLocalPartnerAccessCode = (email: string) => {
-  const normalizedEmail = normalizeEmail(email);
-  if (!isLocalApprovedPartner(normalizedEmail)) return null;
-
-  const codeRecord: LocalPartnerAccessCode = {
-    email: normalizedEmail,
-    code: localPartnerAccessCode,
-    expiresAt: getLocalPartnerCodeExpiry(),
-  };
-  const existingRecords = readStoredList<LocalPartnerAccessCode>(partnerAccessCodeStorageKey).filter(
-    (record) => record.email !== normalizedEmail,
-  );
-  writeStoredList(partnerAccessCodeStorageKey, [codeRecord, ...existingRecords]);
-  return codeRecord;
-};
-
-const isValidLocalPartnerAccessCode = (email: string, code: string) => {
-  const normalizedCode = code.trim();
-  const storedCode = getLocalPartnerAccessCode(email);
-
-  if (storedCode?.code === normalizedCode) return true;
-  return isLocalApprovedPartner(email) && normalizedCode === localPartnerAccessCode;
-};
 
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) return error.message;
@@ -473,6 +425,7 @@ interface BookingDocumentRow {
   category: string;
   storage_path: string | null;
   visible_to_lawyer: boolean;
+  malware_scan_status?: "pending" | "clean" | "blocked" | "failed" | null;
   created_at: string;
   reference_id?: string | null;
   client_name?: string | null;
@@ -552,6 +505,7 @@ const documentFromRow = (row: BookingDocumentRow): StoredBookingDocument => ({
   type: row.mime_type || "unknown",
   category: row.category,
   visibleToLawyer: row.visible_to_lawyer,
+  malwareScanStatus: row.malware_scan_status || "pending",
   uploadedAt: row.created_at,
   storagePath: row.storage_path || undefined,
   persistenceSource: "supabase",
@@ -607,7 +561,8 @@ export const fetchBookingsForUser = async (userId?: string | null, email?: strin
     if (error) throw error;
     const remoteBookings = (data || []).map((row) => bookingFromRow(row as BookingRequestRow));
     return enableLocalBookingFallback ? mergeById(remoteBookings, localBookings) : remoteBookings;
-  } catch {
+  } catch (error) {
+    if (!enableLocalBookingFallback) throw failClosedCriticalPath("Booking history");
     return localBookings;
   }
 };
@@ -626,7 +581,8 @@ export const fetchPaymentsForUser = async (userId?: string | null, email?: strin
     if (error) throw error;
     const remotePayments = (data || []).map((row) => paymentFromRow(row as PaymentRow));
     return enableLocalBookingFallback ? mergeById(remotePayments, localPayments) : remotePayments;
-  } catch {
+  } catch (error) {
+    if (!enableLocalBookingFallback) throw failClosedCriticalPath("Payment history");
     return localPayments;
   }
 };
@@ -661,6 +617,7 @@ export const fetchBookingsForLawyer = async (lawyerId?: string | null, partnerSe
     if (partnerSession?.sessionToken && isPartnerSessionInvalidError(error)) {
       throw new Error("PARTNER_SESSION_INVALID");
     }
+    if (!enableLocalBookingFallback) throw failClosedCriticalPath("Partner bookings");
     return localBookings;
   }
 };
@@ -686,6 +643,7 @@ export const fetchPaymentsForLawyer = async (lawyerId?: string | null, partnerSe
     if (partnerSession?.sessionToken && isPartnerSessionInvalidError(error)) {
       throw new Error("PARTNER_SESSION_INVALID");
     }
+    if (!enableLocalBookingFallback) throw failClosedCriticalPath("Partner payments");
     return localPayments;
   }
 };
@@ -720,6 +678,7 @@ export const fetchReviewsForLawyer = async (
     if (partnerSession?.sessionToken && isPartnerSessionInvalidError(error)) {
       throw new Error("PARTNER_SESSION_INVALID");
     }
+    if (!enableLocalBookingFallback) throw failClosedCriticalPath("Partner documents");
     return [];
   }
 };
@@ -760,10 +719,11 @@ export const fetchDocumentsForLawyer = async (
     const partnerRpcArgs = getPartnerRpcArgs(lawyerId, partnerSession);
     const { data, error } = partnerRpcArgs
       ? await publicSupabase.rpc("list_documents_as_partner", partnerRpcArgs)
-      : await supabase
+        : await supabase
           .from("user_documents")
-          .select("id,booking_id,name,size,mime_type,category,storage_path,visible_to_lawyer,created_at,booking_requests!inner(reference_id,client_name,lawyer_id)")
+          .select("id,booking_id,name,size,mime_type,category,storage_path,visible_to_lawyer,malware_scan_status,created_at,booking_requests!inner(reference_id,client_name,lawyer_id)")
           .eq("visible_to_lawyer", true)
+          .eq("malware_scan_status", "clean")
           .eq("booking_requests.lawyer_id", lawyerId)
           .order("created_at", { ascending: false });
 
@@ -774,7 +734,9 @@ export const fetchDocumentsForLawyer = async (
         ...document,
         downloadUrl: partnerRpcArgs
           ? await requestPartnerDocumentUrl(document.id, partnerSession)
-          : await fetchSignedDocumentUrl(document.storagePath),
+          : document.malwareScanStatus === "clean"
+            ? await fetchSignedDocumentUrl(document.storagePath)
+            : undefined,
       })),
     );
   } catch (error) {
@@ -826,6 +788,7 @@ export const fetchReservedBookingSlots = async (lawyerId: string) => {
     }
     return remoteSlots;
   } catch {
+    if (!enableLocalBookingFallback) throw failClosedCriticalPath("Booking availability");
     return enableLocalBookingFallback ? getReservedBookingSlots(lawyerId) : new Set<string>();
   }
 };
@@ -865,6 +828,8 @@ export const recordLocalCheckoutReturn = (
   status: Extract<PaymentState, "paid" | "failed" | "checkout_opened">,
   stripeCheckoutSessionId?: string | null,
 ) => {
+  if (!enableLocalBookingFallback) return null;
+
   const booking = getStoredBookingById(bookingId);
   if (!booking) return null;
 
@@ -884,7 +849,7 @@ export const recordLocalCheckoutReturn = (
 };
 
 const persistBookingPayment = (booking: StoredBooking) => {
-  if (!enableLocalBookingFallback && booking.persistenceSource !== "local") return;
+  if (!enableLocalBookingFallback) return;
   persistLocalPayment(createPaymentRecordFromBooking(booking, booking.persistenceSource));
 };
 
@@ -919,7 +884,7 @@ export const cancelBooking = async (bookingId: string) => {
       p_booking_id: bookingId,
     });
     if (error) throw error;
-    return cancelStoredBooking(bookingId);
+    return enableLocalBookingFallback ? cancelStoredBooking(bookingId) : null;
   } catch (error) {
     if (enableLocalBookingFallback) return cancelStoredBooking(bookingId);
     throw error;
@@ -955,7 +920,7 @@ export const completeBooking = async (bookingId: string, partnerSession?: Partne
       p_booking_id: bookingId,
     });
     if (error) throw error;
-    return completeStoredBooking(bookingId);
+    return enableLocalBookingFallback ? completeStoredBooking(bookingId) : null;
   } catch (error) {
     if (isPartnerSessionInvalidError(error)) throw new Error("PARTNER_SESSION_INVALID");
     if (enableLocalBookingFallback) return completeStoredBooking(bookingId);
@@ -984,8 +949,10 @@ export const completePartnerBooking = async (
 
     if (error) throw error;
 
-    const localBooking = completeStoredBooking(booking.id) || { ...booking, status: "completed" as const };
-    return { booking: localBooking, synced: true };
+    const syncedBooking = enableLocalBookingFallback
+      ? completeStoredBooking(booking.id) || { ...booking, status: "completed" as const }
+      : { ...booking, status: "completed" as const };
+    return { booking: syncedBooking, synced: true };
   } catch (error) {
     return {
       booking,
@@ -1018,8 +985,10 @@ export const cancelPartnerBooking = async (
 
     if (error) throw error;
 
-    const localBooking = cancelStoredBooking(booking.id) || { ...booking, status: "cancelled" as const };
-    return { booking: localBooking, synced: true };
+    const syncedBooking = enableLocalBookingFallback
+      ? cancelStoredBooking(booking.id) || { ...booking, status: "cancelled" as const }
+      : { ...booking, status: "cancelled" as const };
+    return { booking: syncedBooking, synced: true };
   } catch (error) {
     return {
       booking,
@@ -1126,9 +1095,7 @@ export const requestPaymentSetupSession = async (
       persistenceSource: "supabase",
     };
   } catch (error) {
-    if (requireLivePayments) {
-      throw error;
-    }
+    if (requireLivePayments || !enableLocalBookingFallback) throw error;
 
     return {
       provider: "stripe",
@@ -1166,7 +1133,7 @@ export const requestBookingCheckoutSession = async (
       clientSecret?: string;
       status?: "setup_required" | "ready";
     };
-    if (response.url) {
+    if (response.url && enableLocalBookingFallback) {
       const existingPayment = getStoredPayments().find((payment) => payment.bookingId === booking.id);
       persistLocalPayment({
         ...(existingPayment || createPaymentRecordFromBooking(booking)),
@@ -1186,9 +1153,7 @@ export const requestBookingCheckoutSession = async (
       persistenceSource: "supabase",
     };
   } catch (error) {
-    if (requireLivePayments || !enableLocalBookingFallback) {
-      throw error;
-    }
+    if (requireLivePayments || !enableLocalBookingFallback) throw error;
 
     return {
       provider: "stripe",
@@ -1220,7 +1185,7 @@ export const requestBookingRefund = async (
       refundId?: string;
     };
 
-    const existingPayment = getStoredPaymentForBooking(booking.id);
+    const existingPayment = enableLocalBookingFallback ? getStoredPaymentForBooking(booking.id) : null;
     if (existingPayment) {
       persistLocalPayment({
         ...existingPayment,
@@ -1237,9 +1202,7 @@ export const requestBookingRefund = async (
       persistenceSource: "supabase",
     };
   } catch (error) {
-    if (requireLivePayments || !enableLocalBookingFallback) {
-      throw error;
-    }
+    if (requireLivePayments || !enableLocalBookingFallback) throw error;
 
     const existingPayment = getStoredPaymentForBooking(booking.id);
     if (existingPayment?.status === "paid") {
@@ -1303,19 +1266,32 @@ export const createPartnerApplication = async (
     persistLocalApplication(syncedApplication);
     return { record: syncedApplication, source: "supabase" };
   } catch (error) {
+    if (!enableLocalApplicationFallback) {
+      throw failClosedCriticalPath("Partner applications");
+    }
+
     persistLocalApplication(application);
     return { record: application, source: "local", syncError: getErrorMessage(error) };
   }
 };
 
 export const createPartnerSession = (email: string, sessionToken?: string, expiresAtOverride?: string): PartnerSession => {
+  if (!sessionToken || !expiresAtOverride) {
+    throw new Error("PARTNER_SESSION_REQUIRES_BACKEND_TOKEN");
+  }
+
   const verifiedAt = new Date();
-  const expiresAt = new Date(verifiedAt.getTime() + 12 * 60 * 60 * 1000);
+  const requestedExpiry = new Date(expiresAtOverride);
+  const maxExpiresAt = new Date(verifiedAt.getTime() + partnerSessionMaxAgeMs);
+  const expiresAt =
+    Number.isFinite(requestedExpiry.getTime()) && requestedExpiry.getTime() <= maxExpiresAt.getTime()
+      ? requestedExpiry
+      : maxExpiresAt;
   const session: PartnerSession = {
     email: email.trim().toLowerCase(),
     sessionToken,
     verifiedAt: verifiedAt.toISOString(),
-    expiresAt: expiresAtOverride || expiresAt.toISOString(),
+    expiresAt: expiresAt.toISOString(),
     role: "partner",
     approved: true,
   };
@@ -1328,17 +1304,12 @@ export const createPartnerSession = (email: string, sessionToken?: string, expir
 export const verifyApprovedPartner = async (email: string) => {
   const normalizedEmail = normalizeEmail(email);
 
-  try {
-    const { data, error } = await publicSupabase.rpc("is_approved_partner", {
-      p_email: normalizedEmail,
-    });
+  const { data, error } = await publicSupabase.rpc("is_approved_partner", {
+    p_email: normalizedEmail,
+  });
 
-    if (error) throw error;
-    return Boolean(data) || isLocalApprovedPartner(normalizedEmail);
-  } catch (error) {
-    if (requirePartnerBackend) throw error;
-    return isLocalApprovedPartner(normalizedEmail);
-  }
+  if (error) throw error;
+  return Boolean(data);
 };
 
 export const requestPartnerAccessCode = async (email: string) => {
@@ -1356,29 +1327,18 @@ export const requestPartnerAccessCode = async (email: string) => {
 export const verifyPartnerAccessCode = async (email: string, code: string) => {
   const normalizedEmail = normalizeEmail(email);
 
-  try {
-    const { data, error } = await publicSupabase.rpc("verify_partner_access_code", {
-      p_email: normalizedEmail,
-      p_code: code.trim(),
-    });
+  const { data, error } = await publicSupabase.rpc("verify_partner_access_code", {
+    p_email: normalizedEmail,
+    p_code: code.trim(),
+  });
 
-    if (error) throw error;
-    const verificationPayload = getPartnerVerificationPayload(data);
-    if (verificationPayload?.ok) {
-      return createPartnerSession(
-        normalizedEmail,
-        verificationPayload.sessionToken || verificationPayload.session_token,
-        verificationPayload.expiresAt || verificationPayload.expires_at,
-      );
-    }
-    if (data === true) return createPartnerSession(normalizedEmail);
-    if (isValidLocalPartnerAccessCode(normalizedEmail, code)) return createPartnerSession(normalizedEmail);
-    return null;
-  } catch (error) {
-    if (requirePartnerBackend) throw error;
-    if (isValidLocalPartnerAccessCode(normalizedEmail, code)) return createPartnerSession(normalizedEmail);
-    return null;
-  }
+  if (error) throw error;
+  const verificationPayload = getPartnerVerificationPayload(data);
+  const sessionToken = verificationPayload?.sessionToken || verificationPayload?.session_token;
+  const expiresAt = verificationPayload?.expiresAt || verificationPayload?.expires_at;
+  if (!verificationPayload?.ok || !sessionToken || !expiresAt) return null;
+
+  return createPartnerSession(normalizedEmail, sessionToken, expiresAt);
 };
 
 export const getPartnerSession = (): PartnerSession | null => {
@@ -1390,7 +1350,16 @@ export const getPartnerSession = (): PartnerSession | null => {
     if (!rawValue) return null;
 
     const session = JSON.parse(rawValue) as PartnerSession;
-    if (!session.email || !session.expiresAt || new Date(session.expiresAt).getTime() <= Date.now()) {
+    const verifiedAt = new Date(session.verifiedAt).getTime();
+    const expiresAt = new Date(session.expiresAt).getTime();
+    if (
+      !session.email ||
+      !session.sessionToken ||
+      !session.expiresAt ||
+      expiresAt <= Date.now() ||
+      !Number.isFinite(verifiedAt) ||
+      expiresAt - verifiedAt > partnerSessionMaxAgeMs
+    ) {
       storage.removeItem(partnerSessionStorageKey);
       return null;
     }
