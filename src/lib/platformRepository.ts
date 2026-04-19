@@ -1,4 +1,10 @@
-import { getCurrentSession, publicSupabase, supabase } from "@/lib/supabase";
+import {
+  getSupabaseAnonKey,
+  getSupabaseFunctionUrl,
+  getVerifiedSession,
+  publicSupabase,
+  supabase,
+} from "@/lib/supabase";
 import {
   normalizeBookingState,
   normalizePaymentState,
@@ -262,6 +268,56 @@ export const isPartnerSessionInvalidError = (error: unknown) => {
 
 const isSlotUnavailableError = (error: unknown) => getErrorMessage(error).includes("BOOKING_SLOT_UNAVAILABLE");
 const isSelfBookingForbiddenError = (error: unknown) => getErrorMessage(error).includes("SELF_BOOKING_FORBIDDEN");
+
+const getAuthenticatedEdgeSession = async () => {
+  const { session, user } = await getVerifiedSession();
+  if (!session?.access_token || !user?.id) throw new Error("AUTH_REQUIRED");
+  return { session, user };
+};
+
+const getEdgeFunctionErrorMessage = (payload: unknown, status: number) => {
+  if (typeof payload === "string" && payload.trim()) return payload.trim();
+  if (typeof payload === "object" && payload) {
+    const candidate = payload as { error?: unknown; message?: unknown };
+    if (typeof candidate.error === "string" && candidate.error.trim()) return candidate.error.trim();
+    if (typeof candidate.message === "string" && candidate.message.trim()) return candidate.message.trim();
+  }
+  return `EDGE_FUNCTION_${status}`;
+};
+
+const parseEdgeFunctionPayload = async (response: Response) => {
+  const rawPayload = await response.text();
+  if (!rawPayload) return null;
+
+  try {
+    return JSON.parse(rawPayload) as unknown;
+  } catch {
+    return rawPayload;
+  }
+};
+
+const invokeAuthenticatedEdgeFunction = async <T>(
+  functionName: string,
+  accessToken: string,
+  body: Record<string, unknown>,
+): Promise<T> => {
+  const response = await fetch(getSupabaseFunctionUrl(functionName), {
+    method: "POST",
+    headers: {
+      apikey: getSupabaseAnonKey(),
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await parseEdgeFunctionPayload(response);
+
+  if (!response.ok) {
+    throw new Error(getEdgeFunctionErrorMessage(payload, response.status));
+  }
+
+  return (payload || {}) as T;
+};
 
 interface PartnerVerificationResponse {
   ok?: boolean;
@@ -1136,27 +1192,21 @@ export const requestPaymentSetupSession = async (
   const requestedAt = new Date().toISOString();
 
   try {
-    const { session } = await getCurrentSession();
-    if (!session?.access_token || !userId || session.user.id !== userId) {
+    const { session, user } = await getAuthenticatedEdgeSession();
+    if (!userId || user.id !== userId) {
       throw new Error("AUTH_REQUIRED");
     }
 
-    const { data, error } = await supabase.functions.invoke("create-payment-setup-session", {
-      body: {
-        userId,
-        email: email?.trim().toLowerCase() || "",
-        returnUrl: typeof window !== "undefined" ? `${window.location.origin}/account?tab=payments` : undefined,
-      },
-    });
-
-    if (error) throw error;
-
-    const response = (data || {}) as {
+    const response = await invokeAuthenticatedEdgeFunction<{
       id?: string;
       url?: string;
       clientSecret?: string;
       status?: "setup_required" | "ready";
-    };
+    }>("create-payment-setup-session", session.access_token, {
+      userId,
+      email: email?.trim().toLowerCase() || "",
+      returnUrl: typeof window !== "undefined" ? `${window.location.origin}/account?tab=payments` : undefined,
+    });
     return {
       provider: "stripe",
       status: response.status || "setup_required",
@@ -1185,36 +1235,30 @@ export const requestBookingCheckoutSession = async (
   const requestedAt = new Date().toISOString();
 
   try {
-    const { session } = await getCurrentSession();
-    const sessionEmail = session?.user.email?.trim().toLowerCase() || "";
+    const { session, user } = await getAuthenticatedEdgeSession();
+    const sessionEmail = user.email?.trim().toLowerCase() || "";
     const bookingEmail = booking.clientEmail.trim().toLowerCase();
-    const ownsBookingById = Boolean(booking.userId && session?.user.id === booking.userId);
+    const ownsBookingById = Boolean(booking.userId && user.id === booking.userId);
     const canClaimGuestBooking = Boolean(!booking.userId && sessionEmail && sessionEmail === bookingEmail);
 
-    if (!session?.access_token || (!ownsBookingById && !canClaimGuestBooking)) {
+    if (!ownsBookingById && !canClaimGuestBooking) {
       throw new Error("BOOKING_OWNER_AUTH_REQUIRED");
     }
 
-    const { data, error } = await supabase.functions.invoke("create-booking-checkout-session", {
-      body: {
-        bookingId: booking.id,
-        lawyerId: booking.lawyerId,
-        amount: booking.price,
-        currency: "EUR",
-        returnUrl:
-          returnUrl ||
-          (typeof window !== "undefined" ? `${window.location.origin}/account?tab=payments` : undefined),
-      },
-    });
-
-    if (error) throw error;
-
-    const response = (data || {}) as {
+    const response = await invokeAuthenticatedEdgeFunction<{
       id?: string;
       url?: string;
       clientSecret?: string;
       status?: "setup_required" | "ready";
-    };
+    }>("create-booking-checkout-session", session.access_token, {
+      bookingId: booking.id,
+      lawyerId: booking.lawyerId,
+      amount: booking.price,
+      currency: "EUR",
+      returnUrl:
+        returnUrl ||
+        (typeof window !== "undefined" ? `${window.location.origin}/account?tab=payments` : undefined),
+    });
     if (response.url && enableLocalBookingFallback) {
       const existingPayment = getStoredPayments().find((payment) => payment.bookingId === booking.id);
       persistLocalPayment({
@@ -1253,19 +1297,23 @@ export const requestBookingRefund = async (
   const requestedAt = new Date().toISOString();
 
   try {
-    const { data, error } = await supabase.functions.invoke("create-booking-refund", {
-      body: {
-        bookingId: booking.id,
-        reason,
-      },
-    });
+    const { session, user } = await getAuthenticatedEdgeSession();
+    const sessionEmail = user.email?.trim().toLowerCase() || "";
+    const bookingEmail = booking.clientEmail.trim().toLowerCase();
+    const ownsBookingById = Boolean(booking.userId && user.id === booking.userId);
+    const canClaimGuestBooking = Boolean(!booking.userId && sessionEmail && sessionEmail === bookingEmail);
 
-    if (error) throw error;
+    if (!ownsBookingById && !canClaimGuestBooking) {
+      throw new Error("BOOKING_OWNER_AUTH_REQUIRED");
+    }
 
-    const response = (data || {}) as {
+    const response = await invokeAuthenticatedEdgeFunction<{
       status?: "refunded" | "pending";
       refundId?: string;
-    };
+    }>("create-booking-refund", session.access_token, {
+      bookingId: booking.id,
+      reason,
+    });
 
     const existingPayment = enableLocalBookingFallback ? getStoredPaymentForBooking(booking.id) : null;
     if (existingPayment) {

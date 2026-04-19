@@ -5,6 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 const appUrl = (import.meta.env.VITE_APP_URL as string | undefined)?.trim();
 const normalizedAppUrl = appUrl?.replace(/\/+$/, "") || "";
 const authStorageKey = "codhak-auth";
+const publicAuthStorageKey = "codhak-public-anon-auth";
 
 const isLocalhostUrl = (value: string) =>
   /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?$/i.test(value);
@@ -47,20 +48,24 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // Partner/public requests must stay detached from browser auth storage.
 // Otherwise a stale JWT can override the anon role and make public RPCs fail.
 export const publicSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+  accessToken: async () => supabaseAnonKey,
   auth: {
     autoRefreshToken: false,
     persistSession: false,
     detectSessionInUrl: false,
-    storageKey: `${authStorageKey}-public`,
-    flowType: "implicit",
+    storageKey: publicAuthStorageKey,
   },
   global: {
     headers: {
       apikey: supabaseAnonKey,
-      Authorization: `Bearer ${supabaseAnonKey}`,
     },
   },
 });
+
+export const getSupabaseAnonKey = () => supabaseAnonKey;
+
+export const getSupabaseFunctionUrl = (functionName: string) =>
+  `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/${functionName.replace(/^\/+/, "")}`;
 
 export interface UserProfile {
   id: string;
@@ -133,6 +138,43 @@ export const getCurrentSession = async () => {
 export const getCurrentUser = async () => {
   const { data, error } = await supabase.auth.getUser();
   return { user: data.user, error };
+};
+
+export const getVerifiedSession = async () => {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  let session = sessionData.session;
+  if (sessionError || !session?.access_token) {
+    return { session: null, user: null, error: sessionError || new Error("AUTH_REQUIRED") };
+  }
+
+  const expiresAtMs = session.expires_at ? session.expires_at * 1000 : 0;
+  const shouldRefresh = expiresAtMs > 0 && expiresAtMs <= Date.now() + 5 * 60 * 1000;
+  if (shouldRefresh) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshData.session?.access_token) {
+      return { session: null, user: null, error: refreshError || new Error("AUTH_REQUIRED") };
+    }
+    session = refreshData.session;
+  }
+
+  let { data: userData, error: userError } = await supabase.auth.getUser(session.access_token);
+  if (userError || !userData.user) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshData.session?.access_token) {
+      return { session: null, user: null, error: refreshError || userError || new Error("AUTH_REQUIRED") };
+    }
+
+    session = refreshData.session;
+    const retry = await supabase.auth.getUser(session.access_token);
+    userData = retry.data;
+    userError = retry.error;
+  }
+
+  if (userError || !userData.user) {
+    return { session: null, user: null, error: userError || new Error("AUTH_REQUIRED") };
+  }
+
+  return { session, user: userData.user, error: null };
 };
 
 export const getDisplayName = async (userId: string) => {

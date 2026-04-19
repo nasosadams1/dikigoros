@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.55.0";
+
 const stripeApiVersion = "2026-02-25.clover";
 
 const defaultAllowedOrigins = [
@@ -94,20 +96,31 @@ const normalizeReturnUrl = (returnUrl: unknown, request: Request) => {
   }
 };
 
-const getAuthUser = async (request: Request, supabaseUrl: string, anonKey: string): Promise<AuthUser | null> => {
+const getAuthUser = async (
+  request: Request,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<AuthUser | null> => {
   const authorization = request.headers.get("Authorization") || "";
   if (!authorization.toLowerCase().startsWith("bearer ")) return null;
 
-  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-    headers: {
-      apikey: anonKey,
-      Authorization: authorization,
+  const token = authorization.replace(/^bearer\s+/i, "").trim();
+  if (!token) return null;
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
     },
   });
 
-  if (!response.ok) return null;
-  const user = await response.json();
-  return user?.id ? { id: String(user.id), email: user.email ? String(user.email) : undefined } : null;
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser(token);
+  if (error || !user?.id) return null;
+
+  return { id: user.id, email: user.email || undefined };
 };
 
 const serviceHeaders = (serviceRoleKey: string) => ({
@@ -210,12 +223,11 @@ Deno.serve(async (request) => {
 
   try {
     const supabaseUrl = getRequiredEnv("SUPABASE_URL");
-    const anonKey = getRequiredEnv("SUPABASE_ANON_KEY");
     const serviceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
     const stripeSecretKey = getRequiredEnv("STRIPE_SECRET_KEY");
     assertStripeMode(stripeSecretKey);
 
-    const user = await getAuthUser(request, supabaseUrl, anonKey);
+    const user = await getAuthUser(request, supabaseUrl, serviceRoleKey);
     if (!user) return json(request, { error: "Authentication required" }, 401);
 
     const { bookingId, currency = "EUR", returnUrl } = await request.json();

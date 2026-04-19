@@ -6,6 +6,10 @@ const productionSchema = readFileSync(
   join(process.cwd(), "supabase", "desired_supabase_from_scratch.sql"),
   "utf8",
 );
+const supabaseConfig = readFileSync(
+  join(process.cwd(), "supabase", "config.toml"),
+  "utf8",
+);
 const simpleContractMigration = readFileSync(
   join(process.cwd(), "supabase", "migrations", "20260414170000_simple_production_contract.sql"),
   "utf8",
@@ -99,6 +103,14 @@ describe("Supabase production contracts", () => {
       expect(source).toContain("REQUIRE_LIVE_STRIPE");
       expect(source).toContain("sk_live_");
     });
+    [checkoutFunction, setupFunction, refundFunction].forEach((source) => {
+      expect(source).toContain("supabase.auth.getUser(token)");
+      expect(source).not.toContain("/auth/v1/user");
+    });
+    expect(supabaseConfig).toContain("[functions.create-booking-checkout-session]");
+    expect(supabaseConfig).toContain("[functions.create-payment-setup-session]");
+    expect(supabaseConfig).toContain("[functions.create-booking-refund]");
+    expect(supabaseConfig.match(/verify_jwt = false/g)?.length).toBeGreaterThanOrEqual(3);
     expect(checkoutFunction).toContain('existingPayment?.status === "checkout_opened"');
     expect(checkoutFunction).toContain("existingPayment.checkout_session_url");
     expect(checkoutFunction).toContain("This booking has already been paid.");

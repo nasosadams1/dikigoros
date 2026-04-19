@@ -19,7 +19,7 @@ const Footer = () => {
           </div>
 
           <div>
-            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-primary-foreground/50">Αγορά</h4>
+            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-primary-foreground/50">Νομικά θέματα</h4>
             <ul className="space-y-3">
               <li><Link to="/search" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Βρες δικηγόρο</Link></li>
               <li><Link to="/lawyers/family-law" className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">Οικογενειακό δίκαιο</Link></li>

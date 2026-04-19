@@ -103,6 +103,11 @@ const mockBackend = async (page: Page) => {
     const method = route.request().method();
 
     if (url.includes("/functions/v1/create-booking-checkout-session")) {
+      const headers = route.request().headers();
+      if (!headers.authorization?.startsWith("Bearer ") || !headers.apikey) {
+        return route.fulfill(json({ error: "Authentication headers missing" }, 401));
+      }
+
       return route.fulfill(json({ id: "cs_test_stage4", status: "setup_required", url: "https://checkout.stripe.com/c/pay/cs_test_stage4" }));
     }
 
@@ -165,7 +170,9 @@ test.describe("money and trust flows", () => {
     await page.getByTestId("booking-next").click();
     const checkoutRequest = page.waitForRequest(/\/functions\/v1\/create-booking-checkout-session/);
     await page.getByTestId("booking-next").click();
-    await checkoutRequest;
+    const request = await checkoutRequest;
+    expect(request.headers().authorization).toMatch(/^Bearer .+/);
+    expect(request.headers().apikey).toBeTruthy();
 
     await expect(page).toHaveURL(/checkout\.stripe\.com\/c\/pay\/cs_test_stage4/);
     await expect(page.getByText("Stripe Checkout opened")).toBeVisible();

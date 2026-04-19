@@ -1,0 +1,25 @@
+project_id = "jpslttdfysggswkkdvlq"
+
+[functions.create-booking-checkout-session]
+verify_jwt = false
+
+[functions.create-payment-setup-session]
+verify_jwt = false
+
+[functions.create-booking-refund]
+verify_jwt = false
+
+[functions.partner-access-code]
+verify_jwt = false
+
+[functions.create-partner-document-url]
+verify_jwt = false
+
+[functions.submit-partner-profile-photo]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.reconcile-stripe-payments]
+verify_jwt = false

@@ -53,6 +53,7 @@ import {
 } from "@/lib/marketplace";
 import {
   allowedMarketplaceCityNames,
+  legalPracticeAreas,
   legalPracticeAreaLabels,
   normalizeAllowedMarketplaceCity,
   normalizeLegalPracticeArea,
@@ -643,6 +644,42 @@ const SearchResults = () => {
           </aside>
         </div>
       </div>
+
+      <section className="border-t border-border bg-secondary/35">
+        <div className="mx-auto max-w-7xl px-5 py-10 lg:px-8 lg:py-12">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-sage">Νομικά θέματα</p>
+              <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Ξεκινήστε από το θέμα σας</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                Οι βασικές κατηγορίες μένουν διαθέσιμες για γρήγορη περιήγηση, χωρίς να βαραίνουν την κύρια πλοήγηση.
+              </p>
+            </div>
+            <Button asChild variant="outline" className="rounded-lg font-bold">
+              <Link to="/#how-it-works">Πώς γίνεται η κράτηση</Link>
+            </Button>
+          </div>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+            {legalPracticeAreas.map((area) => (
+              <Link
+                key={area.slug}
+                to={`/lawyers/${area.slug}`}
+                className="rounded-lg border border-border bg-card p-4 transition hover:border-primary/30 hover:shadow-md"
+              >
+                <h3 className="break-words text-base font-bold leading-6 text-foreground">{area.shortLabel}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+                  {area.description}
+                </p>
+                <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-primary">
+                  Δείτε δικηγόρους
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {selectedLawyers.length > 0 ? (
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card p-3 shadow-2xl lg:hidden">
