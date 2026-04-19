@@ -256,7 +256,7 @@ const PartnerPortal = () => {
       if (!active) return;
       setProfileSaveState({
         loading: false,
-        message: "Ο χώρος συνεργάτη είναι προσωρινά μη διαθέσιμος. Δεν χρησιμοποιείται τοπικό προφίλ όταν το backend δεν απαντά.",
+        message: "Ο χώρος συνεργάτη είναι προσωρινά μη διαθέσιμος. Δεν χρησιμοποιείται τοπικό προφίλ όταν το σύστημα δεν απαντά.",
         tone: "error",
       });
     });
@@ -314,7 +314,7 @@ const PartnerPortal = () => {
           setPartnerDocuments([]);
           setProfileSaveState({
             loading: false,
-            message: "Τα ραντεβού, οι πληρωμές και τα έγγραφα συνεργάτη είναι προσωρινά μη διαθέσιμα από το backend.",
+            message: "Τα ραντεβού, οι πληρωμές και τα έγγραφα συνεργάτη είναι προσωρινά μη διαθέσιμα από το σύστημα.",
             tone: "error",
           });
         }
@@ -345,7 +345,7 @@ const PartnerPortal = () => {
         }
         setProfilePhotoUploadState({
           loading: false,
-          message: "Η κατάσταση φωτογραφίας προφίλ δεν είναι προσωρινά διαθέσιμη από το backend.",
+          message: "Η κατάσταση φωτογραφίας προφίλ είναι προσωρινά μη διαθέσιμη από το σύστημα.",
           tone: "error",
         });
       });
@@ -1328,7 +1328,7 @@ const ProfilePhotoModerationCard = ({
           <div className="min-w-0">
             <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Δημόσια εγκεκριμένη φωτογραφία</p>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Η νέα φωτογραφία εμφανίζεται στο marketplace μόνο μετά από έλεγχο της ομάδας λειτουργίας.
+              Η νέα φωτογραφία εμφανίζεται στην πλατφόρμα μόνο μετά από έλεγχο της ομάδας λειτουργίας.
             </p>
           </div>
         </div>
@@ -1791,9 +1791,9 @@ const PartnerPerformanceDashboard = ({
     </div>
 
     <div className="mt-6 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
-      <Metric label="Προβολές προφίλ" value={profileViews === null ? "—" : String(profileViews)} helper="μόνο από backend analytics" />
-      <Metric label="Εμφανίσεις" value={searchAppearances === null ? "—" : String(searchAppearances)} helper="μόνο από backend analytics" />
-      <Metric label="Προς κράτηση" value={profileBookingStarts === null ? "—" : String(profileBookingStarts)} helper="μόνο από backend analytics" />
+      <Metric label="Προβολές προφίλ" value={profileViews === null ? "—" : String(profileViews)} helper="μόνο από αναλυτικά στοιχεία συστήματος" />
+      <Metric label="Εμφανίσεις" value={searchAppearances === null ? "—" : String(searchAppearances)} helper="μόνο από αναλυτικά στοιχεία συστήματος" />
+      <Metric label="Προς κράτηση" value={profileBookingStarts === null ? "—" : String(profileBookingStarts)} helper="μόνο από αναλυτικά στοιχεία συστήματος" />
       <Metric label="Κρατήσεις" value={String(bookingStarts)} helper={`${paidBookings} πληρωμένες`} />
       <Metric label="Πρώτες συνεδρίες" value={String(completedFirstConsultations)} helper="ολοκληρωμένες" />
     </div>

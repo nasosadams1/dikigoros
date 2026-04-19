@@ -39,7 +39,7 @@ const DiscoveryPage = () => {
     return {
       count: matchingLawyers.length,
       priceRange: prices.length ? `${formatCurrency(Math.min(...prices))} - ${formatCurrency(Math.max(...prices))}` : "Με εμφανή τιμή",
-      response: fastResponses > 0 ? `${fastResponses} απαντούν εντός 1 ώρας` : "Χρόνος απάντησης στο προφίλ",
+      response: fastResponses > 0 ? `${fastResponses} απαντούν σε έως 1 ώρα` : "Χρόνος απόκρισης στο προφίλ",
       availability: availableToday > 0 ? `${availableToday} διαθέσιμοι σήμερα` : "Επόμενες ώρες στο προφίλ",
     };
   }, [matchingLawyers]);
@@ -62,12 +62,12 @@ const DiscoveryPage = () => {
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Button asChild className="rounded-lg font-bold">
                 <Link to={readyForAcquisition ? config.searchPath : broaderSearchPath}>
-                  {readyForAcquisition ? "Σύγκριση δικηγόρων" : "Άνοιγμα ευρύτερης αναζήτησης"}
+                  {readyForAcquisition ? "Βρείτε δικηγόρους" : "Ευρύτερη αναζήτηση"}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
               <Button asChild variant="outline" className="rounded-lg font-bold">
-                <Link to="/trust/verification-standards">Κανόνες εμπιστοσύνης</Link>
+                <Link to="/trust/verification-standards">Πρότυπα ελέγχου</Link>
               </Button>
             </div>
           </section>

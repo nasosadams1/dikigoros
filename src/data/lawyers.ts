@@ -45,8 +45,8 @@ export interface Lawyer {
 
 export const consultationModeLabels: Record<ConsultationMode, string> = {
   video: "Βιντεοκλήση",
-  phone: "Τηλεφωνικό",
-  inPerson: "Αυτοπρόσωπο",
+  phone: "Τηλέφωνο",
+  inPerson: "Στο γραφείο",
 };
 
 export const consultationModeIcons: Record<ConsultationMode, LucideIcon> = {
@@ -86,7 +86,7 @@ export const lawyers: Lawyer[] = [
     consultations: [
       { mode: "video", type: "Βιντεοκλήση", price: 60, duration: "30 λεπτά", desc: "Ασφαλής βιντεοκλήση μέσω της πλατφόρμας" },
       { mode: "phone", type: "Τηλεφωνική κλήση", price: 50, duration: "30 λεπτά", desc: "Τηλεφωνική συνεδρία με τη δικηγόρο" },
-      { mode: "inPerson", type: "Αυτοπρόσωπα", price: 80, duration: "45 λεπτά", desc: "Συνάντηση στο γραφείο, Αθήνα" },
+      { mode: "inPerson", type: "Στο γραφείο", price: 80, duration: "45 λεπτά", desc: "Συνάντηση στο γραφείο, Αθήνα" },
     ],
     image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=600&h=600&fit=crop&crop=face",
   },
@@ -119,7 +119,7 @@ export const lawyers: Lawyer[] = [
     },
     consultations: [
       { mode: "video", type: "Βιντεοκλήση", price: 50, duration: "30 λεπτά", desc: "Ασφαλής βιντεοκλήση μέσω της πλατφόρμας" },
-      { mode: "inPerson", type: "Αυτοπρόσωπα", price: 70, duration: "45 λεπτά", desc: "Συνάντηση στο γραφείο, Θεσσαλονίκη" },
+      { mode: "inPerson", type: "Στο γραφείο", price: 70, duration: "45 λεπτά", desc: "Συνάντηση στο γραφείο, Θεσσαλονίκη" },
     ],
     image: "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=600&h=600&fit=crop&crop=face",
   },
@@ -153,7 +153,7 @@ export const lawyers: Lawyer[] = [
     consultations: [
       { mode: "video", type: "Βιντεοκλήση", price: 70, duration: "30 λεπτά", desc: "Ασφαλής βιντεοκλήση μέσω της πλατφόρμας" },
       { mode: "phone", type: "Τηλεφωνική κλήση", price: 60, duration: "30 λεπτά", desc: "Τηλεφωνική συνεδρία με τη δικηγόρο" },
-      { mode: "inPerson", type: "Αυτοπρόσωπα", price: 90, duration: "45 λεπτά", desc: "Συνάντηση στο γραφείο, Αθήνα" },
+      { mode: "inPerson", type: "Στο γραφείο", price: 90, duration: "45 λεπτά", desc: "Συνάντηση στο γραφείο, Αθήνα" },
     ],
     image: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=600&h=600&fit=crop&crop=face",
   },
@@ -186,7 +186,7 @@ export const lawyers: Lawyer[] = [
     },
     consultations: [
       { mode: "phone", type: "Τηλεφωνική κλήση", price: 80, duration: "30 λεπτά", desc: "Τηλεφωνική συνεδρία με τον δικηγόρο" },
-      { mode: "inPerson", type: "Αυτοπρόσωπα", price: 120, duration: "45 λεπτά", desc: "Συνάντηση στο γραφείο, Πειραιάς" },
+      { mode: "inPerson", type: "Στο γραφείο", price: 120, duration: "45 λεπτά", desc: "Συνάντηση στο γραφείο, Πειραιάς" },
     ],
     image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&h=600&fit=crop&crop=face",
   },
@@ -252,7 +252,7 @@ export const lawyers: Lawyer[] = [
     },
     consultations: [
       { mode: "video", type: "Βιντεοκλήση", price: 65, duration: "30 λεπτά", desc: "Ασφαλής βιντεοκλήση μέσω της πλατφόρμας" },
-      { mode: "inPerson", type: "Αυτοπρόσωπα", price: 85, duration: "45 λεπτά", desc: "Συνάντηση στο γραφείο, Ηράκλειο" },
+      { mode: "inPerson", type: "Στο γραφείο", price: 85, duration: "45 λεπτά", desc: "Συνάντηση στο γραφείο, Ηράκλειο" },
     ],
     image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=600&h=600&fit=crop&crop=face",
   },

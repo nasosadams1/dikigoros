@@ -4,6 +4,7 @@ import { Menu, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AuthContainer from "@/components/auth/AuthContainer";
 import { useAuth } from "@/context/AuthContext";
+import { homepageCopy } from "@/lib/homepageCopy";
 import { clearPartnerSession, getPartnerSession } from "@/lib/platformRepository";
 
 const Navbar = () => {
@@ -14,17 +15,17 @@ const Navbar = () => {
   const { user, signOut } = useAuth();
 
   const links = [
-    { label: "Αρχική", path: "/#top" },
-    { label: "Βρες δικηγόρο", path: "/search" },
-    { label: "Για δικηγόρους", path: "/for-lawyers" },
-    { label: "Ασφάλεια & Έλεγχος", path: "/trust/verification-standards" },
+    { label: homepageCopy.nav.home, path: "/#top" },
+    { label: homepageCopy.nav.findLawyer, path: "/search" },
+    { label: homepageCopy.nav.forLawyers, path: "/for-lawyers" },
+    { label: homepageCopy.nav.trust, path: "/trust/verification-standards" },
   ];
 
   const currentPath = useMemo(() => `${location.pathname}${location.hash}`, [location.hash, location.pathname]);
   const isPartnerSignedIn = Boolean(partnerSession);
   const profilePath = "/account";
   const partnerPortalPath = "/for-lawyers/portal?view=profile";
-  const profileLabel = "Προφίλ";
+  const profileLabel = homepageCopy.nav.profile;
 
   useEffect(() => {
     setPartnerSession(getPartnerSession());
@@ -94,7 +95,7 @@ const Navbar = () => {
                   className="text-sm font-medium text-muted-foreground"
                   onClick={() => void handleSignOut()}
                 >
-                  Αποσύνδεση
+                  {homepageCopy.nav.signOut}
                 </Button>
               </>
             ) : (
@@ -109,7 +110,7 @@ const Navbar = () => {
             )}
             {!isPartnerSignedIn ? (
               <Button asChild size="sm" className="rounded-lg px-5 text-sm font-medium">
-                <Link to="/for-lawyers">Είστε Δικηγόρος;</Link>
+                <Link to="/for-lawyers">{homepageCopy.nav.lawyerCta}</Link>
               </Button>
             ) : null}
           </div>
@@ -159,7 +160,7 @@ const Navbar = () => {
                         void handleSignOut();
                       }}
                     >
-                      Αποσύνδεση
+                      {homepageCopy.nav.signOut}
                     </Button>
                   </>
                 ) : (
@@ -177,7 +178,7 @@ const Navbar = () => {
                 {!isPartnerSignedIn ? (
                   <Button asChild className="w-full">
                     <Link to="/for-lawyers" onClick={() => setMobileOpen(false)}>
-                      Είστε Δικηγόρος;
+                      {homepageCopy.nav.lawyerCta}
                     </Link>
                   </Button>
                 ) : null}

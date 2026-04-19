@@ -20,8 +20,8 @@ export const staticSeoRoutes: SeoConfig[] = [
   },
   {
     path: "/search",
-    title: withSiteName("Σύγκριση δικηγόρων"),
-    description: "Συγκρίνετε δικηγόρους ανά θέμα, πόλη, ταχύτητα απάντησης, διαθεσιμότητα, αξιολογήσεις, τρόπο συμβουλευτικής και τιμή από.",
+    title: withSiteName("Βρες δικηγόρο"),
+    description: "Αναζητήστε δικηγόρους ανά θέμα, πόλη, ταχύτητα απάντησης, διαθεσιμότητα, αξιολογήσεις, τρόπο ραντεβού και τιμή.",
   },
   {
     path: "/for-lawyers",
@@ -46,7 +46,7 @@ export const staticSeoRoutes: SeoConfig[] = [
   {
     path: "/trust/reviews-policy",
     title: withSiteName("Πολιτική αξιολογήσεων"),
-    description: "Ποιος μπορεί να αξιολογήσει, πότε δημοσιεύονται οι κριτικές, moderation, διαφωνίες και απαντήσεις δικηγόρων.",
+    description: "Ποιος μπορεί να αξιολογήσει, πότε δημοσιεύονται οι κριτικές, έλεγχος δημοσίευσης, διαφωνίες και απαντήσεις δικηγόρων.",
   },
   {
     path: "/trust/payments-refunds",

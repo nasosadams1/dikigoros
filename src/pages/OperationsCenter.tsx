@@ -65,8 +65,8 @@ const areaTabs: Array<{ area: OperationalArea; label: string; icon: LucideIcon }
 
 const paymentChecklist = [
   "Το Stripe Checkout δημιουργεί μία διαδρομή πληρωμής για κάθε επιβεβαιωμένη κράτηση.",
-  "Το webhook ενημερώνει την πληρωμή ως πληρωμένη, αποτυχημένη ή επιστραφείσα.",
-  "Η επιστροφή από Stripe κρατά το context της κράτησης και δείχνει ανθρώπινη κατάσταση.",
+  "Το συμβάν επιβεβαίωσης ενημερώνει την πληρωμή ως πληρωμένη, αποτυχημένη ή επιστραφείσα.",
+  "Η επιστροφή από Stripe κρατά το πλαίσιο της κράτησης και δείχνει ανθρώπινη κατάσταση.",
   "Ο λογαριασμός δείχνει απόδειξη, επανάληψη πληρωμής και καθαρή κατάσταση.",
   "Οι επιστροφές ακολουθούν τον κανόνα υποστήριξης πριν γίνει ενέργεια στον πάροχο.",
 ];
@@ -181,7 +181,7 @@ const OperationsCenter = () => {
       await setOperationalCaseStatus(caseId, status, note);
       await refetchOperationalCases();
     } catch {
-      setOperationsError("Η ενημέρωση υπόθεσης είναι προσωρινά μη διαθέσιμη από το backend.");
+      setOperationsError("Η ενημέρωση υπόθεσης είναι προσωρινά μη διαθέσιμη από το σύστημα.");
     }
   };
 
@@ -191,7 +191,7 @@ const OperationsCenter = () => {
       await assignOperationalCase(caseId, owner);
       await refetchOperationalCases();
     } catch {
-      setOperationsError("Η ανάθεση υπόθεσης είναι προσωρινά μη διαθέσιμη από το backend.");
+      setOperationsError("Η ανάθεση υπόθεσης είναι προσωρινά μη διαθέσιμη από το σύστημα.");
     }
   };
 
@@ -209,7 +209,7 @@ const OperationsCenter = () => {
       await refetchPendingProfilePhotoSubmissions();
       await refetchOperationalCases();
     } catch {
-      setOperationsError("Η έγκριση φωτογραφίας είναι προσωρινά μη διαθέσιμη από το backend.");
+      setOperationsError("Η έγκριση φωτογραφίας είναι προσωρινά μη διαθέσιμη από το σύστημα.");
     } finally {
       setProfilePhotoReviewActionId("");
     }
@@ -229,7 +229,7 @@ const OperationsCenter = () => {
             <p className="text-xs font-bold uppercase tracking-widest text-primary">Κέντρο λειτουργίας</p>
             <h1 className="mt-3 font-serif text-4xl tracking-tight text-foreground">Έλεγχος launch και καθημερινών υποθέσεων</h1>
             <p className="mt-4 max-w-2xl text-base leading-8 text-muted-foreground">
-              Συγκεκριμένοι κανόνες για πληρωμές, δημόσια αλήθεια marketplace, πυκνότητα προσφοράς, επαλήθευση, κριτικές, διαφωνίες, υποστήριξη, απόρρητο και ασφάλεια.
+              Συγκεκριμένοι κανόνες για πληρωμές, δημόσια εικόνα πλατφόρμας, πυκνότητα προσφοράς, επαλήθευση, κριτικές, διαφωνίες, υποστήριξη, απόρρητο και ασφάλεια.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Button asChild className="rounded-lg font-bold">
@@ -254,9 +254,9 @@ const OperationsCenter = () => {
               <ReadinessMetric label="Συμβάντα διαδρομής" value={String(funnelMetrics.reduce((sum, metric) => sum + metric.count, 0))} ready={funnelMetrics.some((metric) => metric.count > 0)} notReadyLabel="Χωρίς δεδομένα" />
               <ReadinessMetric
                 label="Πηγή λειτουργίας"
-                value={operationalCasesFetching ? "Συγχρονισμός" : operationalCasesSource === "backend" ? "Backend" : "Μη διαθέσιμο"}
+                value={operationalCasesFetching ? "Συγχρονισμός" : operationalCasesSource === "backend" ? "Σύστημα" : "Μη διαθέσιμο"}
                 ready={!operationalCasesFetching && operationalCasesSource === "backend"}
-                notReadyLabel={operationalCasesFetching ? "Συγχρονισμός" : "Backend unavailable"}
+                notReadyLabel={operationalCasesFetching ? "Συγχρονισμός" : "Σύστημα μη διαθέσιμο"}
               />
             </div>
           </aside>
@@ -271,7 +271,7 @@ const OperationsCenter = () => {
         <section className="mt-10 rounded-lg border border-border bg-card p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-primary">Διαδρομή marketplace</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-primary">Διαδρομή πλατφόρμας</p>
               <h2 className="mt-2 text-xl font-bold text-foreground">Πού κερδίζεται ή χάνεται η ζήτηση</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 Γεγονότα πρώτου μέρους από τη δημόσια διαδρομή, την κράτηση, τις κριτικές και την ένταξη δικηγόρων.
@@ -418,7 +418,7 @@ const OperationsCenter = () => {
                   "Το κείμενο προς τον χρήστη μένει ανθρώπινο και κατανοητό.",
                   "Τα στοιχεία και οι αλλαγές κατάστασης καταγράφονται.",
                   "Θέματα απορρήτου ή ασφάλειας κλιμακώνονται άμεσα.",
-                  "Οι δημόσιοι ισχυρισμοί πρέπει να συμφωνούν με τη live συμπεριφορά marketplace.",
+                  "Οι δημόσιοι ισχυρισμοί πρέπει να συμφωνούν με την πραγματική συμπεριφορά της πλατφόρμας.",
                 ]).map((item) => (
                   <p key={item} className="flex items-start gap-2 text-sm leading-6 text-muted-foreground">
                     <CheckCircle2 className="mt-1 h-3.5 w-3.5 shrink-0 text-sage" />
@@ -428,7 +428,7 @@ const OperationsCenter = () => {
               </div>
               {activeArea === "payments" ? (
                 <div className="mt-5 border-t border-border pt-5">
-                  <h3 className="text-sm font-bold text-foreground">Κανόνες live πληρωμών</h3>
+                  <h3 className="text-sm font-bold text-foreground">Κανόνες πληρωμών παραγωγής</h3>
                   <div className="mt-3 space-y-2">
                     {paymentReadinessChecks.map((check) => (
                       <ReadinessCheck key={check.label} check={check} />
@@ -558,14 +558,14 @@ const OperationsCenter = () => {
 
         <section className="mt-8 rounded-lg border border-border bg-card p-5">
           <p className="text-xs font-bold uppercase tracking-widest text-primary">Αποδείξεις που απαιτούνται</p>
-          <h2 className="mt-2 text-xl font-bold text-foreground">Τι πρέπει να αποδειχθεί από backend truth</h2>
+          <h2 className="mt-2 text-xl font-bold text-foreground">Τι πρέπει να αποδειχθεί από το σύστημα</h2>
           <div className="mt-5 grid gap-4 lg:grid-cols-3">
             <EvidenceGroup
               title="Κράτηση και πληρωμή"
               items={paymentEvidenceChecks.map((check) => ({
                 label: check.label,
                 ready: check.ready,
-                detail: check.ready ? "Βρέθηκε κλειστή υπόθεση απόδειξης" : "Χρειάζεται κλειστή live ή δοκιμαστική υπόθεση απόδειξης",
+                detail: check.ready ? "Βρέθηκε κλειστή υπόθεση απόδειξης" : "Χρειάζεται κλειστή υπόθεση απόδειξης παραγωγής ή δοκιμής",
               }))}
             />
             <EvidenceGroup
@@ -573,7 +573,7 @@ const OperationsCenter = () => {
               items={supportEvidenceChecks.map((check) => ({
                 label: check.label,
                 ready: check.ready,
-                detail: check.ready ? "Η ροή έχει κλειστή υπόθεση" : "Χρειάζεται δοκιμαστικό ή live κλείσιμο υπόθεσης",
+                detail: check.ready ? "Η ροή έχει κλειστή υπόθεση" : "Χρειάζεται κλείσιμο υπόθεσης παραγωγής ή δοκιμής",
               }))}
             />
             <EvidenceGroup

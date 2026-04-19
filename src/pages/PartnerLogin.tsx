@@ -15,9 +15,9 @@ import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
 const accessSteps = [
-  "Επαγγελματικό ηλεκτρονικό ταχυδρομείο και 6ψήφιος κωδικός",
-  "Έλεγχος ότι ο λογαριασμός έχει εγκριθεί",
-  "Πρόσβαση στο περιβάλλον συνεργάτη",
+  "Εισάγετε το επαγγελματικό σας email και λαμβάνετε 6ψήφιο κωδικό",
+  "Ελέγχουμε ότι ο λογαριασμός σας έχει εγκριθεί",
+  "Σύνδεση στο περιβάλλον συνεργάτη",
 ];
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -46,7 +46,7 @@ const PartnerLogin = () => {
   const canSubmit = !emailError;
 
   const disabledReason = !email.trim()
-    ? "Συμπληρώστε το ηλεκτρονικό ταχυδρομείο για να συνεχίσετε."
+    ? "Συμπληρώστε το email σας για να συνεχίσετε"
     : emailError;
 
   const handleSubmit = async (event: FormEvent) => {
@@ -104,11 +104,10 @@ const PartnerLogin = () => {
             <div>
               <p className="partner-kicker text-[hsl(var(--partner-gold))]">Είσοδος συνεργάτη</p>
               <h1 className="mt-3 font-sans text-[28px] font-semibold leading-tight tracking-[-0.02em] text-white">
-                Είσοδος μόνο για ήδη εγκεκριμένους συνεργάτες.
+                Είσοδος μόνο αν έχετε ήδη εγκριθεί ως συνεργάτης.
               </h1>
               <p className="mt-3 text-sm leading-6 text-white/72">
-                Η πρόσβαση στον πίνακα συνεργάτη ενεργοποιείται μόνο για δικηγόρους των οποίων ο φάκελος έχει ήδη
-                εγκριθεί από την ομάδα Dikigoros.
+                Η πρόσβασή σας ενεργοποιείται μόνο αφού εγκριθεί ο φάκελός σας από την ομάδα του Dikigoros.
               </p>
             </div>
 
@@ -139,7 +138,7 @@ const PartnerLogin = () => {
 
               <div className="partner-dark-card p-3.5">
                 <p className="text-[13px] font-semibold text-white">Συνήθης χρόνος απάντησης</p>
-                <p className="mt-1.5 text-[13px] leading-5 text-white/70">Συνήθως εντός 24 ωρών για ζητήματα πρόσβασης συνεργάτη.</p>
+                <p className="mt-1.5 text-[13px] leading-5 text-white/70">Συνήθως απαντάμε εντός 24 ωρών για ζητήματα πρόσβασης συνεργάτη.</p>
               </div>
             </div>
           </div>
@@ -152,8 +151,7 @@ const PartnerLogin = () => {
               Είσοδος στο περιβάλλον συνεργάτη
             </h2>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Χρησιμοποιήστε το επαγγελματικό ηλεκτρονικό ταχυδρομείο που έχει δηλωθεί για τον λογαριασμό σας. Αν υπάρχει πρόβλημα
-              πρόσβασης, η ομάδα συνεργατών εξετάζει το αίτημα κατά προτεραιότητα.
+              Χρησιμοποιήστε το επαγγελματικό email που έχετε συνδέσει με τον λογαριασμό σας. Αν αντιμετωπίζετε πρόβλημα πρόσβασης, εξετάζουμε το αίτημά σας κατά προτεραιότητα.
             </p>
           </div>
 
@@ -161,7 +159,7 @@ const PartnerLogin = () => {
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <label htmlFor="partner-email" className="partner-label">
-                  Επαγγελματικό ηλεκτρονικό ταχυδρομείο
+                  Επαγγελματικό email
                 </label>
                 <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Υποχρεωτικό</span>
               </div>
@@ -211,9 +209,9 @@ const PartnerLogin = () => {
                   <ShieldCheck className="h-4 w-4" />
                 </div>
                 <div>
-                  <p className="text-[15px] font-semibold text-[hsl(var(--partner-ink))]">Χρήση επαγγελματικού ηλεκτρονικού ταχυδρομείου</p>
+                  <p className="text-[15px] font-semibold text-[hsl(var(--partner-ink))]">Γιατί ζητάμε επαγγελματικό email</p>
                   <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                    Το ηλεκτρονικό ταχυδρομείο ελέγχεται απέναντι στον εγκεκριμένο λογαριασμό συνεργάτη πριν ζητηθεί ο 6ψήφιος κωδικός.
+                    Πρώτα επιβεβαιώνουμε ότι το email σας αντιστοιχεί σε εγκεκριμένο λογαριασμό και μετά σας στέλνουμε 6ψήφιο κωδικό.
                   </p>
                 </div>
               </div>
@@ -228,8 +226,7 @@ const PartnerLogin = () => {
                   <div>
                     <p className="text-[15px] font-semibold text-[hsl(var(--partner-ink))]">Δεν έχετε εγκριθεί ακόμη;</p>
                     <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                      Υποβάλετε αίτηση ώστε να εξεταστούν τα στοιχεία, οι ειδικότητες και τα δικαιολογητικά σας πριν
-                      από οποιαδήποτε ενεργοποίηση πρόσβασης.
+                      Υποβάλετε αίτηση για να ελέγξουμε τα στοιχεία, τις ειδικεύσεις και τα δικαιολογητικά σας πριν αποκτήσετε πρόσβαση.
                     </p>
                   </div>
                 </div>
@@ -247,15 +244,15 @@ const PartnerLogin = () => {
             <div className="grid gap-3 border-t border-[hsl(var(--partner-line))] pt-5 text-[13px] text-muted-foreground md:grid-cols-3">
               <div className="flex items-start gap-2.5">
                 <ShieldCheck className="mt-0.5 h-[13px] w-[13px] shrink-0 text-[hsl(var(--partner-navy-soft))]" />
-                <span>Μόνο για εγκεκριμένους συνεργάτες</span>
+                <span>Η είσοδος είναι διαθέσιμη μόνο για εγκεκριμένους συνεργάτες.</span>
               </div>
               <div className="flex items-start gap-2.5">
                 <Mail className="mt-0.5 h-[13px] w-[13px] shrink-0 text-[hsl(var(--partner-navy-soft))]" />
-                <span>Το ηλεκτρονικό ταχυδρομείο χρησιμοποιείται μόνο για έλεγχο πρόσβασης</span>
+                <span>Χρησιμοποιούμε το email σας μόνο για να επιβεβαιώσουμε την πρόσβασή σας.</span>
               </div>
               <div className="flex items-start gap-2.5">
                 <LifeBuoy className="mt-0.5 h-[13px] w-[13px] shrink-0 text-[hsl(var(--partner-navy-soft))]" />
-                <span>Υποστήριξη για ζητήματα σύνδεσης</span>
+                <span>Υποστήριξη σύνδεσης</span>
               </div>
             </div>
           </form>

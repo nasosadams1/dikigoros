@@ -36,7 +36,7 @@ describe("launch readiness gates", () => {
       closedEvidenceCase("Failed payment proof", "payments", ["failed payment", "checkout failed"]),
     ]);
 
-    expect(checks.find((check) => check.label === "επιτυχής live κράτηση")?.ready).toBe(true);
+    expect(checks.find((check) => check.label === "επιτυχής κράτηση παραγωγής")?.ready).toBe(true);
     expect(checks.find((check) => check.label === "αποτυχημένη πληρωμή")?.ready).toBe(true);
     expect(checks.find((check) => check.label === "ακύρωση με επιστροφή")?.ready).toBe(false);
     expect(checks.find((check) => check.label === "ακύρωση από δικηγόρο")?.ready).toBe(false);
@@ -75,8 +75,8 @@ describe("launch readiness gates", () => {
       operationalCasesSource: "backend",
     });
 
-    expect(gates.find((gate) => gate.label === "Οι λειτουργίες είναι backend-first")?.ready).toBe(true);
+    expect(gates.find((gate) => gate.label === "Οι λειτουργίες δίνουν προτεραιότητα στο σύστημα")?.ready).toBe(true);
     expect(gates.find((gate) => gate.label === "Η βασική πυκνότητα πόλης/δικαίου έχει επιτευχθεί")?.ready).toBe(false);
-    expect(gates.find((gate) => gate.label === "Τα funnel analytics γράφονται στο backend")?.ready).toBe(false);
+    expect(gates.find((gate) => gate.label === "Τα αναλυτικά στοιχεία διαδρομής γράφονται στο σύστημα")?.ready).toBe(false);
   });
 });

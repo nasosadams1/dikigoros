@@ -103,7 +103,7 @@ describe("stage 4 hardening contracts", () => {
     const partnerPortal = readRepoFile("src/pages/PartnerPortal.tsx");
 
     expect(partnerPortal).toContain("profileViews={null}");
-    expect(partnerPortal).toContain("μόνο από backend analytics");
+    expect(partnerPortal).toContain("μόνο από αναλυτικά στοιχεία συστήματος");
     expect(partnerPortal).not.toContain("partnerReviews.length * 18");
     expect(partnerPortal).not.toContain("workspace.availability.filter((slot) => slot.enabled).length * 22");
   });

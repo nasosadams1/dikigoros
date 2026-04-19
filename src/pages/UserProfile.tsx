@@ -230,7 +230,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     void fetchUserWorkspace(workspaceKey, userId).then(setWorkspace).catch(() => {
       setPaymentSetupState({
         loading: false,
-        message: "Τα στοιχεία λογαριασμού είναι προσωρινά μη διαθέσιμα. Ανανεώστε σε λίγο για να δείτε κρατήσεις, πληρωμές και έγγραφα από το backend.",
+        message: "Τα στοιχεία λογαριασμού είναι προσωρινά μη διαθέσιμα. Ανανεώστε σε λίγο για να δείτε κρατήσεις, πληρωμές και έγγραφα από το σύστημα.",
         tone: "error",
       });
     });
@@ -282,7 +282,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
       setPayments([]);
       setPaymentSetupState({
         loading: false,
-        message: "Οι κρατήσεις και οι πληρωμές είναι προσωρινά μη διαθέσιμες. Δεν εμφανίζουμε τοπική κατάσταση όταν το backend δεν απαντά.",
+        message: "Οι κρατήσεις και οι πληρωμές είναι προσωρινά μη διαθέσιμες. Δεν εμφανίζουμε τοπική κατάσταση όταν το σύστημα δεν απαντά.",
         tone: "error",
       });
     });
@@ -328,7 +328,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     void syncUserWorkspace(workspaceKey, normalized, userId).catch(() => {
       setPaymentSetupState({
         loading: false,
-        message: "Δεν έγινε αποθήκευση στο backend. Οι αλλαγές λογαριασμού δεν θεωρούνται οριστικές.",
+        message: "Δεν έγινε αποθήκευση στο σύστημα. Οι αλλαγές λογαριασμού δεν θεωρούνται οριστικές.",
         tone: "error",
       });
     });
@@ -1115,7 +1115,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                     </div>
                     <Button asChild className="mt-4 rounded-lg font-bold">
                       <Link to={`/compare?lawyers=${comparedLawyers.map((lawyer) => lawyer?.id).filter(Boolean).join(",")}`}>
-                        Άνοιγμα πλήρους σύγκρισης
+                        Δείτε την πλήρη σύγκριση
                       </Link>
                     </Button>
                   </Panel>
@@ -1206,7 +1206,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                                   setDocumentUploadState({
                                     loading: false,
                                     tone: "info",
-                                    message: "Το έγγραφο θα είναι διαθέσιμο μόνο αφού ολοκληρωθεί ο έλεγχος ασφαλείας στο backend.",
+                                    message: "Το έγγραφο θα είναι διαθέσιμο μόνο αφού ολοκληρωθεί ο έλεγχος ασφαλείας στο σύστημα.",
                                   });
                                 }).catch(() => {
                                   setDocumentUploadState({
@@ -1232,7 +1232,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                                     setDocumentUploadState({
                                       loading: false,
                                       tone: "success",
-                                      message: "Η ορατότητα ενημερώθηκε στο backend.",
+                                      message: "Η ορατότητα ενημερώθηκε στο σύστημα.",
                                     });
                                   })
                                   .catch(() => {
@@ -1261,7 +1261,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                                   setDocumentUploadState({
                                     loading: false,
                                     tone: "success",
-                                    message: "Το αίτημα διαγραφής καταγράφηκε στο backend.",
+                                    message: "Το αίτημα διαγραφής καταγράφηκε στο σύστημα.",
                                   });
                                   void createOperationalCase({
                                     area: "privacyDocuments",
@@ -1278,7 +1278,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                                     setDocumentUploadState({
                                       loading: false,
                                       tone: "error",
-                                      message: "Το αίτημα διαγραφής αποθηκεύτηκε, αλλά η υπόθεση υποστήριξης δεν δημιουργήθηκε. Η ομάδα λειτουργιών πρέπει να ελέγξει το audit log.",
+                                      message: "Το αίτημα διαγραφής αποθηκεύτηκε, αλλά η υπόθεση υποστήριξης δεν δημιουργήθηκε. Η ομάδα λειτουργιών πρέπει να ελέγξει το ιστορικό ελέγχου.",
                                     });
                                   });
                                 }).catch(() => {
@@ -1861,7 +1861,7 @@ const PreferencesForm = ({
           ))}
         </select>
       </Field>
-      <Field label="Τρόπος συμβουλευτικής">
+      <Field label="Τρόπος ραντεβού">
         <select
           value={workspace.preferences.consultationMode}
           onChange={(event) => updatePreferences({ consultationMode: event.target.value as ConsultationMode | "any" })}

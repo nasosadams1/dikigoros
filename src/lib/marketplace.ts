@@ -25,7 +25,7 @@ export interface NextAvailabilityOption {
 
 export const featuredGroupLabels: Record<FeaturedGroupKey, string> = {
   topRated: "Υψηλότερη αξιολόγηση",
-  fastestResponse: "Ταχύτερη απάντηση",
+  fastestResponse: "Ταχύτερη απόκριση",
   bestValue: "Καλύτερη σχέση τιμής",
   availableSoon: "Πιο άμεση διαθεσιμότητα",
 };

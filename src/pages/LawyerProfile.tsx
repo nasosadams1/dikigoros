@@ -408,9 +408,9 @@ const LawyerProfile = () => {
             <section className="mt-8">
               <h2 className="font-serif text-xl tracking-tight text-foreground">Εναλλακτικές με συγκεκριμένο λόγο</h2>
               <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <AlternativeGroup title="Καλύτερη συνολική αντιστοίχιση" lawyers={similarLawyers.bestMatch} />
+                <AlternativeGroup title="Πιο κατάλληλη επιλογή" lawyers={similarLawyers.bestMatch} />
                 <AlternativeGroup title="Χαμηλότερη τιμή" lawyers={similarLawyers.cheaper} />
-                <AlternativeGroup title="Ταχύτερη απάντηση" lawyers={similarLawyers.faster} />
+                <AlternativeGroup title="Ταχύτερη απόκριση" lawyers={similarLawyers.faster} />
                 <AlternativeGroup title="Περισσότερες αξιολογήσεις" lawyers={similarLawyers.moreReviewed} />
               </div>
             </section>

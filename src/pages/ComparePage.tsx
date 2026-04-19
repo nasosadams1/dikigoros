@@ -22,8 +22,8 @@ const ComparePage = () => {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Σύγκριση δικηγόρων | Dikigoros"
-        description="Συγκρίνετε τιμή, διαθεσιμότητα, απάντηση, κριτικές, τρόπους συμβουλευτικής και σήματα επαλήθευσης πριν την κράτηση."
+        title="Σύγκριση επιλογών | Dikigoros"
+        description="Συγκρίνετε τιμή, διαθεσιμότητα, απάντηση, αξιολογήσεις, τρόπο ραντεβού και στοιχεία ελέγχου πριν την κράτηση."
         path="/compare"
       />
       <Navbar />
@@ -90,7 +90,7 @@ const ComparePage = () => {
               Επιλέξτε έως τρεις δικηγόρους από την αναζήτηση για να δείτε τη σύγκριση εδώ.
             </p>
             <Button asChild className="mt-5 rounded-lg font-bold">
-              <Link to="/search">Άνοιγμα αναζήτησης</Link>
+              <Link to="/search">Βρες δικηγόρο</Link>
             </Button>
           </section>
         )}

@@ -14,22 +14,21 @@ import {
   ShieldCheck,
   Star,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import SEO from "@/components/SEO";
 import { type ConsultationMode } from "@/data/lawyers";
+import { homepageCopy } from "@/lib/homepageCopy";
 import { getLawyers } from "@/lib/lawyerRepository";
 import {
   consultationModeNames,
-  featuredGroupLabels,
   formatCurrency,
   getFeaturedLawyerGroups,
   getMarketplaceStats,
   getPriceFrom,
   getRecommendedLawyers,
-  popularLegalJourneys,
-  publicTrustMechanics,
   type FeaturedGroupKey,
   type LanguageIntent,
 } from "@/lib/marketplace";
@@ -37,43 +36,42 @@ import { allowedMarketplaceCityNames, legalPracticeAreas } from "@/lib/marketpla
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
 
+type HomeFeaturedGroupKey = "all" | FeaturedGroupKey;
+
+const copy = homepageCopy;
+
 const modeOptions: Array<{ value: "any" | ConsultationMode; label: string }> = [
-  { value: "any", label: "Όλοι οι τρόποι" },
+  { value: "any", label: copy.hero.fields.consultationModePlaceholder },
   { value: "video", label: "Βιντεοκλήση" },
-  { value: "phone", label: "Τηλεφωνική συμβουλευτική" },
-  { value: "inPerson", label: "Συνάντηση στο γραφείο" },
+  { value: "phone", label: "Τηλέφωνο" },
+  { value: "inPerson", label: "Στο γραφείο" },
 ];
 
 const languageOptions: Array<{ value: "any" | LanguageIntent; label: string }> = [
-  { value: "any", label: "Όλες οι γλώσσες" },
+  { value: "any", label: copy.hero.fields.languagePlaceholder },
   { value: "Greek", label: "Ελληνικά" },
   { value: "English", label: "Αγγλικά" },
 ];
 
-const groupOrder: FeaturedGroupKey[] = ["topRated", "fastestResponse", "bestValue", "availableSoon"];
+const groupOrder: HomeFeaturedGroupKey[] = ["all", "topRated", "fastestResponse", "bestValue", "availableSoon"];
 
-const trustCards = [
-  {
-    icon: ShieldCheck,
-    title: "Ελεγμένα δημόσια προφίλ",
-    text: "Ταυτότητα, άδεια άσκησης, δικηγορικός σύλλογος και βασικά επαγγελματικά στοιχεία ελέγχονται πριν από τη δημόσια εμφάνιση.",
-  },
-  {
-    icon: MessageSquareText,
-    title: "Αξιολογήσεις μετά από ραντεβού",
-    text: "Οι δημοσιευμένες αξιολογήσεις συνδέονται με ολοκληρωμένες συμβουλευτικές, έλεγχο δημοσίευσης και δυνατότητα απάντησης δικηγόρου.",
-  },
-  {
-    icon: CalendarCheck,
-    title: "Πραγματικοί κανόνες διαθεσιμότητας",
-    text: "Οι ώρες κράτησης ακολουθούν το δημοσιευμένο πρόγραμμα, το παράθυρο κρατήσεων και τα buffers κάθε δικηγόρου.",
-  },
-  {
-    icon: CreditCard,
-    title: "Ασφαλής κράτηση και πληρωμή",
-    text: "Η δέσμευση και πληρωμή του πρώτου ραντεβού γίνεται μέσα από Stripe Checkout πριν θεωρηθεί πληρωμένη η κράτηση.",
-  },
+const groupLabels: Record<HomeFeaturedGroupKey, string> = {
+  all: copy.recommendations.tabs.all,
+  topRated: copy.recommendations.tabs.topRated,
+  fastestResponse: copy.recommendations.tabs.fastestResponse,
+  bestValue: copy.recommendations.tabs.bestValue,
+  availableSoon: copy.recommendations.tabs.soonestAvailability,
+};
+
+const categoryCards = [
+  { ...copy.categories.items.debtContracts, to: "/lawyers/civil-debts-contracts" },
+  { ...copy.categories.items.familyLaw, to: "/lawyers/family-law" },
+  { ...copy.categories.items.trafficCompensation, to: "/lawyers/traffic-compensation-cars" },
+  { ...copy.categories.items.employmentLaw, to: "/lawyers/employment-law" },
+  { ...copy.categories.items.rentals, to: "/lawyers/leases-rent-evictions" },
 ];
+
+const trustCardIcons: LucideIcon[] = [ShieldCheck, MessageSquareText, CalendarCheck, CreditCard];
 
 const Index = () => {
   const navigate = useNavigate();
@@ -82,7 +80,7 @@ const Index = () => {
   const [mode, setMode] = useState<"any" | ConsultationMode>("any");
   const [language, setLanguage] = useState<"any" | LanguageIntent>("any");
   const [problemDescription, setProblemDescription] = useState("");
-  const [activeGroup, setActiveGroup] = useState<FeaturedGroupKey>("topRated");
+  const [activeGroup, setActiveGroup] = useState<HomeFeaturedGroupKey>("all");
 
   const { data: marketplaceLawyers = [], isFetching } = useQuery({
     queryKey: ["lawyers"],
@@ -92,7 +90,12 @@ const Index = () => {
   const stats = useMemo(() => getMarketplaceStats(marketplaceLawyers), [marketplaceLawyers]);
   const featuredGroups = useMemo(() => getFeaturedLawyerGroups(marketplaceLawyers), [marketplaceLawyers]);
   const recommendedLawyers = useMemo(() => getRecommendedLawyers(marketplaceLawyers, 3), [marketplaceLawyers]);
-  const activeFeaturedLawyers = featuredGroups[activeGroup].length > 0 ? featuredGroups[activeGroup] : recommendedLawyers;
+  const activeFeaturedLawyers =
+    activeGroup === "all"
+      ? recommendedLawyers
+      : featuredGroups[activeGroup].length > 0
+        ? featuredGroups[activeGroup]
+        : recommendedLawyers;
   const heroLawyer = recommendedLawyers[0] || marketplaceLawyers[0];
   const reviewBackedLawyers = recommendedLawyers.filter((lawyer) => lawyer.reviews > 0);
 
@@ -118,8 +121,8 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Βρείτε και κλείστε ραντεβού με δικηγόρο | Dikigoros"
-        description="Περιγράψτε το νομικό θέμα, συγκρίνετε ελεγμένα προφίλ με αξιολογήσεις, διαθεσιμότητα, απάντηση και τιμή, και κλείστε με ασφαλή πληρωμή."
+        title={`${copy.hero.title} | Dikigoros`}
+        description={copy.hero.description}
         path="/"
       />
       <Navbar />
@@ -129,42 +132,41 @@ const Index = () => {
           <div>
             <p className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground">
               <ShieldCheck className="h-3.5 w-3.5 text-sage" />
-              Ελεγμένα προφίλ, πραγματική διαθεσιμότητα, αξιολογήσεις μετά από κράτηση
+              {copy.hero.eyebrow}
             </p>
             <h1 className="mt-5 max-w-3xl font-serif text-[2.65rem] leading-[1.06] tracking-tight text-foreground md:text-[3.4rem]">
-              Συγκρίνετε επιλογές, βρείτε δικηγόρο και κλείστε online ραντεβού.
+              {copy.hero.title}
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
-              Ξεκινήστε από το θέμα, την πόλη, τον τρόπο ραντεβού και τη γλώσσα.
-            </p>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">{copy.hero.description}</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{copy.hero.helper}</p>
 
             <form onSubmit={handleHeroSubmit} className="mt-7 rounded-lg border border-border bg-card p-4 shadow-xl shadow-foreground/[0.05] md:p-5">
               <div className="grid gap-3 md:grid-cols-2">
-                <FieldShell icon={Search} label="Νομικό θέμα">
+                <FieldShell icon={Search} label={copy.hero.fields.legalTopic}>
                   <select
                     value={legalIssue}
                     onChange={(event) => setLegalIssue(event.target.value)}
                     className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
                   >
-                    <option value="">Επιλέξτε δίκαιο</option>
+                    <option value="">{copy.hero.fields.legalTopicPlaceholder}</option>
                     {legalPracticeAreas.map((area) => (
                       <option key={area.slug} value={area.query}>{area.label}</option>
                     ))}
                   </select>
                 </FieldShell>
-                <FieldShell icon={MapPin} label="Πόλη">
+                <FieldShell icon={MapPin} label={copy.hero.fields.city}>
                   <select
                     value={city}
                     onChange={(event) => setCity(event.target.value)}
                     className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
                   >
-                    <option value="">Όλες οι πόλεις</option>
+                    <option value="">{copy.hero.fields.cityPlaceholder}</option>
                     {allowedMarketplaceCityNames.map((cityOption) => (
                       <option key={cityOption} value={cityOption}>{cityOption}</option>
                     ))}
                   </select>
                 </FieldShell>
-                <FieldShell icon={CalendarCheck} label="Τρόπος συμβουλευτικής">
+                <FieldShell icon={CalendarCheck} label={copy.hero.fields.consultationMode}>
                   <select
                     value={mode}
                     onChange={(event) => setMode(event.target.value as "any" | ConsultationMode)}
@@ -177,7 +179,7 @@ const Index = () => {
                     ))}
                   </select>
                 </FieldShell>
-                <FieldShell icon={Languages} label="Γλώσσα">
+                <FieldShell icon={Languages} label={copy.hero.fields.language}>
                   <select
                     value={language}
                     onChange={(event) => setLanguage(event.target.value as "any" | LanguageIntent)}
@@ -192,22 +194,27 @@ const Index = () => {
                 </FieldShell>
               </div>
               <label className="mt-3 block rounded-lg border border-border bg-background px-3 py-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Σύντομη περιγραφή, προαιρετικά</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  {copy.hero.fields.shortDescription}
+                </span>
                 <textarea
                   value={problemDescription}
                   onChange={(event) => setProblemDescription(event.target.value)}
                   rows={3}
-                  placeholder="Λίγες γραμμές για το τι συνέβη και τι χρειάζεστε τώρα."
+                  placeholder={copy.hero.fields.shortDescriptionPlaceholder}
                   className="mt-1 w-full resize-none bg-transparent text-sm font-medium leading-6 text-foreground outline-none placeholder:text-muted-foreground/60"
                 />
               </label>
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Button type="submit" className="h-12 rounded-lg px-6 text-sm font-bold">
-                  Σύγκριση δικηγόρων
+                  {copy.hero.primaryCta}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
+                <Button asChild variant="outline" className="h-12 rounded-lg px-6 text-sm font-bold">
+                  <Link to="/for-lawyers">{copy.hero.secondaryCta}</Link>
+                </Button>
                 <p className="text-xs font-semibold text-muted-foreground">
-                  {isFetching ? "Ανανέωση δεδομένων αγοράς..." : `${stats.verifiedProfiles} δημόσια ελεγμένα προφίλ`}
+                  {isFetching ? "Ανανέωση δεδομένων..." : `${stats.verifiedProfiles} ${copy.marketplaceStats.verifiedProfiles}`}
                 </p>
               </div>
             </form>
@@ -218,17 +225,19 @@ const Index = () => {
               <div className="flex items-start gap-4">
                 <img src={heroLawyer.image} alt={heroLawyer.name} className="h-20 w-20 rounded-lg object-cover shadow-md ring-2 ring-background" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold uppercase tracking-wider text-sage">Επαληθευμένο προφίλ</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-sage">{copy.featuredCard.verified}</p>
                   <h2 className="mt-1 truncate text-lg font-bold text-foreground">{heroLawyer.name}</h2>
                   <p className="text-sm font-semibold text-primary">{heroLawyer.specialty}</p>
-                  <p className="mt-1 text-xs font-semibold text-muted-foreground">{heroLawyer.city} · {heroLawyer.experience} χρόνια</p>
+                  <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                    {heroLawyer.city} · {heroLawyer.experience} {copy.featuredCard.yearsSuffix}
+                  </p>
                 </div>
               </div>
               <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                <HeroMetric label="Αξιολόγηση" value={`${heroLawyer.rating}/5`} detail={`${heroLawyer.reviews} αξιολογήσεις`} />
-                <HeroMetric label="Απάντηση" value={heroLawyer.response} detail="Σήμα δημόσιου προφίλ" />
-                <HeroMetric label="Επόμενη ώρα" value={heroLawyer.available} detail="Κανόνες διαθεσιμότητας" />
-                <HeroMetric label="Τιμή από" value={formatCurrency(getPriceFrom(heroLawyer))} detail="Πρώτη συμβουλευτική" />
+                <HeroMetric label={copy.featuredCard.ratingLabel} value={`${heroLawyer.rating}/5`} detail={`${heroLawyer.reviews} ${copy.featuredCard.reviewsSuffix}`} />
+                <HeroMetric label={copy.featuredCard.responseLabel} value={heroLawyer.response} detail={copy.featuredCard.verified} />
+                <HeroMetric label={copy.featuredCard.nextSlotLabel} value={heroLawyer.available} detail="Με βάση το πρόγραμμα" />
+                <HeroMetric label={copy.featuredCard.priceFrom} value={formatCurrency(getPriceFrom(heroLawyer))} detail={copy.featuredCard.firstConsultation} />
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {heroLawyer.consultationModes.map((item) => (
@@ -238,7 +247,7 @@ const Index = () => {
                 ))}
               </div>
               <Button asChild className="mt-5 h-11 w-full rounded-lg font-bold">
-                <Link to={`/lawyer/${heroLawyer.id}`}>Δείτε προφίλ</Link>
+                <Link to={`/lawyer/${heroLawyer.id}`}>{copy.featuredCard.viewProfile}</Link>
               </Button>
             </aside>
           ) : null}
@@ -247,24 +256,22 @@ const Index = () => {
 
       <section className="bg-primary text-primary-foreground">
         <div className="mx-auto grid max-w-7xl gap-4 px-5 py-5 md:grid-cols-4 lg:px-8">
-          <TrustStat value={String(stats.verifiedProfiles)} label="ελεγμένα δημόσια προφίλ" />
-          <TrustStat value={`${stats.totalReviews}+`} label="αξιολογήσεις μετά από κράτηση" />
-          <TrustStat value={`${stats.averageRating}/5`} label="μέση αξιολόγηση αγοράς" />
-          <TrustStat value={`${stats.availableToday}`} label="διαθέσιμοι σήμερα" />
+          <TrustStat value={String(stats.verifiedProfiles)} label={copy.marketplaceStats.verifiedProfiles} />
+          <TrustStat value={`${stats.totalReviews}+`} label={copy.marketplaceStats.bookedReviews} />
+          <TrustStat value={`${stats.averageRating}/5`} label={copy.marketplaceStats.avgRating} />
+          <TrustStat value={`${stats.availableToday}`} label={copy.marketplaceStats.availableToday} />
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-sage">Προτεινόμενοι δικηγόροι</p>
-            <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Προτάσεις από ζωντανά δημόσια προφίλ</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Οι προτάσεις βασίζονται στα στοιχεία που βλέπετε στα προφίλ, όπως αξιολογήσεις, χρόνος απάντησης, τιμή και διαθεσιμότητα.
-            </p>
+            <p className="text-xs font-bold uppercase tracking-widest text-sage">{copy.recommendations.title}</p>
+            <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">{copy.recommendations.title}</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{copy.recommendations.description}</p>
           </div>
           <Button asChild variant="outline" className="rounded-lg font-bold">
-            <Link to="/search">Άνοιγμα αναζήτησης</Link>
+            <Link to="/search">{copy.recommendations.tabs.all}</Link>
           </Button>
         </div>
 
@@ -281,7 +288,7 @@ const Index = () => {
                   : "border-border bg-card text-foreground hover:border-primary/30",
               )}
             >
-              {featuredGroupLabels[group]}
+              {groupLabels[group]}
             </button>
           ))}
         </div>
@@ -309,7 +316,7 @@ const Index = () => {
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
                 <span className="text-lg font-bold text-foreground">{formatCurrency(getPriceFrom(lawyer))}</span>
-                <span className="text-xs font-bold text-primary">Σύγκριση και κράτηση</span>
+                <span className="text-xs font-bold text-primary">{copy.recommendations.cardCta}</span>
               </div>
             </Link>
           ))}
@@ -318,15 +325,16 @@ const Index = () => {
 
       <section id="categories" className="border-y border-border bg-secondary/35">
         <div className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
-          <p className="text-xs font-bold uppercase tracking-widest text-sage">Συχνές νομικές ανάγκες</p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Ξεκινήστε από το πρόβλημα, όχι από κατάλογο κατηγοριών</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">{copy.categories.title}</p>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">{copy.categories.title}</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{copy.categories.description}</p>
           <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-            {popularLegalJourneys.map((journey) => (
-              <Link key={journey.title} to={journey.to} className="rounded-lg border border-border bg-card p-4 transition hover:border-primary/25 hover:shadow-md">
-                <h3 className="text-base font-bold text-foreground">{journey.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{journey.description}</p>
+            {categoryCards.map((category) => (
+              <Link key={category.title} to={category.to} className="rounded-lg border border-border bg-card p-4 transition hover:border-primary/25 hover:shadow-md">
+                <h3 className="text-base font-bold text-foreground">{category.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{category.description}</p>
                 <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-primary">
-                  Δείτε δικηγόρους
+                  {copy.categories.cta}
                   <ArrowRight className="h-3.5 w-3.5" />
                 </span>
               </Link>
@@ -337,19 +345,16 @@ const Index = () => {
 
       <section id="how-it-works" className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
         <div className="text-center">
-          <p className="text-xs font-bold uppercase tracking-widest text-sage">Πώς λειτουργεί</p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Περιγραφή, σύγκριση, κράτηση και πληρωμή</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">{copy.howItWorks.title}</p>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">{copy.howItWorks.title}</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{copy.howItWorks.description}</p>
         </div>
         <div className="mx-auto mt-7 grid max-w-5xl gap-3 md:grid-cols-3">
-          {[
-            ["01", "Περιγράψτε το θέμα", "Χρησιμοποιήστε θέμα, πόλη, γλώσσα και τρόπο συμβουλευτικής για γρήγορο περιορισμό της αγοράς."],
-            ["02", "Συγκρίνετε δικηγόρους", "Δείτε εξειδίκευση, καταλληλότητα, αξιολόγηση, απάντηση, επόμενη ώρα, τρόπους και τιμή."],
-            ["03", "Κλείστε και πληρώστε", "Δεσμεύστε πραγματική ώρα, επιβεβαιώστε τη σύνοψη και ολοκληρώστε την ασφαλή πληρωμή."],
-          ].map(([step, title, text]) => (
-            <div key={step} className="rounded-lg border border-border bg-card p-5">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary font-serif text-primary-foreground">{step}</span>
-              <h3 className="mt-4 text-lg font-bold text-foreground">{title}</h3>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p>
+          {copy.howItWorks.steps.map((step) => (
+            <div key={step.number} className="rounded-lg border border-border bg-card p-5">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary font-serif text-primary-foreground">{step.number}</span>
+              <h3 className="mt-4 text-lg font-bold text-foreground">{step.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.description}</p>
             </div>
           ))}
         </div>
@@ -359,10 +364,11 @@ const Index = () => {
         <div className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
           <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-sage">Κανόνες εμπιστοσύνης</p>
-              <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Τι ελέγχουμε για εσάς</h2>
+              <p className="text-xs font-bold uppercase tracking-widest text-sage">{copy.trust.title}</p>
+              <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">{copy.trust.title}</h2>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">{copy.trust.description}</p>
               <div className="mt-5 space-y-2">
-                {publicTrustMechanics.map((item) => (
+                {copy.trust.bullets.map((item) => (
                   <p key={item} className="flex items-center gap-2 text-sm font-semibold text-foreground">
                     <CheckCircle2 className="h-4 w-4 text-sage" />
                     {item}
@@ -371,13 +377,16 @@ const Index = () => {
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              {trustCards.map(({ icon: Icon, title, text }) => (
-                <div key={title} className="rounded-lg border border-border bg-background p-5">
-                  <Icon className="h-5 w-5 text-primary" />
-                  <h3 className="mt-3 text-base font-bold text-foreground">{title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p>
-                </div>
-              ))}
+              {copy.trust.cards.map((card, index) => {
+                const Icon = trustCardIcons[index] || ShieldCheck;
+                return (
+                  <div key={card.title} className="rounded-lg border border-border bg-background p-5">
+                    <Icon className="h-5 w-5 text-primary" />
+                    <h3 className="mt-3 text-base font-bold text-foreground">{card.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{card.description}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -385,8 +394,9 @@ const Index = () => {
 
       {reviewBackedLawyers.length > 0 ? (
         <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8 lg:py-14">
-          <p className="text-xs font-bold uppercase tracking-widest text-sage">Απόδειξη από αξιολογήσεις</p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">Αξιολογήσεις από ολοκληρωμένα ραντεβού</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-sage">{copy.reviewsProof.title}</p>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight text-foreground">{copy.reviewsProof.title}</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{copy.reviewsProof.description}</p>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             {reviewBackedLawyers.map((lawyer) => (
               <Link key={lawyer.id} to={`/lawyer/${lawyer.id}`} className="rounded-lg border border-border bg-card p-5 transition hover:border-primary/25">
@@ -397,9 +407,7 @@ const Index = () => {
                 </div>
                 <h3 className="mt-3 text-base font-bold text-foreground">{lawyer.name}</h3>
                 <p className="mt-1 text-sm font-semibold text-primary">{lawyer.specialty}</p>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  Οι αξιολογήσεις δημοσιεύονται μόνο μετά από ολοκληρωμένες συμβουλευτικές και εμφανίζονται στο προφίλ απόφασης.
-                </p>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">{copy.reviewsProof.description}</p>
               </Link>
             ))}
           </div>
@@ -408,13 +416,11 @@ const Index = () => {
 
       <section className="mx-auto max-w-7xl px-5 py-12 lg:px-8">
         <div className="rounded-lg bg-primary px-6 py-9 text-center text-primary-foreground">
-          <h2 className="font-serif text-3xl tracking-tight">Έτοιμοι να συγκρίνετε πραγματικές επιλογές;</h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-primary-foreground/70">
-            Συνεχίστε στην αναζήτηση με τα ίδια δημόσια δεδομένα αγοράς, φτιάξτε σύντομη λίστα, συγκρίνετε και κλείστε ραντεβού.
-          </p>
+          <h2 className="font-serif text-3xl tracking-tight">{copy.finalCta.title}</h2>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-primary-foreground/70">{copy.finalCta.description}</p>
           <Button asChild variant="secondary" className="mt-5 rounded-lg font-bold">
             <Link to="/search">
-              Βρείτε δικηγόρο
+              {copy.finalCta.button}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
@@ -431,7 +437,7 @@ const FieldShell = ({
   label,
   children,
 }: {
-  icon: typeof Search;
+  icon: LucideIcon;
   label: string;
   children: React.ReactNode;
 }) => (
@@ -459,7 +465,7 @@ const TrustStat = ({ value, label }: { value: string; label: string }) => (
   </div>
 );
 
-const ProofPill = ({ icon: Icon, children }: { icon: typeof Search; children: React.ReactNode }) => (
+const ProofPill = ({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) => (
   <span className="inline-flex min-h-8 items-center gap-1.5 rounded-md bg-secondary px-2.5 py-1 font-semibold text-foreground">
     <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
     {children}

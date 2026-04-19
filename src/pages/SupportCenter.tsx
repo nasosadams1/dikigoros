@@ -248,7 +248,7 @@ const SupportCenter = () => {
             <input value={form.reference} onChange={(event) => setForm((current) => ({ ...current, reference: event.target.value }))} placeholder="BK-..., INV-..., προαιρετικό" className="mt-1.5 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground" />
           </label>
           <label className="block">
-            <span className="text-sm font-bold text-foreground">Email</span>
+            <span className="text-sm font-bold text-foreground">Ηλεκτρονικό ταχυδρομείο</span>
             <input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} required placeholder="you@example.com" className="mt-1.5 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground" />
           </label>
           <label className="block md:col-span-2">
