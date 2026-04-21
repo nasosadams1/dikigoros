@@ -13,6 +13,7 @@ import {
   Settings2,
   ShieldCheck,
   Star,
+  Workflow,
   UserRoundCog,
   type LucideIcon,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import {
   getCanonicalBookingState,
   getCanonicalPaymentState,
   isBookingScheduled,
+  paymentStateLabels,
   reviewPublicationStateLabels,
 } from "@/lib/bookingState";
 import {
@@ -62,9 +64,21 @@ import {
 } from "@/lib/partnerWorkspace";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { createOperationalCase } from "@/lib/operationsRepository";
+import {
+  buildPartnerPipelineItems,
+  fetchPartnerCrmState,
+  savePartnerCaseNote,
+  updatePartnerPipelineStatus,
+  upsertPartnerFollowupTask,
+  type PartnerCaseNote,
+  type PartnerFollowupTask,
+  type PartnerPipelineItem,
+} from "@/lib/partnerCrmRepository";
+import { level4PipelineStatuses, type Level4PipelineStatus } from "@/lib/level4Marketplace";
 import { allowedMarketplaceCityNames, legalPracticeAreaLabels } from "@/lib/marketplaceTaxonomy";
 
 const navItems = [
+  { id: "pipeline", label: "Ροή υποθέσεων", icon: Workflow },
   { id: "appointments", label: "Ραντεβού", icon: CalendarDays },
   { id: "performance", label: "Απόδοση συνεργασίας", icon: BarChart3 },
   { id: "availability", label: "Διαθεσιμότητα", icon: Clock3 },
@@ -91,6 +105,10 @@ const parsePartnerView = (value: string | null): PartnerView =>
   value && partnerViewIds.has(value as PartnerView) ? (value as PartnerView) : "appointments";
 
 const viewMeta: Record<PartnerView, { title: string; description: string }> = {
+  pipeline: {
+    title: "Ροή υποθέσεων για κάθε στάδιο πελάτη.",
+    description: "Παρακολουθήστε κρατήσεις, πληρωμές, επερχόμενα ραντεβού, ολοκληρώσεις, εκκρεμείς αξιολογήσεις, πιθανές επιστροφές και υπενθυμίσεις συνέχειας.",
+  },
   appointments: {
     title: "Ραντεβού και αιτήματα με καθαρή εικόνα ημέρας.",
     description: "Δείτε κρατήσεις, στοιχεία πελάτη, θέμα, κατάσταση και τις επόμενες ενέργειες.",
@@ -101,7 +119,7 @@ const viewMeta: Record<PartnerView, { title: string; description: string }> = {
   },
   availability: {
     title: "Διαθεσιμότητα που αποθηκεύεται άμεσα.",
-    description: "Ορίστε ημέρες, ώρες, σημειώσεις, buffers και κανόνες κράτησης.",
+    description: "Ορίστε ημέρες, ώρες, σημειώσεις, κενά ασφαλείας και κανόνες κράτησης.",
   },
   profile: {
     title: "Επεξεργάσιμο δημόσιο προφίλ συνεργάτη.",
@@ -215,6 +233,8 @@ const PartnerPortal = () => {
   const [partnerPayments, setPartnerPayments] = useState<StoredPayment[]>([]);
   const [partnerReviews, setPartnerReviews] = useState<StoredLawyerReview[]>([]);
   const [partnerDocuments, setPartnerDocuments] = useState<StoredBookingDocument[]>([]);
+  const [partnerCaseNotes, setPartnerCaseNotes] = useState<PartnerCaseNote[]>([]);
+  const [partnerFollowups, setPartnerFollowups] = useState<PartnerFollowupTask[]>([]);
   const [profilePhotoState, setProfilePhotoState] = useState<PartnerProfilePhotoState | null>(null);
   const [bookingActionState, setBookingActionState] = useState<Record<string, BookingActionState>>({});
   const [searchVisibilityBaseLawyer, setSearchVisibilityBaseLawyer] = useState<Lawyer | null | undefined>(undefined);
@@ -296,13 +316,16 @@ const PartnerPortal = () => {
       fetchPaymentsForLawyer(workspace.profile.lawyerId, session),
       fetchReviewsForLawyer(workspace.profile.lawyerId, true, session),
       fetchDocumentsForLawyer(workspace.profile.lawyerId, session),
+      fetchPartnerCrmState(workspace.profile.lawyerId, session),
     ])
-      .then(([nextBookings, nextPayments, nextReviews, nextDocuments]) => {
+      .then(([nextBookings, nextPayments, nextReviews, nextDocuments, nextCrm]) => {
         if (!active) return;
         setPartnerBookings(nextBookings);
         setPartnerPayments(nextPayments);
         setPartnerReviews(nextReviews);
         setPartnerDocuments(nextDocuments);
+        setPartnerCaseNotes(nextCrm.notes);
+        setPartnerFollowups(nextCrm.followups);
       })
       .catch((error) => {
         if (!active) return;
@@ -312,6 +335,8 @@ const PartnerPortal = () => {
           setPartnerPayments([]);
           setPartnerReviews([]);
           setPartnerDocuments([]);
+          setPartnerCaseNotes([]);
+          setPartnerFollowups([]);
           setProfileSaveState({
             loading: false,
             message: "Τα ραντεβού, οι πληρωμές και τα έγγραφα συνεργάτη είναι προσωρινά μη διαθέσιμα από το σύστημα.",
@@ -356,15 +381,30 @@ const PartnerPortal = () => {
   }, [email, handleExpiredPartnerSession, session]);
 
   const displayBookings = partnerBookings;
+  const pipelineItems = useMemo(
+    () =>
+      buildPartnerPipelineItems({
+        bookings: partnerBookings,
+        payments: partnerPayments,
+        documents: partnerDocuments,
+        reviews: partnerReviews,
+        notes: partnerCaseNotes,
+        followups: partnerFollowups,
+      }),
+    [partnerBookings, partnerCaseNotes, partnerDocuments, partnerFollowups, partnerPayments, partnerReviews],
+  );
   const paymentForBooking = (bookingId: string) => partnerPayments.find((payment) => payment.bookingId === bookingId);
   const confirmedBookings = partnerBookings.filter((booking) => isBookingScheduled(booking, paymentForBooking(booking.id)));
   const completedBookings = partnerBookings.filter((booking) => booking.status === "completed");
-  const completedRevenue = partnerPayments
+  const completedRevenueCents = partnerPayments
     .filter((payment) => getCanonicalPaymentState(payment) === "paid")
-    .reduce((sum, payment) => sum + payment.amount, 0);
-  const pendingRevenue = partnerPayments
+    .reduce((sum, payment) => sum + getPartnerNetCents(payment), 0);
+  const pendingRevenueCents = partnerPayments
     .filter((payment) => getCanonicalPaymentState(payment) === "checkout_opened" || getCanonicalPaymentState(payment) === "not_opened")
-    .reduce((sum, payment) => sum + payment.amount, 0);
+    .reduce((sum, payment) => sum + getPartnerNetCents(payment), 0);
+  const completedPlatformFeeCents = partnerPayments
+    .filter((payment) => getCanonicalPaymentState(payment) === "paid")
+    .reduce((sum, payment) => sum + getPartnerFeeCents(payment), 0);
   const paidBookings = partnerPayments.filter((payment) => getCanonicalPaymentState(payment) === "paid").length;
   const failedPaymentCount = partnerPayments.filter((payment) => getCanonicalPaymentState(payment) === "failed").length;
   const refundIssueCount = partnerPayments.filter((payment) => getCanonicalPaymentState(payment) === "refund_requested").length;
@@ -503,6 +543,50 @@ const PartnerPortal = () => {
           tone: "error",
         });
       });
+  };
+
+  const addPipelineNote = async (booking: StoredBooking, note: string) => {
+    if (!note.trim()) return;
+    try {
+      const savedNote = await savePartnerCaseNote(booking, note.trim(), session);
+      setPartnerCaseNotes((current) => [savedNote, ...current]);
+      setProfileSaveState({ loading: false, message: "Η σημείωση αποθηκεύτηκε.", tone: "success" });
+    } catch (error) {
+      if (isPartnerSessionInvalidError(error)) {
+        handleExpiredPartnerSession();
+        return;
+      }
+      setProfileSaveState({ loading: false, message: getPartnerWorkspaceSaveErrorMessage(error), tone: "error" });
+    }
+  };
+
+  const addPipelineFollowup = async (booking: StoredBooking, title: string, dueAt: string) => {
+    if (!title.trim() || !dueAt.trim()) return;
+    try {
+      const savedTask = await upsertPartnerFollowupTask(booking, title.trim(), dueAt, session);
+      setPartnerFollowups((current) => [savedTask, ...current]);
+      setProfileSaveState({ loading: false, message: "Η υπενθύμιση αποθηκεύτηκε.", tone: "success" });
+    } catch (error) {
+      if (isPartnerSessionInvalidError(error)) {
+        handleExpiredPartnerSession();
+        return;
+      }
+      setProfileSaveState({ loading: false, message: getPartnerWorkspaceSaveErrorMessage(error), tone: "error" });
+    }
+  };
+
+  const changePipelineStatus = async (booking: StoredBooking, status: Level4PipelineStatus) => {
+    try {
+      await updatePartnerPipelineStatus(booking, status, session);
+      setBookingsVersion((version) => version + 1);
+      setProfileSaveState({ loading: false, message: "Η κατάσταση ενημερώθηκε.", tone: "success" });
+    } catch (error) {
+      if (isPartnerSessionInvalidError(error)) {
+        handleExpiredPartnerSession();
+        return;
+      }
+      setProfileSaveState({ loading: false, message: getPartnerWorkspaceSaveErrorMessage(error), tone: "error" });
+    }
   };
 
   const completeBooking = (booking?: StoredBooking) => {
@@ -775,7 +859,7 @@ const PartnerPortal = () => {
 
               <div className="grid gap-3 sm:grid-cols-3 lg:w-[520px]">
                 <Metric label="Επόμενα" value={String(confirmedBookings.length || displayBookings.length)} helper="κρατήσεις" />
-                <Metric label="Σε αναμονή" value={`€${pendingRevenue}`} helper="προς εκκαθάριση" />
+                <Metric label="Σε αναμονή" value={formatEuroCents(pendingRevenueCents)} helper="προς εκκαθάριση" />
                 <Metric label="Αξιολόγηση" value={averageReview} helper={`${partnerReviews.length} κριτικές`} />
               </div>
             </div>
@@ -810,6 +894,15 @@ const PartnerPortal = () => {
             />
           ) : null}
 
+          {activeView === "pipeline" ? (
+            <PipelineView
+              items={pipelineItems}
+              onAddNote={(booking, note) => void addPipelineNote(booking, note)}
+              onAddFollowup={(booking, title, dueAt) => void addPipelineFollowup(booking, title, dueAt)}
+              onChangeStatus={(booking, status) => void changePipelineStatus(booking, status)}
+            />
+          ) : null}
+
           {activeView === "availability" ? (
             <AvailabilityView
               workspace={workspace}
@@ -837,10 +930,12 @@ const PartnerPortal = () => {
 
           {activeView === "earnings" ? (
             <EarningsView
-              completedRevenue={completedRevenue}
-              pendingRevenue={pendingRevenue}
+              completedRevenueCents={completedRevenueCents}
+              pendingRevenueCents={pendingRevenueCents}
+              completedPlatformFeeCents={completedPlatformFeeCents}
               completedBookings={completedBookings}
               confirmedBookings={confirmedBookings}
+              payments={partnerPayments}
             />
           ) : null}
 
@@ -861,6 +956,176 @@ const PartnerPortal = () => {
         </div>
       </section>
     </PartnerShell>
+  );
+};
+
+const pipelineStatusLabels: Record<Level4PipelineStatus, string> = {
+  booked: "Κρατημένο",
+  paid: "Πληρωμένο",
+  upcoming: "Επερχόμενο",
+  completed: "Ολοκληρωμένο",
+  review_pending: "Αναμονή αξιολόγησης",
+  refund_risk: "Πιθανή επιστροφή",
+  follow_up_needed: "Χρειάζεται συνέχεια",
+};
+
+const formatEuroCents = (amountCents: number) => {
+  const amount = amountCents / 100;
+  return `€${amount.toLocaleString("en-US", {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
+const getPartnerFeeCents = (payment?: StoredPayment) =>
+  Math.max(0, Number(payment?.partnerPlatformFeeCents || 0));
+
+const getPartnerNetCents = (payment?: StoredPayment, fallbackBooking?: StoredBooking) => {
+  if (payment?.partnerNetAmountCents !== undefined) return Math.max(0, Number(payment.partnerNetAmountCents));
+  const grossCents = Math.max(0, Number(payment?.amount ?? fallbackBooking?.price ?? 0) * 100);
+  return Math.max(0, grossCents - getPartnerFeeCents(payment));
+};
+
+const PipelineView = ({
+  items,
+  onAddNote,
+  onAddFollowup,
+  onChangeStatus,
+}: {
+  items: PartnerPipelineItem[];
+  onAddNote: (booking: StoredBooking, note: string) => void;
+  onAddFollowup: (booking: StoredBooking, title: string, dueAt: string) => void;
+  onChangeStatus: (booking: StoredBooking, status: Level4PipelineStatus) => void;
+}) => {
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [followupTitles, setFollowupTitles] = useState<Record<string, string>>({});
+  const [followupDates, setFollowupDates] = useState<Record<string, string>>({});
+  const counts = level4PipelineStatuses.map((status) => ({
+    status,
+    count: items.filter((item) => item.status === status).length,
+  }));
+
+  return (
+    <section className="partner-panel p-7 sm:p-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="partner-kicker">Ροή υποθέσεων</p>
+          <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Πελάτες ανά στάδιο</h3>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+            Δείτε ποιες υποθέσεις είναι κρατημένες, πληρωμένες, επερχόμενες, ολοκληρωμένες ή χρειάζονται αξιολόγηση, επιστροφή ή συνέχεια.
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
+          {counts.map((item) => (
+            <Metric key={item.status} label={pipelineStatusLabels[item.status]} value={String(item.count)} helper="πελάτες" />
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-4">
+        {items.length > 0 ? items.map((item) => {
+          const noteDraft = noteDrafts[item.booking.id] || "";
+          const followupTitle = followupTitles[item.booking.id] || "";
+          const followupDate = followupDates[item.booking.id] || "";
+          return (
+            <article key={item.booking.id} className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/70 p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-[hsl(var(--partner-muted))]">{pipelineStatusLabels[item.status]}</p>
+                  <h4 className="mt-1 text-lg font-semibold text-[hsl(var(--partner-ink))]">{item.booking.clientName}</h4>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    {item.booking.consultationType} · {item.booking.dateLabel} {item.booking.time}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.booking.issueSummary || "Δεν έχει καταγραφεί περιγραφή υπόθεσης."}</p>
+                </div>
+                <select
+                  className="h-10 rounded-xl border border-[hsl(var(--partner-line))] bg-white px-3 text-sm font-semibold text-[hsl(var(--partner-ink))]"
+                  value={item.status}
+                  onChange={(event) => onChangeStatus(item.booking, event.target.value as Level4PipelineStatus)}
+                >
+                  {level4PipelineStatuses.map((status) => (
+                    <option key={status} value={status}>{pipelineStatusLabels[status]}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <Metric label="Πληρωμή" value={item.payment ? paymentStateLabels[getCanonicalPaymentState(item.payment)] : "καμία"} helper="κατάσταση" />
+                <Metric label="Έγγραφα" value={String(item.documents.length)} helper="ορατά αρχεία" />
+                <Metric label="Κριτικές" value={String(item.reviews.length)} helper="μετά την ολοκλήρωση" />
+                <Metric label="Συνέχειες" value={String(item.followups.filter((task) => task.status === "open").length)} helper="ανοιχτές υπενθυμίσεις" />
+              </div>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-[hsl(var(--partner-line))] bg-white/75 p-4">
+                  <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Ιδιωτικές σημειώσεις</p>
+                  <div className="mt-3 space-y-2">
+                    {item.privateNotes.slice(0, 3).map((note) => (
+                      <p key={note.id} className="rounded-lg bg-[hsl(var(--partner-cream))] px-3 py-2 text-xs leading-5 text-muted-foreground">{note.note}</p>
+                    ))}
+                  </div>
+                  <textarea
+                    className="mt-3 min-h-20 w-full rounded-xl border border-[hsl(var(--partner-line))] bg-white px-3 py-2 text-sm"
+                    value={noteDraft}
+                    onChange={(event) => setNoteDrafts((current) => ({ ...current, [item.booking.id]: event.target.value }))}
+                    placeholder="Προσθήκη ιδιωτικής σημείωσης"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-2 rounded-xl"
+                    onClick={() => {
+                      onAddNote(item.booking, noteDraft);
+                      setNoteDrafts((current) => ({ ...current, [item.booking.id]: "" }));
+                    }}
+                  >
+                    Αποθήκευση σημείωσης
+                  </Button>
+                </div>
+
+                <div className="rounded-xl border border-[hsl(var(--partner-line))] bg-white/75 p-4">
+                  <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Υπενθύμιση συνέχειας</p>
+                  <div className="mt-3 space-y-2">
+                    {item.followups.slice(0, 3).map((task) => (
+                      <p key={task.id} className="rounded-lg bg-[hsl(var(--partner-cream))] px-3 py-2 text-xs leading-5 text-muted-foreground">{task.title} · {task.dueAt}</p>
+                    ))}
+                  </div>
+                  <input
+                    className="mt-3 h-10 w-full rounded-xl border border-[hsl(var(--partner-line))] bg-white px-3 text-sm"
+                    value={followupTitle}
+                    onChange={(event) => setFollowupTitles((current) => ({ ...current, [item.booking.id]: event.target.value }))}
+                    placeholder="Τίτλος υπενθύμισης"
+                  />
+                  <input
+                    className="mt-2 h-10 w-full rounded-xl border border-[hsl(var(--partner-line))] bg-white px-3 text-sm"
+                    type="datetime-local"
+                    value={followupDate}
+                    onChange={(event) => setFollowupDates((current) => ({ ...current, [item.booking.id]: event.target.value }))}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-2 rounded-xl"
+                    onClick={() => {
+                      onAddFollowup(item.booking, followupTitle, followupDate);
+                      setFollowupTitles((current) => ({ ...current, [item.booking.id]: "" }));
+                      setFollowupDates((current) => ({ ...current, [item.booking.id]: "" }));
+                    }}
+                  >
+                    Προσθήκη υπενθύμισης
+                  </Button>
+                </div>
+              </div>
+            </article>
+          );
+        }) : (
+          <EmptyState
+            title="Δεν υπάρχουν ακόμη πελάτες στη ροή"
+            description="Οι κρατημένες και πληρωμένες συμβουλευτικές θα εμφανιστούν εδώ μόλις υπάρχουν διαθέσιμες κρατήσεις συνεργάτη."
+          />
+        )}
+      </div>
+    </section>
   );
 };
 
@@ -936,7 +1201,7 @@ const AppointmentsView = ({
                     disabled={currentAction?.loading}
                     className="rounded-xl border-destructive/25 font-semibold text-destructive hover:text-destructive"
                   >
-                    Ακύρωση / αλλαγή ώρας
+                    Ακύρωση 
                   </Button>
                 </div>
               ) : isBookingScheduled(booking) && !verified ? (
@@ -1450,51 +1715,71 @@ const SearchVisibilityCard = ({
 };
 
 const EarningsView = ({
-  completedRevenue,
-  pendingRevenue,
+  completedRevenueCents,
+  pendingRevenueCents,
+  completedPlatformFeeCents,
   completedBookings,
   confirmedBookings,
+  payments,
 }: {
-  completedRevenue: number;
-  pendingRevenue: number;
+  completedRevenueCents: number;
+  pendingRevenueCents: number;
+  completedPlatformFeeCents: number;
   completedBookings: StoredBooking[];
   confirmedBookings: StoredBooking[];
-}) => (
-  <section className="space-y-6">
-    <div className="grid gap-4 md:grid-cols-3">
-      <Metric label="Ολοκληρωμένα" value={`€${completedRevenue}`} helper={`${completedBookings.length} συνεδρίες`} />
-      <Metric label="Σε αναμονή" value={`€${pendingRevenue}`} helper={`${confirmedBookings.length} κρατήσεις`} />
-      <Metric label="Προμήθεια" value="12%" helper="τρέχουσα δοκιμαστική σύμβαση" />
-    </div>
+  payments: StoredPayment[];
+}) => {
+  const visibleBookings = [...completedBookings, ...confirmedBookings];
 
-    <div className="partner-panel p-7 sm:p-8">
-      <p className="partner-kicker">Τιμολόγια και εκταμιεύσεις</p>
-      <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Οικονομικές κινήσεις</h3>
-      <div className="mt-6 space-y-3">
-        {[...completedBookings, ...confirmedBookings].length > 0 ? (
-          [...completedBookings, ...confirmedBookings].map((booking) => (
+  return (
+    <section className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Metric label="Καθαρό ποσό" value={formatEuroCents(completedRevenueCents)} helper={`${completedBookings.length} συνεδρίες`} />
+        <Metric label="Σε αναμονή" value={formatEuroCents(pendingRevenueCents)} helper={`${confirmedBookings.length} κρατήσεις`} />
+        <Metric label="Χρεώσεις πλάνου" value={formatEuroCents(completedPlatformFeeCents)} helper="€7 μόνο στο Βασικό" />
+      </div>
+
+      <div className="partner-panel p-7 sm:p-8">
+        <p className="partner-kicker">Τιμολόγια και εκταμιεύσεις</p>
+        <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Οικονομικές κινήσεις</h3>
+        <div className="mt-6 space-y-3">
+          {visibleBookings.length > 0 ? (
+            visibleBookings.map((booking) => {
+              const payment = payments.find((item) => item.bookingId === booking.id);
+              const feeCents = getPartnerFeeCents(payment);
+              const netCents = getPartnerNetCents(payment, booking);
+              return (
             <div key={booking.id} className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="font-semibold text-[hsl(var(--partner-ink))]">{booking.referenceId}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{booking.clientName} · {booking.consultationType}</p>
+                  <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {feeCents > 0
+                      ? `Χρέωση Βασικού: -${formatEuroCents(feeCents)}`
+                      : payment?.partnerFeeStatus === "waived_by_subscription"
+                        ? "Χρέωση πρώτης συμβουλευτικής: καλύπτεται από το πλάνο"
+                        : "Χρέωση πρώτης συμβουλευτικής: θα υπολογιστεί στην ολοκλήρωση"}
+                  </p>
                 </div>
                 <div className="text-left md:text-right">
-                  <p className="text-lg font-semibold text-[hsl(var(--partner-ink))]">€{booking.price}</p>
+                  <p className="text-lg font-semibold text-[hsl(var(--partner-ink))]">{formatEuroCents(netCents)}</p>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     {canSubmitReview(booking) ? "έτοιμο για εκταμίευση" : "σε αναμονή ολοκλήρωσης"}
                   </p>
                 </div>
               </div>
             </div>
-          ))
-        ) : (
-          <EmptyPartnerState icon={CreditCard} title="Δεν υπάρχουν οικονομικές κινήσεις" description="Οι πληρωμές θα εμφανίζονται όταν υπάρξουν κρατήσεις." />
-        )}
+              );
+            })
+          ) : (
+            <EmptyPartnerState icon={CreditCard} title="Δεν υπάρχουν οικονομικές κινήσεις" description="Οι πληρωμές θα εμφανίζονται όταν υπάρξουν κρατήσεις." />
+          )}
+        </div>
       </div>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 const ReviewsView = ({
   reviews,

@@ -7,6 +7,7 @@ import {
   type AvailabilityIntent,
   type LanguageIntent,
 } from "@/lib/marketplace";
+import { rankMarketplaceLawyers } from "@/lib/level4Marketplace";
 
 export type PriceRange = "all" | "30-50" | "50-80" | "80-120" | "120+";
 export type LawyerSort = "recommended" | "rating" | "price-low" | "experience" | "response" | "value" | "available";
@@ -87,6 +88,14 @@ const matchesAvailabilityIntent = (lawyer: Lawyer, availability?: AvailabilityIn
   return isAvailableTomorrow(lawyer);
 };
 
+const getBudgetIntent = (filters?: LawyerSearchFilters) => {
+  if (!filters || filters.priceRange === "all") return "flexible";
+  if (filters.priceRange === "30-50") return "under_50";
+  if (filters.priceRange === "50-80") return "50_80";
+  if (filters.priceRange === "80-120") return "80_120";
+  return "120_plus";
+};
+
 export const filterLawyers = (lawyers: Lawyer[], filters: LawyerSearchFilters) =>
   lawyers.filter((lawyer) => {
     const cityMatches = !filters.city.trim() || includesNormalized(lawyer.city, filters.city);
@@ -118,8 +127,19 @@ export const filterLawyers = (lawyers: Lawyer[], filters: LawyerSearchFilters) =
     );
   });
 
-export const sortLawyers = (lawyers: Lawyer[], sort: LawyerSort) =>
-  [...lawyers].sort((first, second) => {
+export const sortLawyers = (lawyers: Lawyer[], sort: LawyerSort, filters?: LawyerSearchFilters) => {
+  if (sort === "recommended") {
+    return rankMarketplaceLawyers(lawyers, {
+      city: filters?.city,
+      category: filters?.specialties[0] || filters?.query,
+      query: filters?.query,
+      consultationMode: filters?.appointmentTypes[0] || "any",
+      budget: getBudgetIntent(filters),
+      urgency: filters?.availability === "today" ? "today" : filters?.availability === "tomorrow" ? "this_week" : "flexible",
+    });
+  }
+
+  return [...lawyers].sort((first, second) => {
     if (sort === "rating") return second.rating - first.rating || second.reviews - first.reviews;
     if (sort === "price-low") return getPriceFrom(first) - getPriceFrom(second) || second.rating - first.rating;
     if (sort === "value") return getPriceFrom(first) - getPriceFrom(second) || second.rating - first.rating || second.reviews - first.reviews;
@@ -128,6 +148,7 @@ export const sortLawyers = (lawyers: Lawyer[], sort: LawyerSort) =>
     if (sort === "response") return first.responseMinutes - second.responseMinutes || second.rating - first.rating;
     return getRecommendationScore(second) - getRecommendationScore(first);
   });
+};
 
 export const searchLawyers = (lawyers: Lawyer[], filters: LawyerSearchFilters) =>
-  sortLawyers(filterLawyers(lawyers, filters), filters.sort);
+  sortLawyers(filterLawyers(lawyers, filters), filters.sort, filters);

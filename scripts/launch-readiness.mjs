@@ -20,6 +20,12 @@ const requiredFunnelEvents = [
   "lawyer_application_submitted",
   "lawyer_application_approved",
   "approved_lawyer_first_completed_consultation",
+  "intake_submitted",
+  "intake_routed",
+  "partner_plan_checkout_opened",
+  "partner_subscription_active",
+  "pipeline_status_updated",
+  "followup_task_created",
 ];
 
 const coreLaunchCities = [
@@ -172,7 +178,7 @@ const getSupplyReadiness = (lawyers) =>
         availableSoon,
         reviewed,
         bookable,
-        ready: verified >= 2 && withPrice >= 2 && availableSoon >= 1 && reviewed >= 1 && bookable >= 2,
+        ready: verified >= 3 && withPrice >= 3 && availableSoon >= 2 && reviewed >= 2 && bookable >= 3,
       };
     });
 
@@ -284,12 +290,17 @@ const readRepoFile = (relativePath) => {
 const getSourceHardeningChecks = () => {
   const platformRepository = readRepoFile("src/lib/platformRepository.ts");
   const operationsRepository = readRepoFile("src/lib/operationsRepository.ts");
+  const level4Marketplace = readRepoFile("src/lib/level4Marketplace.ts");
+  const intakeRepository = readRepoFile("src/lib/intakeRepository.ts");
+  const partnerCrmRepository = readRepoFile("src/lib/partnerCrmRepository.ts");
   const desiredSchema = readRepoFile("supabase/desired_supabase_from_scratch.sql");
   const syntheticLaunchCleanupMigration = readRepoFile("supabase/migrations/20260418162000_remove_synthetic_launch_cases.sql");
   const webhookFunction = readRepoFile("supabase/functions/stripe-webhook/index.ts");
+  const partnerSubscriptionFunction = readRepoFile("supabase/functions/create-partner-subscription-checkout-session/index.ts");
   const reconciliationFunction = readRepoFile("supabase/functions/reconcile-stripe-payments/index.ts");
   const reconciliationWorkflow = readRepoFile(".github/workflows/daily-stripe-reconciliation.yml");
   const workflow = readRepoFile(".github/workflows/stage4-release-gate.yml");
+  const sitemap = readRepoFile("public/sitemap.xml");
 
   return [
     {
@@ -334,6 +345,51 @@ const getSourceHardeningChecks = () => {
         workflow.includes("npm run release:gate") &&
         workflow.includes("REQUIRE_LIVE_STRIPE") &&
         readRepoFile("package.json").includes("npm run test:e2e"),
+    },
+    {
+      label: "Level 4 ranking and coverage are shared across the marketplace",
+      ready:
+        level4Marketplace.includes("rankMarketplaceLawyers") &&
+        level4Marketplace.includes("getLevel4Coverage") &&
+        level4Marketplace.includes("lawyersPerCityCategory: 3") &&
+        level4Marketplace.includes("sponsoredLabel"),
+    },
+    {
+      label: "Guided intake persists through backend RPCs",
+      ready:
+        intakeRepository.includes("create_intake_request") &&
+        intakeRepository.includes("routeIntakeRequest") &&
+        desiredSchema.includes("create table if not exists public.intake_requests") &&
+        desiredSchema.includes("create or replace function public.create_intake_request"),
+    },
+    {
+      label: "Partner CRM is backed by pipeline, notes, and follow-up contracts",
+      ready:
+        partnerCrmRepository.includes("update_partner_pipeline_status") &&
+        partnerCrmRepository.includes("save_partner_case_note") &&
+        partnerCrmRepository.includes("upsert_partner_followup_task") &&
+        desiredSchema.includes("create table if not exists public.partner_pipeline_items") &&
+        desiredSchema.includes("create table if not exists public.partner_case_notes") &&
+        desiredSchema.includes("create table if not exists public.partner_followup_tasks"),
+    },
+    {
+      label: "Partner subscriptions run through Edge Functions and Stripe webhooks",
+      ready:
+        partnerSubscriptionFunction.includes('form.set("mode", "subscription")') &&
+        webhookFunction.includes("partner_subscriptions") &&
+        webhookFunction.includes("customer.subscription.updated") &&
+        desiredSchema.includes("create table if not exists public.partner_subscriptions"),
+    },
+    {
+      label: "All current city/category discovery pages are in the public sitemap",
+      ready:
+        ["civil-debts-contracts", "family-law", "traffic-compensation-cars", "employment-law", "leases-rent-evictions"].every((category) =>
+          ["athens", "thessaloniki", "piraeus", "heraklion", "patra"].every((city) =>
+            sitemap.includes(`/lawyers/${category}/${city}`),
+          ),
+        ) &&
+        sitemap.includes("/intake") &&
+        sitemap.includes("/for-lawyers/plans"),
     },
   ];
 };

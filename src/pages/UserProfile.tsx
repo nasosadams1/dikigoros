@@ -46,6 +46,7 @@ import {
 import { getPartnerWorkspace } from "@/lib/partnerWorkspace";
 import { getLawyers } from "@/lib/lawyerRepository";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
+import { getUserRetentionPrompts } from "@/lib/retention";
 import {
   bookingStateLabels,
   canCancelBooking,
@@ -310,6 +311,12 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
   const completionPendingBookings = completedBookings.filter((booking) => !isVerifiedBooking(booking));
   const nextBooking = activeBookings[0];
   const nextBookingPayment = nextBooking ? payments.find((payment) => payment.bookingId === nextBooking.id) : undefined;
+  const retentionPrompts = getUserRetentionPrompts({
+    bookings,
+    payments,
+    reviews: workspace.reviews,
+    documents: workspace.documents,
+  });
 
   const savedLawyers = useMemo(
     () => workspace.savedLawyerIds.map((id) => lawyerCatalog.find((lawyer) => lawyer.id === id)).filter(Boolean),
@@ -847,6 +854,29 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
             </div>
           </div>
         </section>
+
+        {retentionPrompts.length > 0 ? (
+          <section className="mt-6 rounded-2xl border border-border bg-card p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-primary">Χρήσιμες υπενθυμίσεις</p>
+                <h2 className="mt-2 font-serif text-2xl tracking-tight text-foreground">Επόμενες ενέργειες</h2>
+              </div>
+              <Button asChild variant="outline" className="rounded-xl font-bold">
+                <Link to="/intake">Νέα περιγραφή υπόθεσης</Link>
+              </Button>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {retentionPrompts.slice(0, 3).map((prompt) => (
+                <Link key={prompt.id} to={prompt.path} className="rounded-xl border border-border bg-secondary/40 p-4 transition hover:border-primary/25">
+                  <p className="text-sm font-bold text-foreground">{prompt.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{prompt.body}</p>
+                  <p className="mt-3 text-xs font-bold text-primary">{prompt.actionLabel}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <div className="mt-7 grid gap-6 lg:grid-cols-[260px_1fr]">
           <aside className="lg:sticky lg:top-24 lg:self-start">

@@ -245,6 +245,99 @@ const patchUserPaymentPreferences = async (userId: string, preferences: Record<s
   }
 };
 
+const getPartnerSubscriptionMetadata = (object: Record<string, unknown>) => {
+  const metadata =
+    typeof object.metadata === "object" && object.metadata ? (object.metadata as Record<string, unknown>) : {};
+  if (metadata.subscription_kind !== "partner_plan") return null;
+
+  return {
+    partnerEmail: String(metadata.partner_email || ""),
+    lawyerId: String(metadata.lawyer_id || object.client_reference_id || ""),
+    planId: String(metadata.plan_id || "basic"),
+    billingInterval: String(metadata.billing_interval || "monthly") === "annual" ? "annual" : "monthly",
+    stripePriceId: String(metadata.stripe_price_id || ""),
+    planAmountCents: Number(metadata.plan_amount_cents || 0) || 0,
+  };
+};
+
+const upsertPartnerSubscription = async (
+  metadata: {
+    partnerEmail: string;
+    lawyerId: string;
+    planId: string;
+    billingInterval: string;
+    stripePriceId: string;
+    planAmountCents: number;
+  },
+  status: string,
+  object: Record<string, unknown>,
+  event: Record<string, unknown>,
+) => {
+  const { supabaseUrl, serviceRoleKey } = getSupabaseCredentials();
+  if (!metadata.partnerEmail || !metadata.lawyerId) {
+    throw new Error("Missing partner subscription metadata");
+  }
+
+  const subscriptionId = String(object.subscription || object.id || "");
+  const currentPeriodEnd = Number(object.current_period_end || 0);
+  const response = await fetch(`${supabaseUrl}/rest/v1/partner_subscriptions?on_conflict=partner_email,lawyer_id`, {
+    method: "POST",
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify({
+      partner_email: metadata.partnerEmail.toLowerCase(),
+      lawyer_id: metadata.lawyerId,
+      plan_id: metadata.planId,
+      billing_interval: metadata.billingInterval,
+      stripe_price_id: metadata.stripePriceId || null,
+      plan_amount_cents: metadata.planAmountCents,
+      status,
+      stripe_customer_id: object.customer || null,
+      stripe_subscription_id: subscriptionId || null,
+      stripe_checkout_session_id: object.object === "checkout.session" ? object.id || null : null,
+      current_period_end: currentPeriodEnd > 0 ? new Date(currentPeriodEnd * 1000).toISOString() : null,
+      cancel_at_period_end: Boolean(object.cancel_at_period_end),
+      provider_payload: {
+        stripeApiVersion,
+        eventId: event.id || "",
+        eventType: event.type || "",
+        objectId: object.id || "",
+        billingInterval: metadata.billingInterval,
+        stripePriceId: metadata.stripePriceId,
+        planAmountCents: metadata.planAmountCents,
+      },
+      updated_at: new Date().toISOString(),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Partner subscription update failed: ${await response.text()}`);
+  }
+
+  const lawyerResponse = await fetch(`${supabaseUrl}/rest/v1/lawyer_profiles?id=eq.${encodeURIComponent(metadata.lawyerId)}`, {
+    method: "PATCH",
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      partner_plan: status === "active" ? metadata.planId : "basic",
+      visibility_tier: status === "active" ? metadata.planId : "basic",
+      updated_at: new Date().toISOString(),
+    }),
+  });
+
+  if (!lawyerResponse.ok) {
+    console.error("Partner plan profile sync failed", await lawyerResponse.text());
+  }
+};
+
 const fetchReceiptUrl = async (paymentIntentId?: string | null) => {
   const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
   if (!stripeSecretKey || !paymentIntentId) return null;
@@ -296,6 +389,28 @@ Deno.serve(async (request) => {
     });
 
     return json({ received: true });
+  }
+
+  if (type === "checkout.session.completed" && mode === "subscription") {
+    const subscriptionMetadata = getPartnerSubscriptionMetadata(object);
+    if (subscriptionMetadata) {
+      await upsertPartnerSubscription(subscriptionMetadata, "active", object, event);
+      return json({ received: true, partnerSubscription: true });
+    }
+  }
+
+  if (
+    type === "customer.subscription.created" ||
+    type === "customer.subscription.updated" ||
+    type === "customer.subscription.deleted"
+  ) {
+    const subscriptionMetadata = getPartnerSubscriptionMetadata(object);
+    if (subscriptionMetadata) {
+      const subscriptionStatus =
+        type === "customer.subscription.deleted" ? "canceled" : String(object.status || "active");
+      await upsertPartnerSubscription(subscriptionMetadata, subscriptionStatus, object, event);
+      return json({ received: true, partnerSubscription: true });
+    }
   }
 
   const bookingId = await findBookingIdForStripeObject(object);

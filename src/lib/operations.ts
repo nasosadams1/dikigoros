@@ -1,5 +1,6 @@
 import type { Lawyer } from "@/data/lawyers";
 import type { FunnelEvent } from "@/lib/funnelAnalytics";
+import { getLevel4Coverage, level4FunnelEvents } from "@/lib/level4Marketplace";
 import { getLawyerMarketplaceSignals, includesMarketplaceText, isAvailableToday, isAvailableTomorrow } from "@/lib/marketplace";
 import { allowedMarketplaceCities, legalPracticeAreas } from "@/lib/marketplaceTaxonomy";
 
@@ -108,7 +109,7 @@ export const operatingRules: OperatingRule[] = [
   },
   {
     area: "payments",
-    title: "Έλεγχος επιστροφής",
+    title: "Έλεγχος αιτήματος επιστροφής",
     owner: "Υπεύθυνος πληρωμών",
     sla: "Ίδια εργάσιμη ημέρα για ακύρωση δικηγόρου ή πιθανή διπλή χρέωση, έως 2 εργάσιμες για εκπρόθεσμο αίτημα.",
     trigger: "Ακύρωση πληρωμένης κράτησης, αίτημα επιστροφής, ακύρωση δικηγόρου, διαφωνία μη εμφάνισης ή αποτυχία επιστροφής στον πάροχο.",
@@ -212,7 +213,7 @@ export const operatingRules: OperatingRule[] = [
     ],
     userOutcome: "Ο πελάτης βλέπει αλλαγή ώρας, έλεγχο επιστροφής ή συνέχεια από υποστήριξη χωρίς να χρειάζεται να καταλάβει εσωτερικά τι συνέβη.",
     escalation: "Κλιμάκωση επαναλαμβανόμενων ή τελευταίας στιγμής ακυρώσεων στον έλεγχο συνεργατών και στον υπεύθυνο υποστήριξης.",
-    closeCondition: "Ο πελάτης επέλεξε αλλαγή ώρας, συγκρίσιμη εναλλακτική, έλεγχο επιστροφής ή οριστικό κλείσιμο ακύρωσης.",
+    closeCondition: "Το αίτημα θεωρείται λυμένο όταν έχει επιλεγεί νέα ώρα, εναλλακτικός δικηγόρος, έλεγχος επιστροφής ή οριστική ακύρωση.",
     clientCopy: "Ο δικηγόρος δεν μπορεί να παρευρεθεί σε αυτή την ώρα. Θα σας βοηθήσουμε να αλλάξετε ώρα ή να ελεγχθεί η επιστροφή.",
   },
   {
@@ -292,13 +293,13 @@ export const operatingRules: OperatingRule[] = [
 export const supportWorkflows: SupportWorkflow[] = [
   {
     id: "booking_failure",
-    label: "Αποτυχία κράτησης",
+    label: "Πρόβλημα στην κράτηση",
     area: "bookingDisputes",
     owner: "Υποστήριξη κρατήσεων",
-    sla: "Ίδια εργάσιμη ημέρα",
+    sla: "Απάντηση εντός της ίδιας εργάσιμης ημέρας",
     requiredEvidence: ["κωδικός κράτησης", "επιλεγμένη ώρα", "email πελάτη", "μήνυμα που είδε ο χρήστης"],
-    escalationRule: "Κλιμάκωση αν η ώρα είναι μέσα στις επόμενες 24 ώρες ή αν έχει κινηθεί πληρωμή.",
-    userFacingResponse: "Ελέγχουμε την κράτηση και θα σας πούμε αν χρειάζεται νέα προσπάθεια, άλλη ώρα ή υπόθεση υποστήριξης.",
+    escalationRule: "Κλιμακώνεται όταν η ώρα είναι μέσα στις επόμενες 24 ώρες ή όταν έχει ήδη κινηθεί πληρωμή.",
+    userFacingResponse: "Ελέγχουμε την κράτησή σας και θα σας ενημερώσουμε αν χρειάζεται νέα προσπάθεια, άλλη ώρα ή περαιτέρω έλεγχος από την υποστήριξη.",
     closeCondition: "Ο χρήστης έχει επιβεβαιωμένη κράτηση, νέα διαθέσιμη ώρα ή γραπτή επιβεβαίωση ότι δεν έγινε χρέωση.",
   },
   {
@@ -321,7 +322,7 @@ export const supportWorkflows: SupportWorkflow[] = [
     requiredEvidence: ["κωδικός δικηγόρου", "ημερομηνία", "ώρα", "προσπάθεια κράτησης"],
     escalationRule: "Κλιμάκωση σε έλεγχο διαθεσιμότητας αν εμφανίζονται επαναλαμβανόμενες συγκρούσεις στον ίδιο δικηγόρο.",
     userFacingResponse: "Η ώρα δεν είναι πλέον διαθέσιμη. Επιλέξτε άλλη ώρα.",
-    closeCondition: "Η συγκρουόμενη ώρα αποδεσμεύτηκε ή μπλοκαρίστηκε και ο χρήστης έχει καθαρή επόμενη διαδρομή.",
+    closeCondition: "Η συγκρουόμενη ώρα αποδεσμεύτηκε ή μπλοκαρίστηκε και ο χρήστης έχει σαφές επόμενο βήμα.",
   },
   {
     id: "payment_failure",
@@ -329,17 +330,17 @@ export const supportWorkflows: SupportWorkflow[] = [
     area: "payments",
     owner: "Υπεύθυνος πληρωμών",
     sla: "Ίδια εργάσιμη ημέρα, άμεσα για πιθανή διπλή χρέωση",
-    requiredEvidence: ["κωδικός κράτησης", "συνεδρία πληρωμής Stripe", "εγγραφή πληρωμής", "ηλεκτρονικό ταχυδρομείο χρήστη"],
-    escalationRule: "Άμεση κλιμάκωση για πιθανή διπλή χρέωση, ασυμφωνία συμβάντος πληρωμής ή απόδειξη που λείπει.",
+    requiredEvidence: ["κωδικός κράτησης", "στοιχεία πληρωμής","email χρήστη"],
+    escalationRule: "Άμεση κλιμάκωση για πιθανή διπλή χρέωση, ασυμφωνία στην καταγραφή της πληρωμής ή απόδειξη που λείπει.",
     userFacingResponse: "Η πληρωμή δεν ολοκληρώθηκε. Δεν έγινε χρέωση.",
-    closeCondition: "Η πληρωμή είναι πληρωμένη, απέτυχε με σαφή επιλογή επανάληψης ή κλιμακώθηκε με στοιχεία από τον πάροχο.",
+    closeCondition: "Η πληρωμή είναι πληρωμένη, απέτυχε με σαφή επιλογή επανάληψης ή ή έχει προωθηθεί για περαιτέρω έλεγχο με βάση τα στοιχεία του παρόχου πληρωμών.",
   },
   {
     id: "refund_request",
     label: "Αίτημα επιστροφής",
     area: "payments",
     owner: "Υπεύθυνος πληρωμών",
-    sla: "Ίδια εργάσιμη ημέρα για επιλέξιμη ακύρωση",
+    sla: "Ίδια εργάσιμη ημέρα για ακύρωση που πληροί τις προϋποθέσεις επιστροφής",
     requiredEvidence: ["κράτηση", "πληρωμή", "ώρα ακύρωσης", "λόγος ακύρωσης"],
     escalationRule: "Κλιμάκωση στον υπεύθυνο υποστήριξης όταν τα στοιχεία της πολιτικής δεν είναι ξεκάθαρα.",
     userFacingResponse: "Η ακύρωση καταχωρίστηκε. Ελέγχουμε αν προβλέπεται επιστροφή.",
@@ -347,36 +348,36 @@ export const supportWorkflows: SupportWorkflow[] = [
   },
   {
     id: "refund_review",
-    label: "Έλεγχος επιστροφής",
+    label: "Έλεγχος αιτήματος επιστροφής",
     area: "payments",
     owner: "Υπεύθυνος πληρωμών",
     sla: "Έως 2 εργάσιμες ημέρες",
     requiredEvidence: ["ιστορικό κράτησης", "κατάσταση πληρωμής", "μηνύματα", "λόγος ακύρωσης"],
     escalationRule: "Κλιμάκωση στον υπεύθυνο υποστήριξης για διαφωνίες ή επαναλαμβανόμενα θέματα συνεργάτη.",
     userFacingResponse: "Η επιστροφή εξετάζεται από την υποστήριξη.",
-    closeCondition: "Η απόφαση ελέγχου και η εξήγηση προς τον χρήστη έχουν καταγραφεί.",
+    closeCondition: "Θεωρείται λυμένο όταν έχει ληφθεί απόφαση και έχει δοθεί σαφής ενημέρωση στον χρήστη.",
   },
   {
     id: "account_access",
-    label: "Πρόβλημα πρόσβασης λογαριασμού",
+    label: "Πρόβλημα πρόσβασης στον λογαριασμό",
     area: "support",
     owner: "Υπεύθυνος υποστήριξης",
     sla: "Έως 2 εργάσιμες ημέρες, ίδια ημέρα αν μπλοκάρει πληρωμένο ραντεβού",
     requiredEvidence: ["email λογαριασμού", "κωδικός κράτησης ή πληρωμής", "τι πρόβλημα πρόσβασης εμφανίζεται"],
-    escalationRule: "Κλιμάκωση στον υπεύθυνο ασφάλειας/απορρήτου αν υπάρχει υποψία πρόσβασης τρίτου.",
-    userFacingResponse: "Ελέγχουμε την πρόσβαση και θα μιλήσουμε για ιδιωτικά στοιχεία μόνο μετά την επαλήθευση email.",
-    closeCondition: "Η πρόσβαση αποκαταστάθηκε, επαληθεύτηκε ή η ασφάλεια έχει αναλάβει την ανοιχτή υπόθεση.",
+    escalationRule: "Κλιμάκωση στον υπεύθυνο ασφάλειας/απορρήτου αν υπάρχει υποψία μη εξουσιοδοτημένης πρόσβασης.",
+    userFacingResponse: "Ελέγχουμε την πρόσβαση και θα συζητήσουμε ιδιωτικά στοιχεία του λογαριασμού μόνο αφού επιβεβαιώσουμε το email σας.",
+    closeCondition: "Η πρόσβαση αποκαταστάθηκε, επαληθεύτηκε ή η ομάδα ασφάλειας έχει αναλάβει το ενεργό αίτημα.",
   },
   {
     id: "document_request",
-    label: "Αίτημα ορατότητας ή διαγραφής εγγράφου",
+    label: "Αίτημα πρόσβασης ή διαγραφής εγγράφου",
     area: "privacyDocuments",
     owner: "Υπεύθυνος απορρήτου",
     sla: "Έως 2 εργάσιμες ημέρες, ίδια ημέρα για πιθανή έκθεση εγγράφου",
     requiredEvidence: ["κωδικός ή όνομα εγγράφου", "email λογαριασμού", "κωδικός κράτησης", "τύπος αιτήματος"],
-    escalationRule: "Κλιμάκωση για μη εξουσιοδοτημένη πρόσβαση ή σύγκρουση με νόμιμη υποχρέωση διατήρησης.",
+    escalationRule: "Κλιμάκωση για μη εξουσιοδοτημένη πρόσβαση ή αν υπάρχει σύγκρουση με νόμιμη υποχρέωση διατήρησης δεδομένων.",
     userFacingResponse: "Ελέγχουμε ποιος μπορεί να δει το αρχείο και τι μπορεί να διαγραφεί.",
-    closeCondition: "Η ορατότητα, το αίτημα διαγραφής, ο λόγος διατήρησης και το συμβάν ελέγχου έχουν καταγραφεί.",
+    closeCondition: "Η ορατότητα, το αίτημα διαγραφής, ο λόγος διατήρησης και και έχει καταγραφεί ο σχετικός έλεγχος.",
   },
   {
     id: "privacy_request",
@@ -384,10 +385,10 @@ export const supportWorkflows: SupportWorkflow[] = [
     area: "privacyDocuments",
     owner: "Υπεύθυνος απορρήτου",
     sla: "Έως 2 εργάσιμες ημέρες",
-    requiredEvidence: ["email λογαριασμού", "πεδίο αιτήματος", "επηρεαζόμενη εγγραφή"],
+    requiredEvidence: ["email λογαριασμού", "είδος αιτήματος", "τα δεδομένα που επηρεάζονται"],
     escalationRule: "Κλιμάκωση στον υπεύθυνο ασφάλειας/απορρήτου για νομική σύγκρουση ή πιθανή έκθεση δεδομένων.",
     userFacingResponse: "Το αίτημα απορρήτου δρομολογήθηκε για έλεγχο.",
-    closeCondition: "Ο χρήστης έλαβε πρόσβαση, διαγραφή, λόγο διατήρησης ή ενημέρωση κλιμάκωσης.",
+    closeCondition: "Θεωρείται λυμένο όταν ο χρήστης έχει λάβει απάντηση για πρόσβαση, διαγραφή, λόγο διατήρησης ή περαιτέρω κλιμάκωση.",
   },
   {
     id: "lawyer_complaint",
@@ -397,30 +398,30 @@ export const supportWorkflows: SupportWorkflow[] = [
     sla: "Έως 2 εργάσιμες ημέρες, ίδια ημέρα για κατάχρηση ή θέμα ασφάλειας",
     requiredEvidence: ["κωδικός κράτησης ή προφίλ", "λόγος παραπόνου", "μηνύματα ή γεγονότα"],
     escalationRule: "Κλιμάκωση στον έλεγχο συνεργατών όταν υπάρχει επαναλαμβανόμενη συμπεριφορά.",
-    userFacingResponse: "Το παράπονο καταχωρίστηκε και θα ελεγχθεί με βάση τα στοιχεία.",
-    closeCondition: "Το παράπονο λύθηκε, καταγράφηκε ενέργεια προφίλ ή ο έλεγχος συνεργατών έχει αναλάβει τη συνέχεια.",
+    userFacingResponse: "Το παράπονό σας καταχωρίστηκε και θα εξεταστεί με βάση τα διαθέσιμα στοιχεία.",
+    closeCondition: "Το παράπονο λύθηκε, έχει γίνει σχετική ενέργεια στο προφίλ ή ο έλεγχος συνεργατών έχει αναλάβει τη συνέχεια.",
   },
   {
     id: "review_dispute",
-    label: "Διαφωνία κριτικής",
+    label: "Διαφωνία αξιολόγησης",
     area: "reviews",
     owner: "Έλεγχος εμπιστοσύνης",
     sla: "Έως 48 ώρες, ίδια ημέρα για κατάχρηση ή ιδιωτικά στοιχεία",
     requiredEvidence: ["κωδικός κριτικής", "κωδικός κράτησης", "λόγος διαφωνίας"],
     escalationRule: "Κλιμάκωση για απειλές, απάτη ή έκθεση εμπιστευτικών στοιχείων.",
-    userFacingResponse: "Η κριτική κρατήθηκε για έλεγχο πριν αλλάξει δημόσια.",
-    closeCondition: "Η κριτική δημοσιεύτηκε, απορρίφθηκε, διορθώθηκε ή άνοιξε για απάντηση δικηγόρου.",
+    userFacingResponse: "Η αξιολόγηση τέθηκε σε προσωρινό έλεγχο πριν αλλάξει η δημόσια προβολή της.",
+    closeCondition: "Η κριτική δημοσιεύτηκε, απορρίφθηκε, διορθώθηκε ή έγινε διαθέσιμη για απάντηση από τον δικηγόρο.",
   },
   {
     id: "security_incident",
     label: "Περιστατικό ασφάλειας",
     area: "security",
     owner: "Υπεύθυνος ασφάλειας/απορρήτου",
-    sla: "Άμεση διαλογή",
-    requiredEvidence: ["email αναφέροντος", "επηρεαζόμενη εγγραφή", "χρόνος περιστατικού", "δεδομένα που μπορεί να εκτέθηκαν"],
-    escalationRule: "Δεν μένει στην κανονική υποστήριξη. Πρώτα περιορίζεται το περιστατικό.",
+    sla: "Άμεση αξιολόγηση",
+    requiredEvidence: ["email αναφέροντος", "τα δεδομένα που επηρεάζονται", "χρόνος περιστατικού", "δεδομένα που μπορεί να εκτέθηκαν"],
+    escalationRule: "Δεν ακολουθεί την κανονική ροή υποστήριξης. Πρώτα λαμβάνονται μέτρα για τον περιορισμό του περιστατικού.",
     userFacingResponse: "Ελέγχουμε θέμα ασφάλειας και θα ενημερώσουμε με επιβεβαιωμένα στοιχεία.",
-    closeCondition: "Έχουν καταγραφεί ο περιορισμός, το επηρεαζόμενο εύρος, η απόφαση ενημέρωσης και η διορθωτική ενέργεια.",
+    closeCondition: "Έχουν καταγραφεί ο περιορισμός, η έκταση του περιστατικού, η απόφαση ενημέρωσης και η διορθωτική ενέργεια.",
   },
 ];
 
@@ -543,19 +544,7 @@ export const getFunnelEventCoverage = (funnelEvents: FunnelEvent[]) => {
 
   return {
     observedDays,
-    checks: [
-      "homepage_search",
-      "search_profile_opened",
-      "profile_booking_start",
-      "booking_created",
-      "payment_opened",
-      "payment_completed",
-      "consultation_completed",
-      "review_submitted",
-      "lawyer_application_submitted",
-      "lawyer_application_approved",
-      "approved_lawyer_first_completed_consultation",
-    ].map((eventName) => ({
+    checks: [...level4FunnelEvents].map((eventName) => ({
       eventName,
       count: counts[eventName] || 0,
       ready: (counts[eventName] || 0) > 0,
@@ -574,7 +563,8 @@ export const getDynamicLaunchGates = ({
   const supportEvidenceChecks = getSupportWorkflowEvidenceChecks(operationalCases);
   const funnelCoverage = getFunnelEventCoverage(funnelEvents);
   const supplyReadiness = getSupplyReadiness(lawyers);
-  const coreDensityReady = supplyReadiness.every((city) => city.ready && city.categories.every((category) => category.ready));
+  const level4Coverage = getLevel4Coverage(lawyers);
+  const coreDensityReady = level4Coverage.ready;
 
   return [
     {
@@ -623,7 +613,7 @@ export const getDynamicLaunchGates = ({
       label: "Η βασική πυκνότητα πόλης/δικαίου έχει επιτευχθεί",
       owner: "Υπεύθυνος προσφοράς αγοράς",
       ready: coreDensityReady,
-      evidence: "Οι 5 επιτρεπόμενες πόλεις πρέπει να καλύπτουν τα όρια επαληθευμένων προφίλ και κάθε επιτρεπόμενο δίκαιο να έχει αρκετή κρατήσιμη προσφορά.",
+      evidence: `${level4Coverage.readyPairCount}/${level4Coverage.totalPairCount} city/category routes meet Level 4 density: 3 verified, priced, bookable lawyers per pair, with availability and review evidence.`,
     },
     {
       label: "Ο πίνακας δικηγόρου δείχνει καθαρά την απόδοση",
@@ -677,20 +667,24 @@ export const getSupplyReadiness = (lawyers: Lawyer[]) =>
   coreLaunchCities.map((city) => {
     const cityLawyers = lawyers.filter((lawyer) => includesMarketplaceText(lawyer.city, city.query));
     const categories = highIntentCategories.map((category) => {
-      const count = cityLawyers.filter((lawyer) =>
+      const categoryLawyers = cityLawyers.filter((lawyer) =>
         category.queries.some((query) => includesMarketplaceText(categoryText(lawyer), query)),
-      ).length;
+      );
+      const density = getDiscoveryDensityState(categoryLawyers);
       return {
         ...category,
-        count,
-        ready: count >= 2,
+        count: categoryLawyers.length,
+        ready: density.ready,
+        density,
       };
     });
+    const cityDensity = getDiscoveryDensityState(cityLawyers);
 
     return {
       ...city,
       count: cityLawyers.length,
-      ready: cityLawyers.length >= city.minimumVerified,
+      ready: cityDensity.verified >= city.minimumVerified && categories.every((category) => category.ready),
+      density: cityDensity,
       categories,
     };
   });

@@ -8,6 +8,7 @@ import Navbar from "@/components/Navbar";
 import SEO from "@/components/SEO";
 import { getLawyers } from "@/lib/lawyerRepository";
 import { defaultLawyerSearchFilters, searchLawyers } from "@/lib/lawyerSearch";
+import { scoreLawyerForMarketplace } from "@/lib/level4Marketplace";
 import { cityDirectory, formatCurrency, getDiscoveryConfig, getPriceFrom, isAvailableToday, issueDirectory } from "@/lib/marketplace";
 import { getDiscoveryDensityState } from "@/lib/operations";
 import { getDiscoverySeo } from "@/lib/seo";
@@ -31,6 +32,7 @@ const DiscoveryPage = () => {
   const isCityCategoryRoute = Boolean(config.city);
   const readyForAcquisition = !isCityCategoryRoute || densityState.ready;
   const broaderSearchPath = `/search?q=${encodeURIComponent(config.issue.query)}`;
+  const intakePath = `/intake?category=${encodeURIComponent(config.issue.slug)}${config.city ? `&city=${encodeURIComponent(config.city.slug)}` : ""}`;
   const routeStats = useMemo(() => {
     const prices = matchingLawyers.map(getPriceFrom).filter((price) => Number.isFinite(price) && price > 0);
     const fastResponses = matchingLawyers.filter((lawyer) => lawyer.responseMinutes <= 60).length;
@@ -60,6 +62,12 @@ const DiscoveryPage = () => {
               <DiscoveryStat label="Ταχύτητα" value={routeStats.response} helper={routeStats.availability} />
             </div>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Button asChild className="rounded-lg font-bold">
+                <Link to={intakePath}>
+                  Περιγράψτε την υπόθεση
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
               <Button asChild className="rounded-lg font-bold">
                 <Link to={readyForAcquisition ? config.searchPath : broaderSearchPath}>
                   {readyForAcquisition ? "Βρείτε δικηγόρους" : "Ευρύτερη αναζήτηση"}
@@ -128,12 +136,24 @@ const DiscoveryPage = () => {
             </div>
           ) : null}
           <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {readyForAcquisition && lawyers.length > 0 ? lawyers.map((lawyer) => (
+            {readyForAcquisition && lawyers.length > 0 ? lawyers.map((lawyer) => {
+              const ranking = scoreLawyerForMarketplace(lawyer, {
+                city: config.city?.query,
+                category: config.issue.query,
+              });
+              return (
               <Link key={lawyer.id} to={`/lawyer/${lawyer.id}`} className="rounded-lg border border-border bg-card p-5 transition hover:border-primary/25 hover:shadow-xl hover:shadow-foreground/[0.05]">
                 <div className="flex items-start gap-4">
                   <img src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-lg object-cover" />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold uppercase tracking-wider text-primary">{lawyer.specialty}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs font-bold uppercase tracking-wider text-primary">{lawyer.specialty}</p>
+                      {ranking.sponsoredLabel ? (
+                        <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+                          {ranking.sponsoredLabel}
+                        </span>
+                      ) : null}
+                    </div>
                     <h3 className="mt-1 truncate text-base font-bold text-foreground">{lawyer.name}</h3>
                     <p className="text-xs font-semibold text-muted-foreground">{lawyer.city}</p>
                   </div>
@@ -146,13 +166,20 @@ const DiscoveryPage = () => {
                   <span>{formatCurrency(getPriceFrom(lawyer))}</span>
                 </div>
               </Link>
-            )) : (
+              );
+            }) : (
               <div className="rounded-lg border border-dashed border-border bg-card p-6 text-sm leading-6 text-muted-foreground md:col-span-2 lg:col-span-3">
                 Δεν υπάρχει αρκετή άμεση αντιστοίχιση ακόμη. Ανοίξτε την αναζήτηση για πιο γενικό θέμα ή κοντινή πόλη.
               </div>
             )}
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Button asChild className="rounded-lg font-bold">
+              <Link to={intakePath}>
+                Ξεκινήστε με σύντομη περιγραφή
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
             <Button asChild className="rounded-lg font-bold">
               <Link to={readyForAcquisition ? config.searchPath : broaderSearchPath}>
                 {readyForAcquisition ? "Σύγκριση όλων των σχετικών δικηγόρων" : "Συνέχεια σε ευρύτερη αναζήτηση"}

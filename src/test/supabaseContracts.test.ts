@@ -42,6 +42,10 @@ const partnerProfilePhotoFunction = readFileSync(
   join(process.cwd(), "supabase", "functions", "submit-partner-profile-photo", "index.ts"),
   "utf8",
 );
+const partnerSubscriptionCheckoutFunction = readFileSync(
+  join(process.cwd(), "supabase", "functions", "create-partner-subscription-checkout-session", "index.ts"),
+  "utf8",
+);
 const reconciliationFunction = readFileSync(
   join(process.cwd(), "supabase", "functions", "reconcile-stripe-payments", "index.ts"),
   "utf8",
@@ -155,5 +159,59 @@ describe("Supabase production contracts", () => {
     expect(productionSchema).toContain("reschedule_requested = true");
     expect(productionSchema).toContain("and status = 'confirmed_paid'");
     expect(productionSchema).toContain("BOOKING_NOT_FOUND_OR_NOT_PAID");
+  });
+
+  it("ships Level 4 marketplace engine contracts", () => {
+    [
+      "create table if not exists public.intake_requests",
+      "create table if not exists public.partner_subscriptions",
+      "create table if not exists public.partner_pipeline_items",
+      "create table if not exists public.partner_case_notes",
+      "create table if not exists public.partner_followup_tasks",
+      "partner_plan text not null default 'basic'",
+      "visibility_tier text not null default 'basic'",
+      "completed_consultations integer not null default 0",
+      "partner_platform_fee_cents integer not null default 0",
+      "partner_net_amount_cents integer",
+      "partner_fee_status text not null default 'not_applicable'",
+      "billing_interval text not null default 'monthly'",
+      "stripe_price_id text",
+      "plan_amount_cents integer not null default 0",
+      "platform_fee_cents := case when active_partner_plan_id = 'basic' then 700 else 0 end",
+      "completed_consultations = completed_consultations + 1",
+    ].forEach((contract) => expect(productionSchema).toContain(contract));
+
+    [
+      "create or replace function public.create_intake_request",
+      "create or replace function public.route_intake_request",
+      "create or replace function public.save_partner_case_note",
+      "create or replace function public.upsert_partner_followup_task",
+      "create or replace function public.update_partner_pipeline_status",
+      "create or replace function public.get_partner_subscription_checkout_context",
+    ].forEach((contract) => expect(productionSchema).toContain(contract));
+
+    expect(supabaseConfig).toContain("[functions.create-partner-subscription-checkout-session]");
+    expect(partnerSubscriptionCheckoutFunction).toContain("ALLOWED_APP_ORIGINS");
+    expect(partnerSubscriptionCheckoutFunction).toContain("REQUIRE_LIVE_STRIPE");
+    expect(partnerSubscriptionCheckoutFunction).toContain("sk_live_");
+    expect(partnerSubscriptionCheckoutFunction).toContain("STRIPE_PARTNER_PRO_MONTHLY_PRICE_ID");
+    expect(partnerSubscriptionCheckoutFunction).toContain("STRIPE_PARTNER_PRO_ANNUAL_PRICE_ID");
+    expect(partnerSubscriptionCheckoutFunction).toContain("STRIPE_PARTNER_PREMIUM_MONTHLY_PRICE_ID");
+    expect(partnerSubscriptionCheckoutFunction).toContain("STRIPE_PARTNER_PREMIUM_ANNUAL_PRICE_ID");
+    expect(partnerSubscriptionCheckoutFunction).toContain("assertStripePriceMatchesPlan");
+    expect(partnerSubscriptionCheckoutFunction).toContain("expectedUnitAmount: 2900");
+    expect(partnerSubscriptionCheckoutFunction).toContain("expectedUnitAmount: 27600");
+    expect(partnerSubscriptionCheckoutFunction).toContain("expectedUnitAmount: 9999");
+    expect(partnerSubscriptionCheckoutFunction).toContain("expectedUnitAmount: 100788");
+    expect(partnerSubscriptionCheckoutFunction).toContain("billing_interval");
+    expect(partnerSubscriptionCheckoutFunction).toContain("sales_only");
+    expect(partnerSubscriptionCheckoutFunction).toContain('form.set("mode", "subscription")');
+    expect(webhookFunction).toContain("on_conflict=partner_email,lawyer_id");
+    expect(webhookFunction).toContain("billing_interval");
+    expect(webhookFunction).toContain("stripe_price_id");
+    expect(webhookFunction).toContain("plan_amount_cents");
+    expect(webhookFunction).toContain("partner_subscriptions");
+    expect(webhookFunction).toContain("partner_plan");
+    expect(webhookFunction).toContain("customer.subscription.updated");
   });
 });

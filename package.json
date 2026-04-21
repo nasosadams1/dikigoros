@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "deploy:supabase:functions": "npm run deploy:supabase:payments && npm run deploy:supabase:partner && npm run deploy:supabase:ops",
     "deploy:supabase:payments": "npx supabase functions deploy create-booking-checkout-session --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy create-payment-setup-session --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy create-booking-refund --project-ref jpslttdfysggswkkdvlq --no-verify-jwt",
-    "deploy:supabase:partner": "npx supabase functions deploy partner-access-code --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy create-partner-document-url --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy submit-partner-profile-photo --project-ref jpslttdfysggswkkdvlq --no-verify-jwt",
+    "deploy:supabase:partner": "npx supabase functions deploy partner-access-code --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy create-partner-document-url --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy submit-partner-profile-photo --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy create-partner-subscription-checkout-session --project-ref jpslttdfysggswkkdvlq --no-verify-jwt",
     "deploy:supabase:ops": "npx supabase functions deploy stripe-webhook --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy reconcile-stripe-payments --project-ref jpslttdfysggswkkdvlq --no-verify-jwt",
     "launch:audit": "node scripts/launch-readiness.mjs",
     "launch:audit:strict": "node scripts/launch-readiness.mjs --strict",
@@ -87,13 +87,13 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
-    "jsdom": "^20.0.3",
+    "jsdom": "^29.0.2",
     "lovable-tagger": "^1.1.13",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
-    "vite": "^5.4.19",
+    "vite": "^8.0.8",
     "vitest": "^3.2.4"
   }
 }

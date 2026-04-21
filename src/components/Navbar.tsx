@@ -18,6 +18,7 @@ const Navbar = () => {
     { label: homepageCopy.nav.home, path: "/#top" },
     { label: homepageCopy.nav.findLawyer, path: "/search" },
     { label: homepageCopy.nav.forLawyers, path: "/for-lawyers" },
+    { label: "Πλάνα", path: "/for-lawyers/plans" },
     { label: homepageCopy.nav.trust, path: "/trust/verification-standards" },
   ];
 

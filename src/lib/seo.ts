@@ -24,9 +24,19 @@ export const staticSeoRoutes: SeoConfig[] = [
     description: "Αναζητήστε δικηγόρους ανά θέμα, πόλη, ταχύτητα απάντησης, διαθεσιμότητα, αξιολογήσεις, τρόπο ραντεβού και τιμή.",
   },
   {
+    path: "/intake",
+    title: withSiteName("Guided legal intake"),
+    description: "Share city, legal category, urgency, budget, consultation mode, and a short issue summary so the marketplace can route you to ranked verified lawyers.",
+  },
+  {
     path: "/for-lawyers",
     title: withSiteName("Για δικηγόρους και γραφεία"),
     description: "Πιο κατάλληλες συμβουλευτικές, έλεγχος διαθεσιμότητας, διαχείριση κρατήσεων, επαληθευμένες αξιολογήσεις και δημόσιο προφίλ.",
+  },
+  {
+    path: "/for-lawyers/plans",
+    title: withSiteName("Partner plans for lawyers"),
+    description: "Basic, Pro, and Premium plans for verified lawyers with labeled visibility, analytics, CRM pipeline tooling, follow-up tasks, and Stripe subscription checkout.",
   },
   {
     path: "/help",

@@ -30,11 +30,11 @@ const steps = [
   {
     title: "Στοιχεία",
     railTitle: "Επαγγελματικά στοιχεία",
-    railDescription: "Βασικά στοιχεία επικοινωνίας και παρουσίας.",
+    railDescription: "Βασικά στοιχεία επικοινωνίας και επαγγελματικού προφίλ",
     checklist: [
-      "Χρησιμοποιήστε επαγγελματικό ηλεκτρονικό ταχυδρομείο",
-      "Συμπληρώστε πραγματικά στοιχεία επικοινωνίας",
-      "Προσθέστε προαιρετικά γραφείο και επαγγελματικό σύνδεσμο",
+      "Χρησιμοποιήστε επαγγελματικό email",
+      "Συμπληρώστε έγκυρα στοιχεία επικοινωνίας",
+      "Προαιρετικά, προσθέστε όνομα γραφείου και επαγγελματικό σύνδεσμο",
     ],
   },
   {
@@ -48,7 +48,7 @@ const steps = [
     ],
   },
   {
-    title: "Πρακτική",
+    title: "Δραστηριότητα",
     railTitle: "Βιογραφικό και έγγραφα",
     railDescription: "Σύντομο επαγγελματικό προφίλ και αρχεία επαλήθευσης.",
     checklist: [
@@ -387,7 +387,7 @@ const PartnerApply = () => {
 
             <div className="mt-6 space-y-5 border-t border-white/10 pt-5">
               <div>
-                <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-white/46">Χρόνος ελέγχου</p>
+                <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-white/46">Χρόνος εξέτασης αίτησης</p>
                 <p className="mt-2 text-sm leading-6 text-white/78">Συνήθως 2–3 εργάσιμες ημέρες όταν ο φάκελος είναι πλήρης.</p>
               </div>
               <div>
@@ -454,12 +454,12 @@ const PartnerApply = () => {
       <section className="grid gap-5 lg:grid-cols-[308px_minmax(0,1fr)] lg:items-start">
         <aside className="partner-dark-panel p-6 lg:sticky lg:top-[104px]">
           <p className="partner-kicker text-[hsl(var(--partner-gold))]">Αίτηση συνεργασίας</p>
-          <h1 className="mt-3 font-sans text-[28px] font-semibold leading-tight tracking-[-0.02em] text-white">Ένταξη στο δίκτυο συνεργατών του Dikigoros.</h1>
-          <p className="mt-3 text-sm leading-6 text-white/72">Η αίτηση αφορά δικηγόρους που θέλουν να αξιολογηθούν πριν αποκτήσουν πρόσβαση στον πίνακα συνεργάτη και πριν ενεργοποιηθεί η παρουσία τους στο δίκτυο.</p>
+          <h1 className="mt-3 font-sans text-[28px] font-semibold leading-tight tracking-[-0.02em] text-white">Αίτηση ένταξης στο δίκτυο συνεργατών του Dikigoros</h1>
+          <p className="mt-3 text-sm leading-6 text-white/72">Υποβάλλετε αίτηση για να ελέγξουμε τα στοιχεία σας πριν αποκτήσετε πρόσβαση στον πίνακα συνεργάτη και πριν εμφανιστεί το προφίλ σας στο δίκτυο.</p>
 
           <div className="mt-6 space-y-5 border-t border-white/10 pt-5">
             <div>
-              <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-white/46">Τρέχον στάδιο</p>
+              <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-white/46">Τρέχον βήμα</p>
               <p className="mt-2 font-sans text-[22px] font-semibold tracking-[-0.02em] text-white">{currentStep.railTitle}</p>
               <p className="mt-2 text-sm leading-6 text-white/72">{currentStep.railDescription}</p>
             </div>
@@ -484,8 +484,8 @@ const PartnerApply = () => {
             <div className="flex items-start gap-3 border-t border-white/10 pt-5">
               <FolderLock className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--partner-gold))]" />
               <div>
-                <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-white/46">Χρήση εγγράφων</p>
-                <p className="mt-2 text-sm leading-6 text-white/78">Τα έγγραφα χρησιμοποιούνται μόνο για τον έλεγχο ένταξης και δεν εμφανίζονται δημόσια.</p>
+                <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-white/46">Χρήση των εγγράφων σας</p>
+                <p className="mt-2 text-sm leading-6 text-white/78">Τα έγγραφά σας χρησιμοποιούνται μόνο για τον έλεγχο ένταξης και δεν εμφανίζονται δημόσια.</p>
               </div>
             </div>
           </div>
@@ -494,14 +494,14 @@ const PartnerApply = () => {
         <div className="partner-panel min-w-0 p-7">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="partner-kicker">Αίτηση Συνεργάτη</p>
+              <p className="partner-kicker">Αίτηση συνεργασίας</p>
               <h2 className="mt-3 font-serif text-[2.65rem] leading-[0.98] tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Ένταξη στο δίκτυο συνεργατών του Dikigoros</h2>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">Συμπληρώστε τα στοιχεία που απαιτούνται για την αξιολόγηση του φακέλου ένταξης.</p>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">Συμπληρώστε τα απαραίτητα στοιχεία για να αξιολογήσουμε την αίτησή σας.</p>
             </div>
 
             <Link to="/for-lawyers/login" className="inline-flex items-center gap-2 text-sm font-medium text-[hsl(var(--partner-navy-soft))] transition hover:text-[hsl(var(--partner-ink))]">
               <ArrowLeft className="h-4 w-4" />
-              Έχετε ήδη εγκριθεί; Είσοδος Συνεργάτη
+              Έχετε ήδη εγκριθεί; Συνδεθείτε ως συνεργάτης
             </Link>
           </div>
 
@@ -540,7 +540,7 @@ const PartnerApply = () => {
               <div className="space-y-5">
                 <div>
                   <h3 className="font-sans text-[26px] font-semibold tracking-[-0.02em] text-[hsl(var(--partner-ink))]">Επαγγελματικά στοιχεία</h3>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">Συμπληρώστε τα βασικά στοιχεία επικοινωνίας που αντιστοιχούν στην επαγγελματική σας δραστηριότητα.</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">Συμπληρώστε τα βασικά επαγγελματικά στοιχεία επικοινωνίας σας.</p>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
@@ -551,7 +551,7 @@ const PartnerApply = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <LabelRow label="Επαγγελματικό ηλεκτρονικό ταχυδρομείο" />
+                    <LabelRow label="Επαγγελματικό email" />
                     <input type="email" className="partner-input" value={form.workEmail} onChange={(event) => updateField("workEmail", event.target.value)} onBlur={() => markTouched("workEmail")} placeholder="name@lawfirm.gr" />
                     {shouldShowError("workEmail") && errors.workEmail ? <p className="text-xs font-medium text-destructive">{errors.workEmail}</p> : null}
                   </div>
@@ -847,7 +847,7 @@ const PartnerApply = () => {
             {step < steps.length - 1 ? (
               <div className="space-y-2 sm:text-right">
                 <Button type="button" onClick={handleNext} className={cn("h-[48px] rounded-[14px] px-5 text-sm font-semibold transition", canContinue ? "bg-[hsl(var(--partner-navy))] text-white shadow-[0_12px_26px_rgba(18,30,44,0.12)] hover:bg-[hsl(var(--partner-navy))]/94" : "bg-[#A6ADB8] text-white hover:bg-[#A6ADB8]")} disabled={!canContinue}>
-                  Συνέχεια
+                  Επόμενο βήμα
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
                 {!canContinue ? <p className="text-sm text-muted-foreground">Συμπληρώστε τα απαιτούμενα πεδία για να συνεχίσετε.</p> : null}

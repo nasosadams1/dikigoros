@@ -12,18 +12,18 @@ import {
 import { supportWorkflows, type OperationalArea } from "@/lib/operations";
 
 const supportTopics = [
-  { type: "booking", icon: CalendarX, title: "Αποτυχίες κράτησης", text: "Σύγκρουση ώρας, ακύρωση δικηγόρου, αλλαγή ραντεβού, μη εμφάνιση και επείγουσες αλλαγές συμβουλευτικής." },
-  { type: "payment", icon: CreditCard, title: "Προβλήματα πληρωμής", text: "Διακοπή ροής πληρωμής, πιθανή διπλή χρέωση, επιλεξιμότητα επιστροφής, πρόσβαση απόδειξης και επιβεβαίωση πληρωμής." },
-  { type: "account", icon: KeyRound, title: "Πρόσβαση λογαριασμού", text: "Σύνδεση, προφίλ, ιστορικό ραντεβού, αποθηκευμένοι δικηγόροι, λίστες σύγκρισης και μέθοδος πληρωμής." },
-  { type: "documents", icon: FileText, title: "Έγγραφα", text: "Ορατότητα σε δικηγόρο κρατημένου ραντεβού, αιτήματα διαγραφής, λήψη εγγράφων και διαδρομή αιτήματος απορρήτου." },
-  { type: "complaint", icon: MessageSquareWarning, title: "Παράπονα", text: "Διαφωνίες αξιολόγησης, θέματα συμπεριφοράς, ακρίβεια προφίλ, διαφωνία κράτησης και κλιμάκωση υποστήριξης." },
-  { type: "security", icon: ShieldAlert, title: "Ασφάλεια ή απόρρητο", text: "Ανησυχία για ευαίσθητα νομικά δεδομένα, αναφορά περιστατικού, αίτημα δεδομένων, διαγραφή λογαριασμού και έλεγχος πρόσβασης." },
+  { type: "booking", icon: CalendarX, title: "Αποτυχίες κράτησης", text: "Σύγκρουση ώρας, ακύρωση από δικηγόρο, αλλαγή ραντεβού, μη εμφάνιση και επείγουσες αλλαγές στον τρόπο ή στον χρόνο του ραντεβού." },
+  { type: "payment", icon: CreditCard, title: "Προβλήματα πληρωμής", text: "Πρόβλημα κατά την πληρωμή, πιθανή διπλή χρέωση, επιλεξιμότητα επιστροφής, λήψη απόδειξης και επιβεβαίωση πληρωμής." },
+  { type: "account", icon: KeyRound, title: "Πρόσβαση στον λογαριασμό", text: "Σύνδεση, προφίλ, ιστορικό ραντεβού, αποθηκευμένοι δικηγόροι, λίστες σύγκρισης και στοιχεία πληρωμής." },
+  { type: "documents", icon: FileText, title: "Έγγραφα", text: "Ορατότητα εγγράφων σε κρατημένο ραντεβού, αιτήματα διαγραφής, λήψη εγγράφων και σχετικά αιτήματα απορρήτου." },
+  { type: "complaint", icon: MessageSquareWarning, title: "Παράπονα", text: "Διαφωνίες για αξιολόγηση, θέματα συμπεριφοράς, ανακρίβειες στο προφίλ, προβλήματα με κράτηση και περαιτέρω έλεγχος από την υποστήριξη." },
+  { type: "security", icon: ShieldAlert, title: "Ασφάλεια ή απόρρητο", text: "Ανησυχία για ευαίσθητα νομικά ή προσωπικά δεδομένα, αναφορά περιστατικού, αίτημα δεδομένων, διαγραφή λογαριασμού και έλεγχος πρόσβασης." },
 ];
 
 const supportFlow = [
-  { title: "Επείγοντα κράτησης ή πληρωμής", text: "Μπαίνουν πρώτα, ειδικά όταν υπάρχει ώρα που πλησιάζει, χρέωση που δεν ξεκαθαρίζει ή ακύρωση από δικηγόρο." },
-  { title: "Επιστροφές και αλλαγές", text: "Η υποστήριξη ελέγχει τον κανόνα 24 ωρών, την αιτία ακύρωσης, την κατάσταση πληρωμής και την αρχική μέθοδο πληρωμής." },
-  { title: "Παράπονα και έλεγχος", text: "Μπορεί να ζητηθούν στοιχεία, να κρατηθεί δημοσίευση, να αφαιρεθεί κριτική ή να παγώσει προφίλ μέχρι να ολοκληρωθεί ο έλεγχος." },
+  { title: "Επείγοντα κράτησης ή πληρωμής", text: "Εξετάζονται κατά προτεραιότητα, ειδικά όταν υπάρχει ώρα που πλησιάζει, χρέωση που δεν έχει επιβεβαιωθεί ή ακύρωση από δικηγόρο." },
+  { title: "Επιστροφές και αλλαγές", text: "Η υποστήριξη ελέγχει αν ισχύει ο κανόνας των 24 ωρών, την αιτία ακύρωσης, την κατάσταση πληρωμής και την αρχική μέθοδο πληρωμής." },
+  { title: "Παράπονα και έλεγχος", text: "Μπορεί να ζητηθούν στοιχεία, να ανασταλεί προσωρινά η δημοσίευση, να αφαιρεθεί κριτική ή να ανασταλεί προσωρινά ένα προφίλ μέχρι να ολοκληρωθεί ο έλεγχος." },
 ];
 
 const visibleOperatingRules = [
@@ -162,7 +162,7 @@ const SupportCenter = () => {
       <p className="text-xs font-bold uppercase tracking-widest text-primary">Κέντρο υποστήριξης</p>
       <h1 className="mt-3 max-w-3xl font-serif text-4xl tracking-tight text-foreground">Βοήθεια για κρατήσεις, πληρωμές, λογαριασμούς, έγγραφα και παράπονα</h1>
       <p className="mt-4 max-w-3xl text-base leading-8 text-muted-foreground">
-        Επείγοντα προβλήματα κράτησης και πληρωμής μπαίνουν πρώτα. Αιτήματα απορρήτου, εγγράφων και παραπόνων δρομολογούνται στη σωστή λειτουργική ομάδα.
+        Τα επείγοντα ζητήματα κράτησης και πληρωμής εξετάζονται κατά προτεραιότητα. Τα αιτήματα απορρήτου, εγγράφων και παραπόνων προωθούνται στην κατάλληλη ομάδα για έλεγχο.
       </p>
 
       <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -176,7 +176,7 @@ const SupportCenter = () => {
       </div>
 
       <section className="mt-8 rounded-lg border border-border bg-card p-5">
-        <h2 className="text-lg font-bold text-foreground">Πώς δρομολογείται ένα αίτημα</h2>
+        <h2 className="text-lg font-bold text-foreground">Πώς χειριζόμαστε ένα αίτημα</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {supportFlow.map((item) => (
             <article key={item.title} className="rounded-lg border border-border bg-secondary/40 p-4">
@@ -188,7 +188,7 @@ const SupportCenter = () => {
       </section>
 
       <section className="mt-8 rounded-lg border border-border bg-card p-5">
-        <h2 className="text-lg font-bold text-foreground">Εσωτερικοί κανόνες χειρισμού</h2>
+        <h2 className="text-lg font-bold text-foreground">Χρόνοι και διαδικασία ανά κατηγορία</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Κάθε κατηγορία έχει υπεύθυνο, χρόνο απόκρισης, στοιχεία που χρειάζονται, αποτέλεσμα για τον χρήστη και κανόνα κλιμάκωσης.
         </p>
@@ -203,14 +203,14 @@ const SupportCenter = () => {
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{rule.userFacingResponse}</p>
               <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Στοιχεία: {rule.requiredEvidence.join(", ")}</p>
               <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Κλιμάκωση: {rule.escalationRule}</p>
-              <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Κλείνει όταν: {rule.closeCondition}</p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">Θεωρείται λυμένο όταν: {rule.closeCondition}</p>
             </article>
           ))}
         </div>
       </section>
 
       <div className="mt-8 rounded-lg border border-border bg-secondary/40 p-5">
-        <h2 className="text-lg font-bold text-foreground">Διαδρομές επικοινωνίας</h2>
+        <h2 className="text-lg font-bold text-foreground">Στοιχεία επικοινωνίας</h2>
         <div className="mt-3 grid gap-2 text-sm leading-6 text-muted-foreground md:grid-cols-3">
           <p><span className="font-bold text-foreground">Πελάτες:</span> support@dikigoros.gr</p>
           <p><span className="font-bold text-foreground">Συνεργάτες:</span> partners@dikigoros.gr</p>
@@ -219,7 +219,7 @@ const SupportCenter = () => {
       </div>
 
       <section className="mt-8 rounded-lg border border-border bg-card p-5">
-        <h2 className="text-lg font-bold text-foreground">Άνοιγμα υπόθεσης υποστήριξης</h2>
+        <h2 className="text-lg font-bold text-foreground">Υποβολή αιτήματος υποστήριξης</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Χρησιμοποιήστε τη φόρμα για αποτυχίες κράτησης, θέματα πληρωμής, πρόσβαση λογαριασμού, ορατότητα εγγράφων, αιτήματα απορρήτου ή παράπονα.
         </p>
@@ -248,7 +248,7 @@ const SupportCenter = () => {
             <input value={form.reference} onChange={(event) => setForm((current) => ({ ...current, reference: event.target.value }))} placeholder="BK-..., INV-..., προαιρετικό" className="mt-1.5 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground" />
           </label>
           <label className="block">
-            <span className="text-sm font-bold text-foreground">Ηλεκτρονικό ταχυδρομείο</span>
+            <span className="text-sm font-bold text-foreground">Email</span>
             <input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} required placeholder="you@example.com" className="mt-1.5 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground" />
           </label>
           <label className="block md:col-span-2">
@@ -257,7 +257,7 @@ const SupportCenter = () => {
           </label>
           <div className="md:col-span-2">
             <Button type="submit" disabled={isSubmitting} className="rounded-lg font-bold">
-              {isSubmitting ? "Καταχώριση..." : "Δημιουργία υπόθεσης"}
+              {isSubmitting ? "Καταχώριση..." : "Υποβολή αιτήματος"}
             </Button>
             {caseReference ? (
               <p className="mt-3 rounded-lg border border-sage/20 bg-sage/10 px-3 py-2 text-sm font-bold text-sage-foreground">

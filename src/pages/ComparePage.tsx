@@ -8,6 +8,7 @@ import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import SEO from "@/components/SEO";
 import { getLawyers } from "@/lib/lawyerRepository";
+import { scoreLawyerForMarketplace } from "@/lib/level4Marketplace";
 import { consultationModeNames, formatCurrency, getLawyerMarketplaceSignals, getPriceFrom } from "@/lib/marketplace";
 
 const ComparePage = () => {
@@ -45,12 +46,19 @@ const ComparePage = () => {
           <section className="mt-8 grid gap-4 lg:grid-cols-3">
             {selectedLawyers.map((lawyer) => {
               const signals = getLawyerMarketplaceSignals(lawyer);
+              const ranking = scoreLawyerForMarketplace(lawyer, {
+                city: lawyer.city,
+                category: lawyer.specialty,
+              });
               return (
                 <article key={lawyer.id} className="rounded-lg border border-border bg-card p-5">
                   <div className="flex items-start gap-4">
                     <img src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-lg object-cover" />
                     <div className="min-w-0">
                       <p className="text-xs font-bold uppercase tracking-wider text-primary">{lawyer.specialty}</p>
+                      {ranking.sponsoredLabel ? (
+                        <p className="mt-1 text-[11px] font-bold uppercase tracking-wider text-primary">{ranking.sponsoredLabel}</p>
+                      ) : null}
                       <h2 className="mt-1 truncate text-lg font-bold text-foreground">{lawyer.name}</h2>
                       <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-muted-foreground">
                         <MapPin className="h-3.5 w-3.5" />

@@ -59,6 +59,10 @@ export interface StoredPayment {
   stripePaymentIntentId?: string;
   checkoutSessionUrl?: string;
   receiptUrl?: string;
+  partnerPlanId?: "basic" | "pro" | "premium";
+  partnerPlatformFeeCents?: number;
+  partnerNetAmountCents?: number;
+  partnerFeeStatus?: "not_applicable" | "deducted_from_payout" | "waived_by_subscription" | "refunded";
   createdAt: string;
   updatedAt?: string;
   paidAt?: string;
@@ -456,6 +460,10 @@ interface PaymentRow {
   stripe_payment_intent_id?: string | null;
   checkout_session_url?: string | null;
   receipt_url?: string | null;
+  partner_plan_id?: string | null;
+  partner_platform_fee_cents?: number | null;
+  partner_net_amount_cents?: number | null;
+  partner_fee_status?: string | null;
   paid_at?: string | null;
   created_at: string;
   updated_at?: string | null;
@@ -557,6 +565,13 @@ const paymentFromRow = (row: PaymentRow): StoredPayment => ({
   stripePaymentIntentId: row.stripe_payment_intent_id || undefined,
   checkoutSessionUrl: row.checkout_session_url || undefined,
   receiptUrl: row.receipt_url || undefined,
+  partnerPlanId: (row.partner_plan_id || "basic") as StoredPayment["partnerPlanId"],
+  partnerPlatformFeeCents: Number(row.partner_platform_fee_cents || 0),
+  partnerNetAmountCents:
+    row.partner_net_amount_cents === null || row.partner_net_amount_cents === undefined
+      ? undefined
+      : Number(row.partner_net_amount_cents),
+  partnerFeeStatus: (row.partner_fee_status || "not_applicable") as StoredPayment["partnerFeeStatus"],
   createdAt: row.created_at,
   updatedAt: row.updated_at || undefined,
   paidAt: row.paid_at || undefined,
@@ -938,6 +953,10 @@ const createPaymentRecordFromBooking = (
   status: "not_opened",
   invoiceNumber: buildInvoiceNumber(booking),
   provider: "stripe",
+  partnerPlanId: "basic",
+  partnerPlatformFeeCents: 0,
+  partnerNetAmountCents: booking.price * 100,
+  partnerFeeStatus: "not_applicable",
   createdAt: new Date().toISOString(),
   persistenceSource,
 });

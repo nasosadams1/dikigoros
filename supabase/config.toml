@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.create-payment-setup-session]
 verify_jwt = false
 
+[functions.create-partner-subscription-checkout-session]
+verify_jwt = false
+
 [functions.create-booking-refund]
 verify_jwt = false
 

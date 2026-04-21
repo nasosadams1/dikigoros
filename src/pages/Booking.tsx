@@ -219,7 +219,7 @@ const Booking = () => {
       }
     }
 
-    if (checkout === "success" && allowLocalCheckoutReturnRecording) {
+    if (checkout === "success" && allowLocalCheckoutReturnRecording && storedBooking) {
       trackFunnelEvent("payment_completed", {
         bookingId,
         lawyerId: storedBooking?.lawyerId || id,
@@ -235,7 +235,7 @@ const Booking = () => {
       setPaymentState({
         loading: false,
         error:
-          "Η πληρωμή επέστρεψε από το Stripe και επιβεβαιώνεται από το σύστημα. Η κράτηση, η απόδειξη και η κατάσταση πληρωμής θα εμφανιστούν στον λογαριασμό σας μόλις καταγραφεί το σήμα επιβεβαίωσης πληρωμής.",
+          "Η πληρωμή επέστρεψε από το Stripe και επιβεβαιώνεται από το backend/webhook. Η κράτηση, η απόδειξη και η κατάσταση πληρωμής θα εμφανιστούν στον λογαριασμό σας μόλις καταγραφεί το σήμα επιβεβαίωσης πληρωμής.",
         action: "",
       });
       setCurrentStep(3);

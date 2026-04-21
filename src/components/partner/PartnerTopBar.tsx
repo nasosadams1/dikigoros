@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 
 const publicNavLinks = [
   { label: "Για Δικηγόρους", path: "/for-lawyers" },
+  { label: "Πλάνα", path: "/for-lawyers/plans" },
   { label: "Είσοδος Συνεργάτη", path: "/for-lawyers/login" },
   { label: "Αίτηση Συνεργασίας", path: "/for-lawyers/apply" },
 ];
