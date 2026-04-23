@@ -2,11 +2,8 @@ export const userProfileTabs = [
   "overview",
   "profile",
   "bookings",
-  "messages",
   "saved",
-  "documents",
   "payments",
-  "reviews",
   "privacy",
 ] as const;
 

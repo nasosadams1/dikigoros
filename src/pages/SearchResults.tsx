@@ -1,11 +1,10 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   Clock,
   Heart,
   MapPin,
@@ -23,6 +22,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
+import LawyerPhoto from "@/components/LawyerPhoto";
 import Navbar from "@/components/Navbar";
 import SEO from "@/components/SEO";
 import { useAuth } from "@/context/AuthContext";
@@ -78,11 +78,11 @@ const sortTabs: Array<{ value: LawyerSort; label: string }> = [
   { value: "recommended", label: "Πιο κατάλληλη επιλογή" },
   { value: "response", label: "Ταχύτερη απόκριση" },
   { value: "value", label: "Καλύτερη τιμή" },
-  { value: "available", label: "Πρώτη διαθέσιμη ώρα" },
 ];
 
 const sortOptions: Array<{ value: LawyerSort; label: string }> = [
   ...sortTabs,
+  { value: "available", label: "Πρώτη διαθέσιμη ώρα" },
   { value: "rating", label: "Υψηλότερη αξιολόγηση" },
   { value: "price-low", label: "Χαμηλότερη τιμή" },
   { value: "experience", label: "Περισσότερη εμπειρία" },
@@ -197,8 +197,6 @@ const SearchResults = () => {
   const workspaceKey = user?.id || partnerSession?.email;
   const filters = useMemo(() => getFiltersFromParams(searchParams), [searchParams]);
   const [showFilters, setShowFilters] = useState(false);
-  const filterScrollRef = useRef<HTMLDivElement | null>(null);
-  const [showFilterScrollHint, setShowFilterScrollHint] = useState(false);
   const [queryDraft, setQueryDraft] = useState(filters.query);
   const [cityDraft, setCityDraft] = useState(filters.city);
   const [workspace, setWorkspace] = useState(() => getUserWorkspace(workspaceKey));
@@ -242,31 +240,6 @@ const SearchResults = () => {
     [lawyerDataset, workspace.comparedLawyerIds],
   );
   const activeFilterCount = getActiveFilterCount(filters);
-
-  useEffect(() => {
-    const element = filterScrollRef.current;
-    if (!element) return;
-
-    const updateScrollHint = () => {
-      const hasOverflow = element.scrollHeight > element.clientHeight + 4;
-      const canScrollFurther = element.scrollTop + element.clientHeight < element.scrollHeight - 4;
-      setShowFilterScrollHint(hasOverflow && canScrollFurther);
-    };
-
-    const timeoutId = window.setTimeout(updateScrollHint, 0);
-    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateScrollHint) : null;
-
-    element.addEventListener("scroll", updateScrollHint, { passive: true });
-    window.addEventListener("resize", updateScrollHint);
-    resizeObserver?.observe(element);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      element.removeEventListener("scroll", updateScrollHint);
-      window.removeEventListener("resize", updateScrollHint);
-      resizeObserver?.disconnect();
-    };
-  }, [showFilters, activeFilterCount, filters, availableCityOptions.length, availableSpecialtyOptions.length]);
 
   const updateFilters = (nextFilters: LawyerSearchFilters, replace = false) => {
     setSearchParams(writeFiltersToParams(nextFilters), { replace });
@@ -374,31 +347,44 @@ const SearchResults = () => {
       </div>
 
       <div className="mx-auto max-w-7xl px-5 py-6 pb-28 lg:px-8 lg:py-8">
-        <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)_18rem]">
+        <div className="grid gap-6 lg:grid-cols-[17rem_minmax(0,1fr)_16rem]">
           <aside className={cn(showFilters ? "block" : "hidden", "lg:block")}>
-            <div className="relative overflow-hidden rounded-lg border border-border/80 bg-card shadow-xl shadow-foreground/[0.04] lg:sticky lg:top-32">
-              <div ref={filterScrollRef} className="premium-scrollbar max-h-[min(70vh,calc(100vh-13rem))] space-y-0 overflow-y-auto overscroll-contain px-4 py-2 lg:max-h-[calc(100vh-16rem)]">
-                <div className="border-b border-border/70 bg-card/95 pb-4 pt-2 backdrop-blur">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Σύγκριση</p>
-                      <h2 className="mt-1 text-sm font-bold text-foreground">Φίλτρα επιλογής</h2>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">Δείτε μόνο δικηγόρους που ταιριάζουν στην υπόθεσή σας.</p>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
-                      {activeFilterCount > 0 ? (
-                        <span className="rounded-md bg-primary px-2 py-1 text-[11px] font-bold text-primary-foreground">
-                          {activeFilterCount} ενεργά
-                        </span>
-                      ) : null}
+            <div className="relative overflow-hidden rounded-lg border border-border/80 bg-card shadow-[0_18px_48px_rgba(15,23,42,0.08)] lg:sticky lg:top-32">
+              <div className="premium-scrollbar max-h-[calc(100vh-9rem)] space-y-0 overflow-y-auto overscroll-contain px-4 py-3">
+                <div className="border-b border-border/70 pb-4 pt-1">
+                  <div className="rounded-lg border border-border/70 bg-secondary/45 p-4 shadow-sm shadow-foreground/[0.02]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-primary/15 bg-card text-primary shadow-sm">
+                          <SlidersHorizontal className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Σύγκριση</p>
+                          <h2 className="mt-1 text-[17px] font-bold tracking-[-0.01em] text-foreground">Φίλτρα επιλογής</h2>
+                        </div>
+                      </div>
                       <button
                         type="button"
                         onClick={clearFilters}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] font-bold text-foreground transition hover:border-primary/30 hover:text-primary"
+                        disabled={activeFilterCount === 0}
+                        title="Καθαρισμός φίλτρων"
+                        aria-label="Καθαρισμός φίλτρων"
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition hover:border-primary/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-45"
                       >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        Καθαρισμός φίλτρων
+                        <RotateCcw className="h-4 w-4" />
                       </button>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">Δείτε μόνο δικηγόρους που ταιριάζουν στην υπόθεσή σας.</p>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Ενεργά φίλτρα</span>
+                      <span className={cn(
+                        "rounded-full border px-2.5 py-1 text-[11px] font-bold",
+                        activeFilterCount > 0
+                          ? "border-primary/20 bg-primary text-primary-foreground"
+                          : "border-border bg-card text-muted-foreground",
+                      )}>
+                        {activeFilterCount}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -420,67 +406,59 @@ const SearchResults = () => {
                   </select>
                 </div>
 
-                <FilterGroup label="Διαθεσιμότητα και απόκριση">
-                  <RadioFilter name="availability" label="Διαθέσιμο σήμερα" checked={filters.availability === "today"} onChange={() => updateFilters({ ...filters, availability: filters.availability === "today" ? "any" : "today" })} />
-                  <RadioFilter name="availability" label="Διαθέσιμο αύριο" checked={filters.availability === "tomorrow"} onChange={() => updateFilters({ ...filters, availability: filters.availability === "tomorrow" ? "any" : "tomorrow" })} />
-                  <CheckboxFilter label="Απαντά σε έως 1 ώρα" checked={filters.responseUnderMinutes === 60} onChange={() => updateFilters({ ...filters, responseUnderMinutes: filters.responseUnderMinutes === 60 ? null : 60 })} />
-                  <CheckboxFilter label="Απαντά σε έως 2 ώρες" checked={filters.responseUnderMinutes === 120} onChange={() => updateFilters({ ...filters, responseUnderMinutes: filters.responseUnderMinutes === 120 ? null : 120 })} />
-                  <CheckboxFilter label="Βαθμολογία 4,8+" checked={filters.minRating === 4.8} onChange={() => updateFilters({ ...filters, minRating: filters.minRating === 4.8 ? null : 4.8 })} />
-                  <CheckboxFilter label="10+ επιβεβαιωμένες αξιολογήσεις" checked={filters.minReviews === 10} onChange={() => updateFilters({ ...filters, minReviews: filters.minReviews === 10 ? null : 10 })} />
-                </FilterGroup>
+                <div className="rounded-lg border border-border/70 bg-secondary/25 px-3">
+                  <FilterGroup label="Διαθεσιμότητα και εμπιστοσύνη">
+                    <RadioFilter name="availability" label="Διαθέσιμο αύριο" checked={filters.availability === "tomorrow"} onChange={() => updateFilters({ ...filters, availability: filters.availability === "tomorrow" ? "any" : "tomorrow" })} />
+                    <CheckboxFilter label="Απαντά σε έως 2 ώρες" checked={filters.responseUnderMinutes === 120} onChange={() => updateFilters({ ...filters, responseUnderMinutes: filters.responseUnderMinutes === 120 ? null : 120 })} />
+                    <CheckboxFilter label="10+ επιβεβαιωμένες αξιολογήσεις" checked={filters.minReviews === 10} onChange={() => updateFilters({ ...filters, minReviews: filters.minReviews === 10 ? null : 10 })} />
+                  </FilterGroup>
 
-                <FilterGroup label="Γλώσσα">
-                  {languageOptions.map((option) => (
-                    <CheckboxFilter key={option.value} label={option.label} checked={Boolean(filters.languages?.includes(option.value))} onChange={() => toggleLanguage(option.value)} />
-                  ))}
-                </FilterGroup>
+                  <FilterGroup label="Τρόποι ραντεβού">
+                    {appointmentTypeOptions.map((option) => (
+                      <CheckboxFilter key={option.value} label={option.label} checked={filters.appointmentTypes.includes(option.value)} onChange={() => toggleAppointmentType(option.value)} />
+                    ))}
+                  </FilterGroup>
 
-                <FilterGroup label="Τρόποι ραντεβού">
-                  {appointmentTypeOptions.map((option) => (
-                    <CheckboxFilter key={option.value} label={option.label} checked={filters.appointmentTypes.includes(option.value)} onChange={() => toggleAppointmentType(option.value)} />
-                  ))}
-                </FilterGroup>
+                  <FilterGroup label="Ειδίκευση">
+                    {availableSpecialtyOptions.slice(0, 10).map((specialty) => (
+                      <CheckboxFilter key={specialty} label={specialty} checked={filters.specialties.includes(specialty)} onChange={() => toggleSpecialty(specialty)} />
+                    ))}
+                  </FilterGroup>
 
-                <FilterGroup label="Ειδίκευση">
-                  {availableSpecialtyOptions.slice(0, 10).map((specialty) => (
-                    <CheckboxFilter key={specialty} label={specialty} checked={filters.specialties.includes(specialty)} onChange={() => toggleSpecialty(specialty)} />
-                  ))}
-                </FilterGroup>
+                  <FilterGroup label="Πόλη">
+                    {availableCityOptions.map((item) => (
+                      <RadioFilter
+                        key={item}
+                        name="city-filter"
+                        label={item}
+                        checked={filters.city === item}
+                        onChange={() => {
+                          setCityDraft(item);
+                          updateFilters({ ...filters, city: filters.city === item ? "" : item });
+                        }}
+                      />
+                    ))}
+                  </FilterGroup>
 
-                <FilterGroup label="Πόλη">
-                  {availableCityOptions.map((item) => (
-                    <RadioFilter
-                      key={item}
-                      name="city-filter"
-                      label={item}
-                      checked={filters.city === item}
-                      onChange={() => {
-                        setCityDraft(item);
-                        updateFilters({ ...filters, city: filters.city === item ? "" : item });
-                      }}
-                    />
-                  ))}
-                </FilterGroup>
+                  <FilterGroup label="Τιμή από">
+                    {priceOptions.map((option) => (
+                      <RadioFilter
+                        key={option.value}
+                        name="price-filter"
+                        label={option.label}
+                        checked={filters.priceRange === option.value}
+                        onChange={() => updateFilters({ ...filters, priceRange: filters.priceRange === option.value ? "all" : option.value })}
+                      />
+                    ))}
+                  </FilterGroup>
 
-                <FilterGroup label="Τιμή από">
-                  {priceOptions.map((option) => (
-                    <RadioFilter
-                      key={option.value}
-                      name="price-filter"
-                      label={option.label}
-                      checked={filters.priceRange === option.value}
-                      onChange={() => updateFilters({ ...filters, priceRange: filters.priceRange === option.value ? "all" : option.value })}
-                    />
-                  ))}
-                </FilterGroup>
-              </div>
-              {showFilterScrollHint ? (
-                <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 flex h-14 items-end justify-center bg-gradient-to-t from-card via-card/90 to-transparent pb-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card/95 text-primary shadow-lg shadow-foreground/[0.08]">
-                    <ChevronDown className="h-4 w-4" />
-                  </span>
+                  <FilterGroup label="Γλώσσα">
+                    {languageOptions.map((option) => (
+                      <CheckboxFilter key={option.value} label={option.label} checked={Boolean(filters.languages?.includes(option.value))} onChange={() => toggleLanguage(option.value)} />
+                    ))}
+                  </FilterGroup>
                 </div>
-              ) : null}
+              </div>
             </div>
           </aside>
 
@@ -502,14 +480,14 @@ const SearchResults = () => {
                 </div>
               </div>
 
-              <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+              <div className="mt-4 flex flex-nowrap gap-2">
                 {sortTabs.map((tab) => (
                   <button
                     key={tab.value}
                     type="button"
                     onClick={() => updateFilters({ ...filters, sort: tab.value })}
                     className={cn(
-                      "shrink-0 rounded-lg border px-3 py-2 text-xs font-bold transition",
+                      "whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-bold transition",
                       filters.sort === tab.value
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border bg-card text-foreground hover:border-primary/30",
@@ -521,7 +499,7 @@ const SearchResults = () => {
                 <select
                   value={filters.sort}
                   onChange={(event) => updateFilters({ ...filters, sort: event.target.value as LawyerSort })}
-                  className="h-9 shrink-0 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground"
+                  className="h-9 min-w-[14.5rem] rounded-lg border border-border bg-card px-3 text-xs font-semibold text-foreground"
                   aria-label="Επιπλέον ταξινόμηση"
                 >
                   {sortOptions.map((option) => (
@@ -547,7 +525,7 @@ const SearchResults = () => {
                       <div className="p-5 md:p-6">
                         <div className="flex flex-col gap-5 md:flex-row md:items-start">
                           <div className="relative shrink-0">
-                            <img src={lawyer.image} alt={lawyer.name} className="h-24 w-24 rounded-lg object-cover shadow-lg ring-2 ring-background md:h-28 md:w-28" />
+                            <LawyerPhoto src={lawyer.image} alt={lawyer.name} className="h-24 w-24 rounded-lg object-cover shadow-lg ring-2 ring-background md:h-28 md:w-28" />
                             <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-sage ring-2 ring-card">
                               <CheckCircle2 className="h-3 w-3 text-white" />
                             </div>
@@ -616,7 +594,7 @@ const SearchResults = () => {
                               data-testid={`lawyer-profile-${lawyer.id}`}
                               onClick={() => trackFunnelEvent("search_profile_opened", { lawyerId: lawyer.id, resultCount: results.length })}
                             >
-                              Γιατί να τον επιλέξετε
+                              Προφίλ Δικηγόρου
                             </Link>
                           </Button>
                           {isOwnLawyerProfile ? (
@@ -726,23 +704,23 @@ const SearchResults = () => {
 };
 
 const FilterGroup = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div className="border-t border-border/70 py-4 first:border-t-0 first:pt-2 last:pb-7">
-    <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
-    <div className="mt-3 space-y-2">{children}</div>
+  <div className="border-t border-border/70 py-5 first:border-t-0 first:pt-4 last:pb-7">
+    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+    <div className="mt-3 space-y-2.5">{children}</div>
   </div>
 );
 
 const CheckboxFilter = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) => (
   <label
     className={cn(
-      "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm font-semibold leading-5 transition",
+      "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 text-sm font-semibold leading-5 transition",
       checked
-        ? "border-primary/30 bg-primary/10 text-primary shadow-sm shadow-primary/[0.04]"
-        : "border-border/70 bg-background/70 text-foreground hover:border-primary/25 hover:bg-background",
+        ? "border-primary/35 bg-primary/10 text-primary shadow-sm shadow-primary/[0.06]"
+        : "border-border/70 bg-card text-foreground hover:border-primary/25 hover:bg-secondary/40",
     )}
   >
     <input type="checkbox" checked={checked} onChange={onChange} className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary" />
-    <span>{label}</span>
+    <span className="min-w-0">{label}</span>
   </label>
 );
 
@@ -759,14 +737,14 @@ const RadioFilter = ({
 }) => (
   <label
     className={cn(
-      "flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm font-semibold leading-5 transition",
+      "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 text-sm font-semibold leading-5 transition",
       checked
-        ? "border-primary/30 bg-primary/10 text-primary shadow-sm shadow-primary/[0.04]"
-        : "border-border/70 bg-background/70 text-foreground hover:border-primary/25 hover:bg-background",
+        ? "border-primary/35 bg-primary/10 text-primary shadow-sm shadow-primary/[0.06]"
+        : "border-border/70 bg-card text-foreground hover:border-primary/25 hover:bg-secondary/40",
     )}
   >
     <input type="radio" name={name} checked={checked} onChange={onChange} className="mt-0.5 h-4 w-4 shrink-0 border-border accent-primary" />
-    <span>{label}</span>
+    <span className="min-w-0">{label}</span>
   </label>
 );
 
@@ -788,9 +766,9 @@ const SpecificTrustCopy = ({ children }: { children: React.ReactNode }) => (
 );
 
 const CompareMetric = ({ label, value }: { label: string; value: string }) => (
-  <div className="rounded-md border border-border bg-card px-2 py-1.5">
-    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
-    <p className="mt-0.5 truncate text-[11px] font-bold text-foreground">{value}</p>
+  <div className="min-h-[4rem] rounded-md border border-border bg-card px-3 py-2">
+    <p className="break-words text-[10px] font-bold uppercase leading-4 tracking-wider text-muted-foreground">{label}</p>
+    <p className="mt-1 break-words text-xs font-bold leading-5 text-foreground">{value}</p>
   </div>
 );
 
@@ -812,41 +790,43 @@ const CompareRail = ({
     : null;
 
   return (
-    <div id="compare" className="sticky top-32 rounded-lg border border-border bg-card p-5">
-      <p className="flex items-center gap-2 text-sm font-bold text-foreground">
-        <Scale className="h-4 w-4 text-primary" />
-        Πίνακας σύγκρισης
-      </p>
-      <p className="mt-1 text-xs font-semibold text-muted-foreground">{selectedLawyers.length} από 3 δικηγόρους στη σύγκριση</p>
+    <div id="compare" className="sticky top-32 flex max-h-[calc(100vh-9rem)] flex-col rounded-lg border border-border bg-card p-5">
+      <div className="shrink-0">
+        <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+          <Scale className="h-4 w-4 text-primary" />
+          Πίνακας σύγκρισης
+        </p>
+        <p className="mt-1 text-xs font-semibold text-muted-foreground">{selectedLawyers.length} από 3 δικηγόρους στη σύγκριση</p>
+      </div>
 
-      {selectedLawyers.length > 1 ? (
-        <div className="mt-4 rounded-lg border border-border bg-secondary/35 p-3">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Με μια ματιά</p>
-          <div className="mt-2 grid gap-2 text-[11px] font-bold text-foreground">
-            {cheapest ? <span>Καλύτερη τιμή: {cheapest.name}</span> : null}
-            {fastest ? <span>Ταχύτερη απόκριση: {fastest.name}</span> : null}
-            {mostReviewed ? <span>Περισσότερες αξιολογήσεις: {mostReviewed.name}</span> : null}
+      <div className="premium-scrollbar mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+        {selectedLawyers.length > 1 ? (
+          <div className="rounded-lg border border-border bg-secondary/35 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Με μια ματιά</p>
+            <div className="mt-2 grid gap-2 text-[11px] font-bold text-foreground">
+              {cheapest ? <span>Καλύτερη τιμή: {cheapest.name}</span> : null}
+              {fastest ? <span>Ταχύτερη απόκριση: {fastest.name}</span> : null}
+              {mostReviewed ? <span>Περισσότερες αξιολογήσεις: {mostReviewed.name}</span> : null}
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      <div className="mt-4 space-y-3">
         {selectedLawyers.length > 0 ? selectedLawyers.map((lawyer) => {
           const signals = getLawyerMarketplaceSignals(lawyer);
 
           return (
             <div key={lawyer.id} className="rounded-lg border border-border bg-background p-3">
               <div className="flex items-start gap-3">
-                <img src={lawyer.image} alt={lawyer.name} className="h-10 w-10 rounded-md object-cover" />
+                <LawyerPhoto src={lawyer.image} alt={lawyer.name} className="h-10 w-10 rounded-md object-cover" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-foreground">{lawyer.name}</p>
-                  <p className="text-[11px] font-semibold text-muted-foreground">{lawyer.specialty}</p>
+                  <p className="break-words text-sm font-bold leading-5 text-foreground">{lawyer.name}</p>
+                  <p className="break-words text-[11px] font-semibold leading-4 text-muted-foreground">{lawyer.specialty}</p>
                 </div>
                 <button type="button" onClick={() => onRemove(lawyer.id)} className="rounded-md p-1 text-muted-foreground hover:text-foreground" aria-label={`Αφαίρεση ${lawyer.name}`}>
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-3 grid gap-2">
                 <CompareMetric label="Τιμή" value={signals.priceFromLabel} />
                 <CompareMetric label="Αξιολογήσεις" value={getRatingDisplay(lawyer)} />
                 <CompareMetric label="Συνήθης απόκριση" value={getResponseDisplay(lawyer)} />
@@ -863,7 +843,7 @@ const CompareRail = ({
         )}
       </div>
 
-      <Button asChild className="mt-4 w-full rounded-lg text-xs font-bold">
+      <Button asChild className="mt-4 w-full shrink-0 rounded-lg text-xs font-bold">
         <Link to={`/compare?lawyers=${selectedLawyers.map((lawyer) => lawyer.id).join(",")}`}>
           Δείτε την πλήρη σύγκριση
         </Link>

@@ -10,18 +10,16 @@ const trustPages = {
     icon: ShieldCheck,
     eyebrow: "Έλεγχος και επαλήθευση προφίλ",
     title: "Τι σημαίνει επαληθευμένο προφίλ",
-    intro: "Επαληθευμένο σημαίνει ότι τα βασικά στοιχεία του προφίλ ελέγχθηκαν πριν αυτό εμφανιστεί δημόσια στην πλατφόρμα. Η επαλήθευση δεν αποτελεί εγγύηση για την έκβαση της υπόθεσης.",
+    intro: "Επαληθευμένο σημαίνει ότι τα βασικά στοιχεία του δικηγόρου και του δημόσιου προφίλ ελέγχθηκαν πριν εμφανιστούν στην πλατφόρμα. Δεν αποτελεί εγγύηση για την έκβαση υπόθεσης ή για την καταλληλότητα σε κάθε περίπτωση.",
     sections: [
-      ["Τι ελέγχουμε", "Ταυτότητα, άδεια άσκησης, δικηγορικό σύλλογο, βασικά επαγγελματικά στοιχεία, ειδικεύσεις, τρόπους ραντεβού, τιμές και την πληρότητα του δημόσιου προφίλ."],
-      ["Τι δεν σημαίνει", "Δεν εγγυάται την έκβαση της υπόθεσης ούτε ότι ένας δικηγόρος είναι η σωστή επιλογή για κάθε περίπτωση."],
-      ["Τι μπορεί να συμβεί μετά τον έλεγχο", "Ένα προφίλ μπορεί να εγκριθεί, να ζητηθεί να διορθωθεί, να ανασταλεί ή να αφαιρεθεί, αν δεν πληρούνται οι κανόνες της πλατφόρμας."],
+      ["Τι ελέγχουμε", "Ταυτότητα, άδεια άσκησης, δικηγορικό σύλλογο, βασικά επαγγελματικά στοιχεία, ειδικεύσεις, τρόπους ραντεβού, τιμές, διαθεσιμότητα και πληρότητα προφίλ."],
+      ["Τι μπορεί να συμβεί μετά τον έλεγχο", "Ένα προφίλ μπορεί να εγκριθεί, να ζητηθούν διορθώσεις, να παραμείνει μη δημόσιο, να ανασταλεί προσωρινά ή να αφαιρεθεί αν δεν πληροί τους κανόνες της πλατφόρμας."],
+      ["Χρόνος ελέγχου", "Ο συνήθης έλεγχος ολοκληρώνεται σε 2–3 εργάσιμες ημέρες. Αν υπάρχει διαφωνία ή αναφορά ανακρίβειας, ανοίγει αίτημα υποστήριξης ή επαλήθευσης."],
+      ["Πότε χρειάζεται υποστήριξη", "Επικοινωνήστε όταν υπάρχει πρόβλημα με κράτηση, πληρωμή, απόρρητο, αξιολόγηση, συμπεριφορά ή ακρίβεια στοιχείων προφίλ."],
+      ["Τι ζητά η υποστήριξη", "Κωδικό κράτησης ή πληρωμής, email λογαριασμού, σύντομη περιγραφή του ζητήματος και όποια στοιχεία βοηθούν στον έλεγχο."],
     ],
-    rules: [
-      ["Πότε εφαρμόζεται", "Σε νέα αίτηση, σε αλλαγή δημόσιου προφίλ, σε αναφορά ανακρίβειας ή όταν καταγράφονται επαναλαμβανόμενες ακυρώσεις."],
-      ["Στοιχεία που ελέγχονται", "Ταυτότητα, αριθμός μητρώου, δικηγορικός σύλλογος, τρόποι ραντεβού, τιμές, διαθεσιμότητα και στοιχεία επικοινωνίας."],
-      ["Συνέπειες", "Ένα προφίλ μπορεί να παραμείνει μη δημόσιο, να χρειαστεί αλλαγές, να ανασταλεί προσωρινά ή να αφαιρεθεί."],
-      ["Χρόνος ελέγχου και υποστήριξη", "Ο συνήθης έλεγχος ολοκληρώνεται σε 2–3 εργάσιμες ημέρες. Αν υπάρχει διαφωνία, ανοίγει αίτημα υποστήριξης ή επαλήθευσης."],
-    ],
+    operationalRules: [],
+    rules: [],
   },
   "/trust/reviews-policy": {
     icon: Star,
@@ -110,10 +108,17 @@ const trustPages = {
   },
 } as const;
 
+const defaultOperationalRules = [
+  ["Πότε χρειάζεται να επικοινωνήσετε με την υποστήριξη", "Όταν υπάρχει πρόβλημα με κράτηση, πληρωμή, απόρρητο, αξιολόγηση, συμπεριφορά ή ακρίβεια στοιχείων προφίλ."],
+  ["Τι ζητά η υποστήριξη", "Κωδικό κράτησης ή πληρωμής, το email του λογαριασμού σας, μια σύντομη περιγραφή του ζητήματος και όποια στοιχεία βοηθούν στον έλεγχο."],
+  ["Ποιο είναι το αποτέλεσμα", "Το αποτέλεσμα μπορεί να είναι αλλαγή ώρας, επιστροφή χρημάτων, απόκρυψη αξιολόγησης, διόρθωση προφίλ, προσωρινή αναστολή δημοσίευσης ή κλιμάκωση σε θέμα απορρήτου ή ασφάλειας."],
+] as const;
+
 const TrustPage = () => {
   const location = useLocation();
   const page = trustPages[location.pathname as keyof typeof trustPages] || trustPages["/trust/verification-standards"];
   const Icon = page.icon;
+  const operationalRules = "operationalRules" in page ? page.operationalRules : defaultOperationalRules;
 
   return (
     <div className="min-h-screen bg-background">
@@ -143,29 +148,33 @@ const TrustPage = () => {
           ))}
         </div>
 
-        <section className="mt-8 rounded-lg border border-border bg-secondary/40 p-5">
-          <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
-            <MessageSquareWarning className="h-5 w-5 text-primary" />
-            Πώς εφαρμόζεται στην πράξη
-          </h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <OperationalRule title="Πότε χρειάζεται να επικοινωνήσετε με την υποστήριξη" text="Όταν υπάρχει πρόβλημα με κράτηση, πληρωμή, απόρρητο, αξιολόγηση, συμπεριφορά ή ακρίβεια στοιχείων προφίλ." />
-            <OperationalRule title="Τι ζητά η υποστήριξη" text="Κωδικό κράτησης ή πληρωμής, το email του λογαριασμού σας, μια σύντομη περιγραφή του ζητήματος και όποια στοιχεία βοηθούν στον έλεγχο." />
-            <OperationalRule title="Ποιο είναι το αποτέλεσμα" text="Το αποτέλεσμα μπορεί να είναι αλλαγή ώρας, επιστροφή χρημάτων, απόκρυψη αξιολόγησης, διόρθωση προφίλ, προσωρινή αναστολή δημοσίευσης ή κλιμάκωση σε θέμα απορρήτου ή ασφάλειας." />
-          </div>
-        </section>
+        {operationalRules.length > 0 && (
+          <section className="mt-8 rounded-lg border border-border bg-secondary/40 p-5">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+              <MessageSquareWarning className="h-5 w-5 text-primary" />
+              Πώς εφαρμόζεται στην πράξη
+            </h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {operationalRules.map(([title, text]) => (
+                <OperationalRule key={title} title={title} text={text} />
+              ))}
+            </div>
+          </section>
+        )}
 
-        <section className="mt-8 rounded-lg border border-border bg-card p-5">
-          <h2 className="text-lg font-bold text-foreground">Έλεγχος</h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {page.rules.map(([title, text]) => (
-              <article key={title} className="rounded-lg border border-border bg-secondary/35 p-4">
-                <h3 className="text-sm font-bold text-foreground">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+        {page.rules.length > 0 && (
+          <section className="mt-8 rounded-lg border border-border bg-card p-5">
+            <h2 className="text-lg font-bold text-foreground">Έλεγχος</h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {page.rules.map(([title, text]) => (
+                <article key={title} className="rounded-lg border border-border bg-secondary/35 p-4">
+                  <h3 className="text-sm font-bold text-foreground">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="rounded-lg font-bold">

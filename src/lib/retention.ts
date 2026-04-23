@@ -1,8 +1,6 @@
 import {
-  canSubmitReview,
   getCanonicalBookingState,
   getCanonicalPaymentState,
-  isBookingScheduled,
 } from "@/lib/bookingState";
 import type {
   StoredBooking,
@@ -10,9 +8,7 @@ import type {
 } from "@/lib/platformRepository";
 
 export type RetentionPromptKind =
-  | "review"
   | "rebook"
-  | "document"
   | "payment"
   | "refund"
   | "follow_up";
@@ -29,13 +25,9 @@ export interface RetentionPrompt {
 export const getUserRetentionPrompts = ({
   bookings,
   payments,
-  reviews,
-  documents,
 }: {
   bookings: StoredBooking[];
   payments: StoredPayment[];
-  reviews: Array<{ bookingId?: string }>;
-  documents: Array<{ bookingId?: string; linkedBookingId?: string }>;
 }): RetentionPrompt[] => {
   const prompts: RetentionPrompt[] = [];
   const paymentForBooking = (bookingId: string) => payments.find((payment) => payment.bookingId === bookingId);
@@ -43,9 +35,6 @@ export const getUserRetentionPrompts = ({
   bookings.forEach((booking) => {
     const payment = paymentForBooking(booking.id);
     const paymentState = payment ? getCanonicalPaymentState(payment) : "not_opened";
-    const hasReview = reviews.some((review) => review.bookingId === booking.id);
-    const hasDocuments = documents.some((document) => (document.bookingId || document.linkedBookingId) === booking.id);
-
     if (paymentState === "checkout_opened" || paymentState === "not_opened") {
       prompts.push({
         id: `payment-${booking.id}`,
@@ -65,28 +54,6 @@ export const getUserRetentionPrompts = ({
         body: "Η υποστήριξη ελέγχει την κράτηση και τα στοιχεία πληρωμής πριν ολοκληρωθεί η επιστροφή.",
         actionLabel: "Προβολή κατάστασης",
         path: "/account?tab=payments",
-      });
-    }
-
-    if (isBookingScheduled(booking, payment) && !hasDocuments) {
-      prompts.push({
-        id: `documents-${booking.id}`,
-        kind: "document",
-        title: "Προσθήκη χρήσιμων εγγράφων",
-        body: "Ανεβάστε συμβάσεις, ειδοποιήσεις, φωτογραφίες ή σημειώσεις πριν από τη συμβουλευτική.",
-        actionLabel: "Προσθήκη εγγράφου",
-        path: "/account?tab=documents",
-      });
-    }
-
-    if (getCanonicalBookingState(booking) === "completed" && canSubmitReview(booking, payment) && !hasReview) {
-      prompts.push({
-        id: `review-${booking.id}`,
-        kind: "review",
-        title: "Αξιολόγηση συμβουλευτικής",
-        body: "Οι αξιολογήσεις ανοίγουν μόνο μετά από ολοκληρωμένες συμβουλευτικές.",
-        actionLabel: "Γράψτε αξιολόγηση",
-        path: "/account?tab=reviews",
       });
     }
 

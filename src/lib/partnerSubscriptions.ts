@@ -14,11 +14,32 @@ export interface PartnerSubscriptionCheckoutResult {
   url?: string;
 }
 
+const getFunctionErrorMessage = async (error: unknown) => {
+  const context = (error as { context?: Response } | null)?.context;
+  if (context) {
+    try {
+      const payload = await context.clone().json();
+      if (typeof payload?.code === "string") return payload.code;
+      if (typeof payload?.error === "string") return payload.error;
+    } catch {
+      try {
+        const text = await context.clone().text();
+        if (text) return text;
+      } catch {
+        // Fall through to the generic message below.
+      }
+    }
+  }
+
+  return error instanceof Error ? error.message : "Partner subscription checkout failed";
+};
+
 export const createPartnerSubscriptionCheckoutSession = async (
   planId: PartnerPlanId,
   partnerSession: PartnerSession | null,
   returnUrl = "/for-lawyers/portal?view=pipeline",
   billingInterval: PartnerBillingInterval = "monthly",
+  cancelUrl = "/for-lawyers/plans",
 ): Promise<PartnerSubscriptionCheckoutResult> => {
   const plan = getPartnerPlan(planId);
   if (plan.salesOnly) {
@@ -49,11 +70,12 @@ export const createPartnerSubscriptionCheckoutSession = async (
       partnerEmail: partnerSession.email,
       sessionToken: partnerSession.sessionToken,
       returnUrl,
+      cancelUrl,
       billingInterval,
     },
   });
 
-  if (error) throw error;
+  if (error) throw new Error(await getFunctionErrorMessage(error));
   if (!data?.url) throw new Error("Δεν ήταν δυνατό να ανοίξει η πληρωμή συνδρομής.");
 
   trackFunnelEvent("partner_plan_checkout_opened", {

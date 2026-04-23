@@ -5,6 +5,7 @@ import { ArrowRight, CalendarDays, Clock, MapPin, ShieldCheck, Star } from "luci
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
+import LawyerPhoto from "@/components/LawyerPhoto";
 import Navbar from "@/components/Navbar";
 import SEO from "@/components/SEO";
 import { getLawyers } from "@/lib/lawyerRepository";
@@ -53,7 +54,7 @@ const ComparePage = () => {
               return (
                 <article key={lawyer.id} className="rounded-lg border border-border bg-card p-5">
                   <div className="flex items-start gap-4">
-                    <img src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-lg object-cover" />
+                    <LawyerPhoto src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-lg object-cover" />
                     <div className="min-w-0">
                       <p className="text-xs font-bold uppercase tracking-wider text-primary">{lawyer.specialty}</p>
                       {ranking.sponsoredLabel ? (

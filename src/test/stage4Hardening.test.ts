@@ -87,6 +87,71 @@ describe("stage 4 hardening contracts", () => {
     expect(platformRepository).toContain('document.malwareScanStatus === "clean"');
   });
 
+  it("keeps client account workspace tied to authenticated users only", () => {
+    const userProfile = readRepoFile("src/pages/UserProfile.tsx");
+
+    expect(userProfile).toContain("const workspaceKey = userId || undefined");
+    expect(userProfile).toContain("const hasAccountAccess = Boolean(user)");
+    expect(userProfile).toContain("profileDraftDirty");
+    expect(userProfile).not.toContain("getPartnerWorkspace");
+    expect(userProfile).not.toContain("getUserWorkspace(user?.id || getPartnerSession()?.email)");
+    expect(userProfile).not.toContain("partnerSession?.email || undefined");
+  });
+
+  it("keeps document sharing private by default and gated by scan, booking, and consent", () => {
+    const desiredSchema = readRepoFile("supabase/desired_supabase_from_scratch.sql");
+    const hardeningMigration = readRepoFile("supabase/migrations/20260422203000_user_profile_privacy_hardening.sql");
+    const userWorkspace = readRepoFile("src/lib/userWorkspace.ts");
+    const userProfile = readRepoFile("src/pages/UserProfile.tsx");
+
+    expect(desiredSchema).toContain("visible_to_lawyer boolean not null default false");
+    expect(hardeningMigration).toContain("alter column visible_to_lawyer set default false");
+
+    [desiredSchema, hardeningMigration].forEach((source) => {
+      expect(source).toContain('create policy "Users can create private pending documents"');
+      expect(source).toContain("and malware_scan_status = 'clean'");
+      expect(source).toContain("and coalesce(deletion_status,'active') = 'active'");
+      expect(source).toContain("privacy_settings ->> 'allowDocumentAccessByBooking'");
+      expect(source).toContain("grant update (visible_to_lawyer, deletion_status, visibility_history) on public.user_documents to authenticated");
+    });
+
+    expect(desiredSchema).not.toContain('create policy "Users can manage own documents" on public.user_documents\n  for all');
+    expect(userWorkspace).toContain("allowDocumentAccessByBooking: false");
+    expect(userWorkspace).toContain("documents,");
+    expect(userWorkspace).toContain("visible_to_lawyer: document.visibleToLawyer");
+    expect(userWorkspace).toContain("allowDocumentAccessByBooking?: boolean");
+    expect(userWorkspace).toContain('throw failClosedCriticalPath("Document visibility")');
+    expect(userWorkspace).not.toContain("documents: documents.length ? documents : remoteWorkspace.documents");
+    expect(userWorkspace).not.toContain("visible_to_lawyer: true");
+    expect(userProfile).not.toContain('activeView === "documents"');
+    expect(userProfile).not.toContain("handleDocumentUpload");
+  });
+
+  it("submits reviews into moderation instead of immediate publication", () => {
+    const desiredSchema = readRepoFile("supabase/desired_supabase_from_scratch.sql");
+    const hardeningMigration = readRepoFile("supabase/migrations/20260422203000_user_profile_privacy_hardening.sql");
+
+    expect(desiredSchema).toContain("status text not null default 'pending_review'");
+    expect(hardeningMigration).toContain("alter column status set default 'pending_review'");
+
+    [desiredSchema, hardeningMigration].forEach((source) => {
+      expect(source).toContain("trim(p_review_text),\n    'pending_review'");
+      expect(source).toContain("status = 'pending_review'");
+    });
+  });
+
+  it("does not mark refunds requested before Stripe accepts the refund", () => {
+    const refundFunction = readRepoFile("supabase/functions/create-booking-refund/index.ts");
+    const stripeRefundCall = refundFunction.indexOf('const stripeResponse = await fetch("https://api.stripe.com/v1/refunds"');
+    const firstPaymentPatchAfterStripe = refundFunction.indexOf("await patchPayment", stripeRefundCall);
+
+    expect(refundFunction).toContain('"Idempotency-Key": `booking-refund-${bookingId}`');
+    expect(stripeRefundCall).toBeGreaterThan(-1);
+    expect(refundFunction.slice(0, stripeRefundCall)).not.toContain("await patchPayment");
+    expect(firstPaymentPatchAfterStripe).toBeGreaterThan(stripeRefundCall);
+    expect(refundFunction.slice(stripeRefundCall)).toContain('"refund_requested"');
+  });
+
   it("audits and revokes partner sessions on backend verification", () => {
     const desiredSchema = readRepoFile("supabase/desired_supabase_from_scratch.sql");
     const partnerAuditMigration = readRepoFile("supabase/migrations/20260418163000_partner_session_audit.sql");

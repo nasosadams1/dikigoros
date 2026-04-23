@@ -120,6 +120,15 @@ describe("Supabase production contracts", () => {
     expect(checkoutFunction).toContain("This booking has already been paid.");
     expect(checkoutFunction).toContain("claimGuestBookingForUser");
     expect(checkoutFunction).toContain("client_email");
+    expect(setupFunction).toContain("getOrCreateStripeCustomer");
+    expect(setupFunction).toContain("isInvalidStripeCustomerError");
+    expect(setupFunction).toContain("replacementCustomerId");
+    expect(setupFunction).toContain("requiresHttpsReturnUrl");
+    expect(setupFunction).toContain("isLocalReturnOrigin");
+    expect(setupFunction).toContain("https://api.stripe.com/v1/customers");
+    expect(setupFunction).toContain('form.append("payment_method_types[]", "card")');
+    expect(setupFunction).toContain('form.set("customer", stripeCustomerId)');
+    expect(setupFunction).not.toContain('form.set("customer_email"');
   });
 
   it("keeps Stripe settlement replay-safe and reconciled", () => {
@@ -163,7 +172,6 @@ describe("Supabase production contracts", () => {
 
   it("ships Level 4 marketplace engine contracts", () => {
     [
-      "create table if not exists public.intake_requests",
       "create table if not exists public.partner_subscriptions",
       "create table if not exists public.partner_pipeline_items",
       "create table if not exists public.partner_case_notes",
@@ -182,8 +190,6 @@ describe("Supabase production contracts", () => {
     ].forEach((contract) => expect(productionSchema).toContain(contract));
 
     [
-      "create or replace function public.create_intake_request",
-      "create or replace function public.route_intake_request",
       "create or replace function public.save_partner_case_note",
       "create or replace function public.upsert_partner_followup_task",
       "create or replace function public.update_partner_pipeline_status",

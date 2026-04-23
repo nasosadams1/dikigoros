@@ -125,13 +125,15 @@ const PartnerLogin = () => {
               </div>
             </div>
 
-            <div className="grid items-start gap-3 sm:grid-cols-2">
+            <div className="grid items-start gap-3 2xl:grid-cols-2">
               <div className="partner-dark-card p-3.5">
                 <div className="flex min-w-0 items-start gap-3">
                   <LifeBuoy className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--partner-gold))]" />
                   <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-white">Υποστήριξη πρόσβασης</p>
-                    <p className="mt-1.5 break-words text-[13px] leading-5 text-white/70">partners@dikigoros.eu</p>
+                    <p className="whitespace-nowrap text-[13px] font-semibold text-white">Υποστήριξη πρόσβασης</p>
+                    <a href="mailto:partners@dikigoros.eu" className="mt-1.5 block whitespace-nowrap text-[13px] leading-5 text-white/70 hover:text-white">
+                      partners@dikigoros.eu
+                    </a>
                   </div>
                 </div>
               </div>

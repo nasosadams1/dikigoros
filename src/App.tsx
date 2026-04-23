@@ -16,7 +16,6 @@ const DiscoveryPage = lazy(() => import("./pages/DiscoveryPage"));
 const ForLawyersLanding = lazy(() => import("./pages/ForLawyersLanding"));
 const ForLawyersPlans = lazy(() => import("./pages/ForLawyersPlans"));
 const Index = lazy(() => import("./pages/Index"));
-const IntakePage = lazy(() => import("./pages/IntakePage"));
 const LawyerProfile = lazy(() => import("./pages/LawyerProfile"));
 const LegalPage = lazy(() => import("./pages/LegalPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -61,7 +60,6 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/search" element={<SearchResults />} />
-              <Route path="/intake" element={<IntakePage />} />
               <Route path="/compare" element={<ComparePage />} />
               <Route path="/lawyer/:id" element={<LawyerProfile />} />
               <Route path="/lawyers/:issueSlug" element={<DiscoveryPage />} />

@@ -163,7 +163,7 @@ create table if not exists public.booking_reviews (
   responsiveness_rating integer not null check (responsiveness_rating between 1 and 5),
   review_text text not null,
   lawyer_reply text not null default '',
-  status text not null default 'published' check (status in ('published','pending_review','flagged','hidden')),
+  status text not null default 'pending_review' check (status in ('published','pending_review','flagged','hidden')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -180,15 +180,20 @@ create table if not exists public.user_documents (
   mime_type text,
   category text not null default 'Legal document',
   storage_path text not null unique,
-  visible_to_lawyer boolean not null default true,
+  visible_to_lawyer boolean not null default false,
   malware_scan_status text not null default 'pending' check (malware_scan_status in ('pending','clean','blocked','failed')),
   malware_scan_provider text,
   malware_scan_checked_at timestamptz,
+  retention_until timestamptz,
+  deletion_status text not null default 'active' check (deletion_status in ('active','deletion_requested','deleted','retained_for_legal_reason')),
+  access_audit jsonb not null default '[]'::jsonb,
+  visibility_history jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
 create index if not exists user_documents_user_idx on public.user_documents (user_id,created_at desc);
-create index if not exists user_documents_booking_idx on public.user_documents (booking_id) where visible_to_lawyer = true;
+create index if not exists user_documents_booking_idx on public.user_documents (booking_id)
+  where visible_to_lawyer = true and malware_scan_status = 'clean' and deletion_status = 'active';
 
 create table if not exists public.document_access_audit_events (
   id uuid primary key default gen_random_uuid(),
@@ -218,6 +223,7 @@ create table if not exists public.partner_applications (
   years_of_experience text not null,
   specialties text[] not null default '{}',
   professional_bio text not null,
+  preferred_plan_id text not null default 'basic' check (preferred_plan_id in ('basic','pro','premium','firms')),
   document_metadata jsonb not null default '[]'::jsonb,
   status text not null default 'under_review' check (status in ('under_review','needs_more_info','approved','rejected')),
   created_at timestamptz not null default now(),
@@ -1384,14 +1390,14 @@ begin
     greatest(1, least(5, p_clarity_rating)),
     greatest(1, least(5, p_responsiveness_rating)),
     trim(p_review_text),
-    'published'
+    'pending_review'
   )
   on conflict (booking_id) do update
     set rating = excluded.rating,
         clarity_rating = excluded.clarity_rating,
         responsiveness_rating = excluded.responsiveness_rating,
         review_text = excluded.review_text,
-        status = 'published',
+        status = 'pending_review',
         updated_at = now()
     where public.booking_reviews.user_id = current_user_id
   returning * into saved_review;
@@ -1475,13 +1481,46 @@ create policy "Partners can read own reviews" on public.booking_reviews
 drop policy if exists "Partners can update own review replies" on public.booking_reviews;
 
 drop policy if exists "Users can manage own documents" on public.user_documents;
-create policy "Users can manage own documents" on public.user_documents
-  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "Users can read own documents" on public.user_documents;
+create policy "Users can read own documents" on public.user_documents
+  for select using (user_id = auth.uid());
+
+drop policy if exists "Users can create private pending documents" on public.user_documents;
+create policy "Users can create private pending documents" on public.user_documents
+  for insert with check (
+    user_id = auth.uid()
+    and visible_to_lawyer = false
+    and malware_scan_status = 'pending'
+    and storage_path like auth.uid()::text || '/%'
+    and (
+      booking_id is null
+      or exists (
+        select 1 from public.booking_requests br
+        where br.id = user_documents.booking_id
+          and br.user_id = auth.uid()
+      )
+    )
+  );
+
+drop policy if exists "Users can update own document privacy requests" on public.user_documents;
+create policy "Users can update own document privacy requests" on public.user_documents
+  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists "Users can delete own documents" on public.user_documents;
+create policy "Users can delete own documents" on public.user_documents
+  for delete using (user_id = auth.uid());
 
 drop policy if exists "Partners can read booking documents" on public.user_documents;
 create policy "Partners can read booking documents" on public.user_documents
   for select using (
     visible_to_lawyer
+    and malware_scan_status = 'clean'
+    and coalesce(deletion_status,'active') = 'active'
+    and coalesce((
+      select (up.privacy_settings ->> 'allowDocumentAccessByBooking')::boolean
+      from public.user_profiles up
+      where up.id = user_documents.user_id
+    ), false)
     and exists (
       select 1 from public.booking_requests br
       where br.id = user_documents.booking_id
@@ -1504,6 +1543,13 @@ create policy "Partners can read own booking document objects" on storage.object
       join public.booking_requests br on br.id = ud.booking_id
       where ud.storage_path = storage.objects.name
         and ud.visible_to_lawyer
+        and ud.malware_scan_status = 'clean'
+        and coalesce(ud.deletion_status,'active') = 'active'
+        and coalesce((
+          select (up.privacy_settings ->> 'allowDocumentAccessByBooking')::boolean
+          from public.user_profiles up
+          where up.id = ud.user_id
+        ), false)
         and public.nomos_is_current_partner_for_lawyer(br.lawyer_id)
     )
   );
@@ -1535,7 +1581,8 @@ grant select on public.lawyer_profiles to anon, authenticated;
 grant select on public.booking_requests to anon, authenticated;
 grant select on public.booking_payments to authenticated;
 grant select on public.booking_reviews to anon, authenticated;
-grant select, insert, update, delete on public.user_documents to authenticated;
+grant select, insert, delete on public.user_documents to authenticated;
+grant update (visible_to_lawyer, deletion_status, visibility_history) on public.user_documents to authenticated;
 grant insert on public.partner_applications to anon, authenticated;
 grant select on public.partner_profile_settings to anon, authenticated;
 grant usage,select on all sequences in schema public to anon, authenticated;
@@ -2388,7 +2435,8 @@ create or replace function public.submit_partner_application(
   p_years_of_experience text,
   p_specialties text[],
   p_professional_bio text,
-  p_document_metadata jsonb
+  p_document_metadata jsonb,
+  p_preferred_plan_id text default 'basic'
 )
 returns public.partner_applications
 language plpgsql
@@ -2399,6 +2447,11 @@ declare
   existing_application public.partner_applications;
   persisted_application public.partner_applications;
   normalized_email text := lower(trim(p_work_email));
+  normalized_preferred_plan_id text := case
+    when lower(trim(coalesce(p_preferred_plan_id, 'basic'))) in ('basic','pro','premium','firms')
+      then lower(trim(coalesce(p_preferred_plan_id, 'basic')))
+    else 'basic'
+  end;
 begin
   if normalized_email = '' or normalized_email !~* '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
     raise exception 'INVALID_PARTNER_APPLICATION_EMAIL' using errcode = '22023';
@@ -2434,6 +2487,7 @@ begin
         years_of_experience = trim(p_years_of_experience),
         specialties = coalesce(p_specialties, '{}'),
         professional_bio = trim(p_professional_bio),
+        preferred_plan_id = normalized_preferred_plan_id,
         document_metadata = coalesce(p_document_metadata, '[]'::jsonb),
         status = 'under_review',
         reviewed_at = null
@@ -2445,13 +2499,13 @@ begin
 
   insert into public.partner_applications (
     id,reference_id,full_name,work_email,phone,city,law_firm_name,website_or_linkedin,
-    bar_association,registration_number,years_of_experience,specialties,professional_bio,document_metadata,status,created_at
+    bar_association,registration_number,years_of_experience,specialties,professional_bio,preferred_plan_id,document_metadata,status,created_at
   )
   values (
     p_application_id,p_reference_id,trim(p_full_name),normalized_email,trim(p_phone),trim(p_city),
     nullif(trim(coalesce(p_law_firm_name,'')), ''),nullif(trim(coalesce(p_website_or_linkedin,'')), ''),
     trim(p_bar_association),trim(p_registration_number),trim(p_years_of_experience),
-    coalesce(p_specialties, '{}'),trim(p_professional_bio),coalesce(p_document_metadata, '[]'::jsonb),'under_review',now()
+    coalesce(p_specialties, '{}'),trim(p_professional_bio),normalized_preferred_plan_id,coalesce(p_document_metadata, '[]'::jsonb),'under_review',now()
   )
   returning * into persisted_application;
 
@@ -2561,7 +2615,7 @@ $$;
 
 grant execute on function public.reserve_booking_slot(uuid,uuid,text,text,text,text,text,integer,text,text,text,text,text,text,text) to anon, authenticated;
 grant execute on function public.cancel_booking_as_user(uuid) to authenticated;
-grant execute on function public.submit_partner_application(uuid,text,text,text,text,text,text,text,text,text,text,text[],text,jsonb) to anon, authenticated;
+grant execute on function public.submit_partner_application(uuid,text,text,text,text,text,text,text,text,text,text,text[],text,jsonb,text) to anon, authenticated;
 grant execute on function public.create_operational_case(uuid,text,text,text,text,text,text,text,text,text,jsonb,jsonb,timestamptz) to anon, authenticated;
 
 notify pgrst, 'reload schema';
@@ -2599,26 +2653,6 @@ from (
 ) as checks(object_name, exists_in_database);
 
 begin;
-
-create table if not exists public.intake_requests (
-  id uuid primary key default gen_random_uuid(),
-  reference_id text not null unique,
-  user_id uuid references auth.users(id) on delete set null,
-  city text not null,
-  category text not null,
-  urgency text not null check (urgency in ('today','this_week','flexible')),
-  budget text not null check (budget in ('under_50','50_80','80_120','120_plus','flexible')),
-  consultation_mode text not null check (consultation_mode in ('any','video','phone','inPerson')),
-  timing text not null default '',
-  issue_summary text not null,
-  client_name text not null default '',
-  client_email text not null default '',
-  client_phone text not null default '',
-  ranked_lawyer_ids text[] not null default '{}',
-  status text not null default 'new' check (status in ('new','routed','booked','closed')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
 
 create table if not exists public.partner_subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -2695,72 +2729,6 @@ as $$
     and ps.session_token_hash = crypt(p_session_token, ps.session_token_hash)
   order by ps.created_at desc
   limit 1;
-$$;
-
-create or replace function public.create_intake_request(
-  p_request_id uuid,
-  p_reference_id text,
-  p_city text,
-  p_category text,
-  p_urgency text,
-  p_budget text,
-  p_consultation_mode text,
-  p_timing text,
-  p_issue_summary text,
-  p_client_name text,
-  p_client_email text,
-  p_client_phone text,
-  p_ranked_lawyer_ids text[]
-)
-returns public.intake_requests
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  persisted_request public.intake_requests;
-begin
-  if length(trim(coalesce(p_issue_summary, ''))) < 20 then
-    raise exception 'INTAKE_SUMMARY_TOO_SHORT' using errcode = '22023';
-  end if;
-
-  insert into public.intake_requests (
-    id, reference_id, user_id, city, category, urgency, budget, consultation_mode,
-    timing, issue_summary, client_name, client_email, client_phone, ranked_lawyer_ids, status
-  )
-  values (
-    p_request_id, p_reference_id, auth.uid(), trim(p_city), trim(p_category), p_urgency, p_budget,
-    p_consultation_mode, trim(coalesce(p_timing, '')), trim(p_issue_summary),
-    trim(coalesce(p_client_name, '')), lower(trim(coalesce(p_client_email, ''))),
-    trim(coalesce(p_client_phone, '')), coalesce(p_ranked_lawyer_ids, '{}'),
-    case when cardinality(coalesce(p_ranked_lawyer_ids, '{}')) > 0 then 'routed' else 'new' end
-  )
-  returning * into persisted_request;
-
-  return persisted_request;
-end;
-$$;
-
-create or replace function public.route_intake_request(p_request_id uuid, p_ranked_lawyer_ids text[])
-returns public.intake_requests
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  persisted_request public.intake_requests;
-begin
-  update public.intake_requests
-  set ranked_lawyer_ids = coalesce(p_ranked_lawyer_ids, '{}'), status = 'routed', updated_at = now()
-  where id = p_request_id and (user_id = auth.uid() or user_id is null)
-  returning * into persisted_request;
-
-  if persisted_request.id is null then
-    raise exception 'INTAKE_REQUEST_NOT_FOUND' using errcode = '42501';
-  end if;
-
-  return persisted_request;
-end;
 $$;
 
 create or replace function public.list_partner_case_notes(p_partner_email text, p_session_token text, p_lawyer_id text)
@@ -2956,19 +2924,15 @@ begin
 end;
 $$;
 
-alter table public.intake_requests enable row level security;
 alter table public.partner_subscriptions enable row level security;
 alter table public.partner_pipeline_items enable row level security;
 alter table public.partner_case_notes enable row level security;
 alter table public.partner_followup_tasks enable row level security;
 
-grant select on public.intake_requests to authenticated;
 grant select on public.partner_subscriptions to authenticated;
 grant select on public.partner_pipeline_items to authenticated;
 grant select on public.partner_case_notes to authenticated;
 grant select on public.partner_followup_tasks to authenticated;
-grant execute on function public.create_intake_request(uuid,text,text,text,text,text,text,text,text,text,text,text,text[]) to anon, authenticated;
-grant execute on function public.route_intake_request(uuid,text[]) to authenticated;
 grant execute on function public.list_partner_case_notes(text,text,text) to anon, authenticated;
 grant execute on function public.list_partner_followup_tasks(text,text,text) to anon, authenticated;
 grant execute on function public.save_partner_case_note(text,text,uuid,uuid,text) to anon, authenticated;

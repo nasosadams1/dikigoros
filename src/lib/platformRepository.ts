@@ -120,6 +120,8 @@ export interface BookingRefundResult {
   persistenceSource: PersistenceSource;
 }
 
+export type PartnerApplicationPlanId = "basic" | "pro" | "premium" | "firms";
+
 export interface PartnerApplicationPayload {
   fullName: string;
   workEmail: string;
@@ -132,6 +134,7 @@ export interface PartnerApplicationPayload {
   yearsOfExperience: string;
   specialties: string[];
   professionalBio: string;
+  preferredPlanId: PartnerApplicationPlanId;
   documents: Array<{
     name: string;
     size: number;
@@ -483,6 +486,7 @@ interface PartnerApplicationRow {
   years_of_experience: string;
   specialties: unknown;
   professional_bio: string;
+  preferred_plan_id?: string | null;
   document_metadata: unknown;
   status: string;
   created_at: string;
@@ -627,6 +631,13 @@ const normalizeDocumentMetadata = (value: unknown): PartnerApplicationPayload["d
     .filter((item): item is PartnerApplicationPayload["documents"][number] => Boolean(item));
 };
 
+const partnerApplicationPlanIds = new Set<PartnerApplicationPlanId>(["basic", "pro", "premium", "firms"]);
+
+const normalizePartnerApplicationPlan = (value: unknown): PartnerApplicationPlanId =>
+  typeof value === "string" && partnerApplicationPlanIds.has(value as PartnerApplicationPlanId)
+    ? (value as PartnerApplicationPlanId)
+    : "basic";
+
 const partnerApplicationFromRow = (row: PartnerApplicationRow): StoredPartnerApplication => ({
   id: row.id,
   referenceId: row.reference_id,
@@ -641,6 +652,7 @@ const partnerApplicationFromRow = (row: PartnerApplicationRow): StoredPartnerApp
   yearsOfExperience: row.years_of_experience,
   specialties: Array.isArray(row.specialties) ? row.specialties.filter((item): item is string => typeof item === "string") : [],
   professionalBio: row.professional_bio,
+  preferredPlanId: normalizePartnerApplicationPlan(row.preferred_plan_id),
   documents: normalizeDocumentMetadata(row.document_metadata),
   status:
     row.status === "needs_more_info" || row.status === "approved" || row.status === "rejected"
@@ -1224,7 +1236,7 @@ export const requestPaymentSetupSession = async (
     }>("create-payment-setup-session", session.access_token, {
       userId,
       email: email?.trim().toLowerCase() || "",
-      returnUrl: typeof window !== "undefined" ? `${window.location.origin}/account?tab=payments` : undefined,
+      returnUrl: typeof window !== "undefined" ? window.location.href : undefined,
     });
     return {
       provider: "stripe",
@@ -1383,6 +1395,7 @@ export const createPartnerApplication = async (
     ...payload,
     city: normalizedCity,
     specialties: normalizedSpecialties,
+    preferredPlanId: normalizePartnerApplicationPlan(payload.preferredPlanId),
     id: createRecordId(),
     referenceId: createReferenceId("PA"),
     status: "under_review",
@@ -1405,6 +1418,7 @@ export const createPartnerApplication = async (
       p_years_of_experience: application.yearsOfExperience,
       p_specialties: application.specialties,
       p_professional_bio: application.professionalBio,
+      p_preferred_plan_id: application.preferredPlanId,
       p_document_metadata: application.documents,
     });
 

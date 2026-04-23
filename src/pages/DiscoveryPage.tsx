@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowRight, CalendarDays, Clock, MapPin, ShieldCheck, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
+import LawyerPhoto from "@/components/LawyerPhoto";
 import Navbar from "@/components/Navbar";
 import SEO from "@/components/SEO";
 import { getLawyers } from "@/lib/lawyerRepository";
@@ -32,7 +33,6 @@ const DiscoveryPage = () => {
   const isCityCategoryRoute = Boolean(config.city);
   const readyForAcquisition = !isCityCategoryRoute || densityState.ready;
   const broaderSearchPath = `/search?q=${encodeURIComponent(config.issue.query)}`;
-  const intakePath = `/intake?category=${encodeURIComponent(config.issue.slug)}${config.city ? `&city=${encodeURIComponent(config.city.slug)}` : ""}`;
   const routeStats = useMemo(() => {
     const prices = matchingLawyers.map(getPriceFrom).filter((price) => Number.isFinite(price) && price > 0);
     const fastResponses = matchingLawyers.filter((lawyer) => lawyer.responseMinutes <= 60).length;
@@ -62,12 +62,6 @@ const DiscoveryPage = () => {
               <DiscoveryStat label="Ταχύτητα" value={routeStats.response} helper={routeStats.availability} />
             </div>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Button asChild className="rounded-lg font-bold">
-                <Link to={intakePath}>
-                  Περιγράψτε την υπόθεση
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
               <Button asChild className="rounded-lg font-bold">
                 <Link to={readyForAcquisition ? config.searchPath : broaderSearchPath}>
                   {readyForAcquisition ? "Βρείτε δικηγόρους" : "Ευρύτερη αναζήτηση"}
@@ -144,7 +138,7 @@ const DiscoveryPage = () => {
               return (
               <Link key={lawyer.id} to={`/lawyer/${lawyer.id}`} className="rounded-lg border border-border bg-card p-5 transition hover:border-primary/25 hover:shadow-xl hover:shadow-foreground/[0.05]">
                 <div className="flex items-start gap-4">
-                  <img src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-lg object-cover" />
+                  <LawyerPhoto src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-lg object-cover" />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-xs font-bold uppercase tracking-wider text-primary">{lawyer.specialty}</p>
@@ -174,12 +168,6 @@ const DiscoveryPage = () => {
             )}
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Button asChild className="rounded-lg font-bold">
-              <Link to={intakePath}>
-                Ξεκινήστε με σύντομη περιγραφή
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
             <Button asChild className="rounded-lg font-bold">
               <Link to={readyForAcquisition ? config.searchPath : broaderSearchPath}>
                 {readyForAcquisition ? "Σύγκριση όλων των σχετικών δικηγόρων" : "Συνέχεια σε ευρύτερη αναζήτηση"}

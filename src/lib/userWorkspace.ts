@@ -112,7 +112,7 @@ export const defaultUserWorkspace: UserWorkspace = {
   },
   privacy: {
     sharePhoneWithBookedLawyers: true,
-    allowDocumentAccessByBooking: true,
+    allowDocumentAccessByBooking: false,
     productUpdates: false,
   },
   notifications: {
@@ -363,10 +363,10 @@ export const fetchUserWorkspace = async (userId?: string | null, remoteUserId?: 
     );
     const withDocuments = normalizeWorkspace({
       ...remoteWorkspace,
-      documents: documents.length ? documents : remoteWorkspace.documents,
+      documents,
       reviews: Array.isArray(reviewRows)
         ? (reviewRows as UserReviewRow[]).map(reviewFromRow)
-        : remoteWorkspace.reviews,
+        : [],
     });
 
     return saveUserWorkspace(userId, withDocuments);
@@ -392,22 +392,24 @@ export const syncUserWorkspace = async (
   workspace: UserWorkspace,
   remoteUserId?: string | null,
 ) => {
-  const normalized = saveUserWorkspace(userId, workspace);
+  const normalized = normalizeWorkspace(workspace);
   const resolvedRemoteUserId = resolveRemoteUserId(userId, remoteUserId);
-  if (!resolvedRemoteUserId) return normalized;
+  if (!resolvedRemoteUserId) return saveUserWorkspace(userId, normalized);
 
   try {
-    await supabase.from("user_profiles").upsert({
+    const { error } = await supabase.from("user_profiles").upsert({
       id: resolvedRemoteUserId,
       ...workspaceToProfileUpdates(normalized),
     });
+    if (error) throw error;
   } catch {
     if (!allowLocalCriticalFallback) {
       throw failClosedCriticalPath("Account workspace");
     }
+    return saveUserWorkspace(userId, normalized);
   }
 
-  return normalized;
+  return saveUserWorkspace(userId, normalized);
 };
 
 export const updateUserWorkspace = (
@@ -459,9 +461,11 @@ export const addUserDocuments = (
   files: File[],
   category = "Γενικό έγγραφο",
   linkedBookingId?: string,
+  visibleToLawyer = false,
 ) =>
   updateUserWorkspace(userId, (workspace) => {
     const { acceptedFiles } = validateLegalDocumentUpload(files);
+    const initialVisibleToLawyer = Boolean(visibleToLawyer && linkedBookingId);
 
     return {
       ...workspace,
@@ -473,12 +477,12 @@ export const addUserDocuments = (
           type: file.type || "unknown",
           category,
           linkedBookingId,
-          visibleToLawyer: true,
+          visibleToLawyer: initialVisibleToLawyer,
           uploadedAt: new Date().toISOString(),
           retentionUntil: getDocumentRetentionUntil(category),
           deletionStatus: "active" as const,
           accessAudit: [{ at: new Date().toISOString(), actor: "Client", action: "Uploaded" }],
-          visibilityHistory: [{ at: new Date().toISOString(), visibleToLawyer: true, actor: "Client" }],
+          visibilityHistory: [{ at: new Date().toISOString(), visibleToLawyer: initialVisibleToLawyer, actor: "Client" }],
           malwareScanStatus: "pending" as const,
           persistenceSource: "local" as const,
         })),
@@ -493,11 +497,12 @@ export const uploadUserDocuments = async (
   category = "Γενικό έγγραφο",
   linkedBookingId?: string,
   remoteUserId?: string | null,
+  visibleToLawyer = false,
 ) => {
   const { acceptedFiles } = validateLegalDocumentUpload(files);
   const resolvedRemoteUserId = resolveRemoteUserId(userId, remoteUserId);
   if (!resolvedRemoteUserId) {
-    if (allowLocalCriticalFallback) return addUserDocuments(userId, acceptedFiles, category, linkedBookingId);
+    if (allowLocalCriticalFallback) return addUserDocuments(userId, acceptedFiles, category, linkedBookingId, visibleToLawyer);
     throw failClosedCriticalPath("Document upload");
   }
   if (acceptedFiles.length === 0) return getUserWorkspace(userId);
@@ -507,6 +512,7 @@ export const uploadUserDocuments = async (
   for (const file of acceptedFiles) {
     const id = createRecordId();
     const storagePath = `${resolvedRemoteUserId}/${id}-${file.name.replace(/[^\w.-]+/g, "_")}`;
+    const initialVisibleToLawyer = Boolean(visibleToLawyer && linkedBookingId);
     const document: UserDocument = {
       id,
       name: file.name,
@@ -514,12 +520,12 @@ export const uploadUserDocuments = async (
       type: file.type || "unknown",
       category,
       linkedBookingId,
-      visibleToLawyer: true,
+      visibleToLawyer: initialVisibleToLawyer,
       uploadedAt: new Date().toISOString(),
       retentionUntil: getDocumentRetentionUntil(category),
       deletionStatus: "active",
       accessAudit: [{ at: new Date().toISOString(), actor: "Client", action: "Uploaded" }],
-      visibilityHistory: [{ at: new Date().toISOString(), visibleToLawyer: true, actor: "Client" }],
+      visibilityHistory: [{ at: new Date().toISOString(), visibleToLawyer: initialVisibleToLawyer, actor: "Client" }],
       malwareScanStatus: "pending",
       storagePath,
       persistenceSource: "local",
@@ -541,7 +547,7 @@ export const uploadUserDocuments = async (
         mime_type: file.type || null,
         category,
         storage_path: storagePath,
-        visible_to_lawyer: true,
+        visible_to_lawyer: document.visibleToLawyer,
         retention_until: document.retentionUntil,
         deletion_status: "active",
         access_audit: document.accessAudit,
@@ -607,18 +613,15 @@ export const removeUserDocumentPersisted = async (
 
   if (resolvedRemoteUserId && existingDocument?.persistenceSource === "supabase") {
     try {
-      await supabase
+      const { error } = await supabase
         .from("user_documents")
         .update({
           visible_to_lawyer: false,
           deletion_status: "deletion_requested",
-          access_audit: [
-            { at: new Date().toISOString(), actor: "Client", action: "Deletion requested" },
-            ...(existingDocument.accessAudit || []),
-          ],
         })
         .eq("id", documentId)
         .eq("user_id", resolvedRemoteUserId);
+      if (error) throw error;
     } catch {
       if (!allowLocalCriticalFallback) {
         throw failClosedCriticalPath("Document deletion request");
@@ -652,18 +655,37 @@ export const setUserDocumentVisibility = (
     ),
   }));
 
+interface DocumentVisibilityOptions {
+  allowDocumentAccessByBooking?: boolean;
+}
+
+const canMakeDocumentVisibleToLawyer = (document: UserDocument | undefined, options: DocumentVisibilityOptions) =>
+  Boolean(
+    document &&
+      options.allowDocumentAccessByBooking &&
+      document.linkedBookingId &&
+      document.malwareScanStatus === "clean" &&
+      (document.deletionStatus || "active") === "active",
+  );
+
 export const setUserDocumentVisibilityPersisted = async (
   userId: string | null | undefined,
   documentId: string,
   visibleToLawyer: boolean,
   remoteUserId?: string | null,
+  options: DocumentVisibilityOptions = {},
 ) => {
   const currentWorkspace = getUserWorkspace(userId);
   const existingDocument = currentWorkspace.documents.find((document) => document.id === documentId);
   const resolvedRemoteUserId = resolveRemoteUserId(userId, remoteUserId);
+
+  if (visibleToLawyer && !canMakeDocumentVisibleToLawyer(existingDocument, options)) {
+    throw failClosedCriticalPath("Document visibility");
+  }
+
   if (resolvedRemoteUserId && existingDocument?.persistenceSource === "supabase") {
     try {
-      await supabase
+      const { error } = await supabase
         .from("user_documents")
         .update({
           visible_to_lawyer: visibleToLawyer,
@@ -674,6 +696,7 @@ export const setUserDocumentVisibilityPersisted = async (
         })
         .eq("id", documentId)
         .eq("user_id", resolvedRemoteUserId);
+      if (error) throw error;
     } catch {
       if (!allowLocalCriticalFallback) {
         throw failClosedCriticalPath("Document visibility");

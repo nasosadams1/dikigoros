@@ -67,7 +67,7 @@ const FooterColumn = ({
     <h4 className="mb-4 text-sm font-semibold uppercase tracking-wider text-primary-foreground/50">{title}</h4>
     <ul className="space-y-3">
       {links.map((link) => (
-        <li key={link.to}>
+        <li key={`${link.label}-${link.to}`}>
           <Link to={link.to} className="text-sm text-primary-foreground/70 transition-colors hover:text-primary-foreground">
             {link.label}
           </Link>

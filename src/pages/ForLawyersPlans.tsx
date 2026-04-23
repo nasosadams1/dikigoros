@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   BarChart3,
@@ -12,12 +12,11 @@ import {
   Workflow,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import Footer from "@/components/Footer";
-import Navbar from "@/components/Navbar";
+import PartnerShell from "@/components/partner/PartnerShell";
 import SEO from "@/components/SEO";
 import { Button } from "@/components/ui/button";
 import { partnerPlans, type PartnerPlan, type PartnerPlanId } from "@/lib/level4Marketplace";
-import { getPartnerSession } from "@/lib/platformRepository";
+import { clearPartnerSession, getPartnerSession, isPartnerSessionInvalidError } from "@/lib/platformRepository";
 import {
   createPartnerSubscriptionCheckoutSession,
   type PartnerBillingInterval,
@@ -35,10 +34,15 @@ const formatEuro = (amount: number) =>
   })}`;
 
 const ForLawyersPlans = () => {
-  const partnerSession = useMemo(() => getPartnerSession(), []);
+  const [searchParams] = useSearchParams();
+  const [partnerSession, setPartnerSession] = useState(() => getPartnerSession());
   const [billingInterval, setBillingInterval] = useState<PartnerBillingInterval>("monthly");
   const [loadingPlan, setLoadingPlan] = useState<PartnerPlanId | null>(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(() =>
+    searchParams.get("subscription") === "cancelled"
+      ? "Η πληρωμή ακυρώθηκε. Μπορείτε να επιλέξετε ξανά πλάνο όταν είστε έτοιμοι."
+      : "",
+  );
 
   const startCheckout = async (plan: PartnerPlan) => {
     setMessage("");
@@ -54,18 +58,29 @@ const ForLawyersPlans = () => {
         typeof window !== "undefined"
           ? `${window.location.origin}/for-lawyers/portal?view=pipeline`
           : "/for-lawyers/portal?view=pipeline";
+      const cancelUrl =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/for-lawyers/plans`
+          : "/for-lawyers/plans";
       const result = await createPartnerSubscriptionCheckoutSession(
         plan.id,
         partnerSession,
         returnUrl,
         billingInterval,
+        cancelUrl,
       );
       if (result.url && typeof window !== "undefined") {
         window.location.assign(result.url);
         return;
       }
       setMessage("Το Βασικό πλάνο δεν έχει συνδρομή. Η χρέωση €7 εφαρμόζεται μόνο μετά από ολοκληρωμένη πρώτη συμβουλευτική.");
-    } catch {
+    } catch (error) {
+      if (isPartnerSessionInvalidError(error)) {
+        clearPartnerSession();
+        setPartnerSession(null);
+        setMessage("Η πρόσβαση συνεργάτη έληξε. Συνδεθείτε ξανά για να συνεχίσετε στην πληρωμή.");
+        return;
+      }
       setMessage("Δεν ήταν δυνατό να ανοίξει η πληρωμή συνδρομής.");
     } finally {
       setLoadingPlan(null);
@@ -73,14 +88,13 @@ const ForLawyersPlans = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <PartnerShell className="py-10 lg:py-14">
       <SEO
         title="Πλάνα συνεργασίας για δικηγόρους | Dikigoros"
         description="Βασικό, Επαγγελματικό, Πλήρες και Γραφεία / Ομάδες για ελεγμένους δικηγόρους, με καθαρές χρεώσεις, στατιστικά, προβολή και εργαλεία ροής υποθέσεων."
         path="/for-lawyers/plans"
       />
-      <Navbar />
-      <main className="mx-auto max-w-7xl px-5 py-10 lg:px-8 lg:py-14">
+      <div>
         <section className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-primary">Πλάνα συνεργασίας</p>
@@ -147,9 +161,8 @@ const ForLawyersPlans = () => {
             Στον πίνακα συνεργάτη βλέπετε προβολές προφίλ, εμφανίσεις στην αναζήτηση, εκκινήσεις κράτησης, πληρωμένες συμβουλευτικές, ολοκληρώσεις, αξιολογήσεις και απόδοση ανά πόλη και κατηγορία.
           </p>
         </section>
-      </main>
-      <Footer />
-    </div>
+      </div>
+    </PartnerShell>
   );
 };
 

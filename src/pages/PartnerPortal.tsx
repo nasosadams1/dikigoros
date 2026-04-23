@@ -1119,7 +1119,8 @@ const PipelineView = ({
             </article>
           );
         }) : (
-          <EmptyState
+          <EmptyPartnerState
+            icon={Workflow}
             title="Δεν υπάρχουν ακόμη πελάτες στη ροή"
             description="Οι κρατημένες και πληρωμένες συμβουλευτικές θα εμφανιστούν εδώ μόλις υπάρχουν διαθέσιμες κρατήσεις συνεργάτη."
           />

@@ -1,19 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import type { ChangeEvent, ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Bell,
   CalendarDays,
   Clock,
   CreditCard,
-  Download,
-  Eye,
-  EyeOff,
-  FileText,
   Heart,
   LockKeyhole,
   MapPin,
-  MessageSquareQuote,
   Search,
   Settings2,
   ShieldCheck,
@@ -21,15 +16,14 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AuthContainer from "@/components/auth/AuthContainer";
 import Footer from "@/components/Footer";
+import LawyerPhoto from "@/components/LawyerPhoto";
 import Navbar from "@/components/Navbar";
-import { ComparisonLine, EmptyState, Field, Metric, Panel, SettingToggle } from "@/components/profile/AccountPrimitives";
+import { ComparisonLine, EmptyState, Field, Panel, SettingToggle } from "@/components/profile/AccountPrimitives";
 import { consultationModeLabels, specialtyOptions, type ConsultationMode, type Lawyer } from "@/data/lawyers";
 import { useAuth } from "@/context/AuthContext";
-import { legalDocumentPolicy, summarizeDocumentValidation, validateLegalDocumentUpload } from "@/lib/documentPolicy";
 import {
   clearPartnerSession,
   cancelBooking,
@@ -39,38 +33,25 @@ import {
   isVerifiedBooking,
   requestBookingCheckoutSession,
   requestBookingRefund,
-  requestPaymentSetupSession,
   type StoredBooking,
   type StoredPayment,
 } from "@/lib/platformRepository";
-import { getPartnerWorkspace } from "@/lib/partnerWorkspace";
 import { getLawyers } from "@/lib/lawyerRepository";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { getUserRetentionPrompts } from "@/lib/retention";
 import {
+  type BookingState,
+  type PaymentState,
   bookingStateLabels,
   canCancelBooking,
   canOpenCheckout,
-  canSubmitReview,
-  getBookingNextStepCopy,
   getCanonicalBookingState,
   getCanonicalPaymentState,
-  getPaymentSituationCopy,
-  paymentStateLabels,
-  reviewPublicationStateLabels,
 } from "@/lib/bookingState";
 import {
-  createUserDocumentDownloadUrl,
   fetchUserWorkspace,
-  formatFileSize,
-  getDocumentVisibilityExplanation,
   getUserWorkspace,
-  saveUserWorkspace,
-  removeUserDocumentPersisted,
-  setUserDocumentVisibilityPersisted,
   syncUserWorkspace,
-  uploadUserDocuments,
-  upsertUserReviewPersisted,
   type PreferredConsultationMode,
   type UserWorkspace,
 } from "@/lib/userWorkspace";
@@ -81,24 +62,17 @@ import { allowedMarketplaceCityNames, normalizeAllowedMarketplaceCity } from "@/
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { id: "overview", label: "Χώρος εργασίας", icon: UserRound },
+  { id: "overview", label: "Επισκόπηση", icon: UserRound },
   { id: "profile", label: "Στοιχεία πελάτη", icon: UserRound },
   { id: "bookings", label: "Ραντεβού", icon: CalendarDays },
-  { id: "messages", label: "Επόμενα βήματα", icon: MessageSquareQuote },
-  { id: "saved", label: "Αποθηκευμένα και σύγκριση", icon: Heart },
-  { id: "documents", label: "Έγγραφα", icon: FileText },
+  { id: "saved", label: "Αποθηκευμένοι δικηγόροι", icon: Heart },
   { id: "payments", label: "Πληρωμές και αποδείξεις", icon: CreditCard },
-  { id: "reviews", label: "Αξιολογήσεις", icon: MessageSquareQuote },
-  { id: "privacy", label: "Απόρρητο", icon: LockKeyhole },
+  { id: "privacy", label: "Ιδιωτικότητα", icon: LockKeyhole },
 ] as const;
 
 type ActiveView = (typeof navItems)[number]["id"];
-type ReviewSubmitState = {
-  loading: boolean;
-  message: string;
-  tone: "success" | "error" | "info";
-};
-
+type BookingFilter = "all" | "active" | "action" | "completed" | "cancelled";
+type StatusTone = "attention" | "review" | "success" | "muted" | "danger" | "info";
 type PaymentActionState = {
   loading: boolean;
   message: string;
@@ -121,28 +95,76 @@ const consultationOptions: Array<{ value: PreferredConsultationMode; label: stri
 const budgetOptions = ["έως €50", "€50 - €80", "€80 - €120", "€120+"];
 const urgencyOptions = ["Σήμερα", "Μέσα σε 3 ημέρες", "Αυτή την εβδομάδα", "Δεν είναι επείγον"];
 
-const paymentMethodStatusLabels: Record<UserWorkspace["paymentMethod"]["status"], string> = {
-  not_configured: "Δεν έχει συνδεθεί",
-  setup_required: "Χρειάζεται σύνδεση",
-  ready: "Έτοιμη",
+const bookingFilters: Array<{ id: BookingFilter; label: string }> = [
+  { id: "all", label: "Όλα" },
+  { id: "active", label: "Ενεργά" },
+  { id: "action", label: "Χρειάζονται ενέργεια" },
+  { id: "completed", label: "Ολοκληρωμένα" },
+  { id: "cancelled", label: "Ακυρωμένα" },
+];
+
+const bookingStatusLabels: Record<BookingState, string> = {
+  ...bookingStateLabels,
+  confirmed_paid: "Επιβεβαιωμένο",
 };
 
-const getPaymentSituation = (booking: StoredBooking, payment?: StoredPayment) =>
-  getPaymentSituationCopy(booking, payment);
+const paymentStatusLabels: Record<PaymentState, string> = {
+  not_opened: "Απλήρωτο",
+  checkout_opened: "Σε επιβεβαίωση",
+  paid: "Πληρωμένο",
+  failed: "Απέτυχε",
+  refund_requested: "Επιστροφή σε εξέλιξη",
+  refunded: "Επιστράφηκε",
+};
 
-const getBookingNextStep = (booking: StoredBooking, payment?: StoredPayment) =>
-  getBookingNextStepCopy(booking, payment);
+const statusToneClasses: Record<StatusTone, string> = {
+  attention: "border-gold/30 bg-gold/15 text-gold-foreground",
+  review: "border-primary/25 bg-primary/10 text-primary",
+  success: "border-sage/30 bg-sage/15 text-sage-foreground",
+  muted: "border-border bg-secondary text-muted-foreground",
+  danger: "border-destructive/25 bg-destructive/10 text-destructive",
+  info: "border-primary/25 bg-primary/10 text-primary",
+};
 
-const getCompletionItems = (workspace: UserWorkspace, profileEmail?: string, phone?: string, city?: string) => [
-  Boolean(profileEmail),
-  Boolean(phone),
-  Boolean(city || workspace.preferences.city),
-  workspace.preferences.legalCategories.length > 0,
-  workspace.savedLawyerIds.length > 0,
-  workspace.documents.length > 0,
-  workspace.notifications.email || workspace.notifications.sms,
-  workspace.privacy.sharePhoneWithBookedLawyers !== undefined,
-];
+const getBookingTone = (state: BookingState): StatusTone =>
+  state === "confirmed_unpaid"
+    ? "attention"
+    : state === "pending_confirmation"
+      ? "review"
+      : state === "confirmed_paid" || state === "completed"
+        ? "success"
+        : "muted";
+
+const getPaymentTone = (state: PaymentState, hasReceipt = false): StatusTone =>
+  state === "paid" && hasReceipt
+    ? "success"
+    : state === "paid" || state === "checkout_opened"
+      ? "review"
+      : state === "refund_requested"
+        ? "attention"
+        : state === "failed"
+          ? "danger"
+          : state === "refunded"
+            ? "muted"
+            : "attention";
+
+const getPaymentStatusLabel = (payment?: StoredPayment) => {
+  const state = getCanonicalPaymentState(payment);
+  if (state === "paid" && payment?.receiptUrl) return "Απόδειξη διαθέσιμη";
+  return paymentStatusLabels[state];
+};
+
+const getReceiptStatusLabel = (booking: StoredBooking, payment?: StoredPayment) => {
+  const bookingState = getCanonicalBookingState(booking, payment);
+  const paymentState = getCanonicalPaymentState(payment);
+  if (payment?.receiptUrl) return "Απόδειξη διαθέσιμη";
+  if (bookingState === "cancelled" && paymentState !== "paid") return "Ακυρώθηκε χωρίς χρέωση";
+  if (paymentState === "refund_requested") return "Επιστροφή σε εξέλιξη";
+  return "Απόδειξη σε αναμονή";
+};
+
+const needsPaymentAction = (booking: StoredBooking, payment?: StoredPayment) =>
+  canOpenCheckout(booking, payment) && getCanonicalPaymentState(payment) !== "paid";
 
 const accountProfileStoragePrefix = "dikigoros.accountProfile.v1";
 
@@ -177,6 +199,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
   const [authOpen, setAuthOpen] = useState(false);
   const [partnerSession, setPartnerSession] = useState(() => getPartnerSession());
   const [activeView, setActiveView] = useState<ActiveView>(() => parseUserProfileTab(searchParams.get("tab")));
+  const [bookingFilter, setBookingFilter] = useState<BookingFilter>("all");
   const [bookingVersion, setBookingVersion] = useState(0);
   const [bookings, setBookings] = useState<StoredBooking[]>([]);
   const [payments, setPayments] = useState<StoredPayment[]>([]);
@@ -186,9 +209,12 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     message: "",
     tone: "info",
   });
-  const [reviewDrafts, setReviewDrafts] = useState<Record<string, { rating: number; clarityRating: number; responsivenessRating: number; text: string }>>({});
-  const [reviewSubmitState, setReviewSubmitState] = useState<Record<string, ReviewSubmitState>>({});
-  const [documentUploadState, setDocumentUploadState] = useState<PaymentActionState>({
+  const [accountSyncState, setAccountSyncState] = useState<PaymentActionState>({
+    loading: false,
+    message: "",
+    tone: "info",
+  });
+  const [bookingActionState, setBookingActionState] = useState<PaymentActionState>({
     loading: false,
     message: "",
     tone: "info",
@@ -203,35 +229,39 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     phone: "",
     city: "",
   });
-  const [workspace, setWorkspace] = useState<UserWorkspace>(() => getUserWorkspace(user?.id || getPartnerSession()?.email));
+  const [profileDraftDirty, setProfileDraftDirty] = useState(false);
+  const [workspace, setWorkspace] = useState<UserWorkspace>(() => getUserWorkspace(user?.id));
+  const workspaceRef = useRef(workspace);
   const [localAccountProfile, setLocalAccountProfile] = useState<AccountProfileDraft>(() =>
-    getStoredAccountProfile(user?.id || getPartnerSession()?.email),
+    getStoredAccountProfile(user?.id),
   );
 
   const userId = user?.id;
-  const workspaceKey = userId || partnerSession?.email || undefined;
-  const partnerWorkspace = partnerSession ? getPartnerWorkspace(partnerSession.email) : null;
-  const hasAccountAccess = Boolean(user || partnerSession);
-  const userEmail = profile?.email || user?.email || partnerSession?.email || "";
+  const workspaceKey = userId || undefined;
+  const hasAccountAccess = Boolean(user);
+  const userEmail = profile?.email || user?.email || "";
   const displayName =
     profile?.name ||
     localAccountProfile.name ||
-    partnerWorkspace?.profile.displayName ||
     user?.user_metadata?.display_name ||
     userEmail.split("@")[0] ||
     "Χρήστης";
   const userPhone = profile?.phone || localAccountProfile.phone || "";
-  const userCity = normalizeAllowedMarketplaceCity(profile?.city || localAccountProfile.city || workspace.preferences.city || partnerWorkspace?.profile.city || "");
-  const accountDisplayName = localAccountProfile.name || partnerWorkspace?.profile.displayName || displayName;
+  const userCity = normalizeAllowedMarketplaceCity(profile?.city || localAccountProfile.city || workspace.preferences.city || "");
+  const accountDisplayName = localAccountProfile.name || displayName;
   const accountPhone = localAccountProfile.phone || userPhone;
-  const accountCity = normalizeAllowedMarketplaceCity(localAccountProfile.city || userCity || partnerWorkspace?.profile.city || workspace.preferences.city);
+  const accountCity = normalizeAllowedMarketplaceCity(localAccountProfile.city || userCity || workspace.preferences.city);
+
+  useEffect(() => {
+    workspaceRef.current = workspace;
+  }, [workspace]);
 
   useEffect(() => {
     setWorkspace(getUserWorkspace(workspaceKey));
     void fetchUserWorkspace(workspaceKey, userId).then(setWorkspace).catch(() => {
-      setPaymentSetupState({
+      setAccountSyncState({
         loading: false,
-        message: "Τα στοιχεία λογαριασμού είναι προσωρινά μη διαθέσιμα. Ανανεώστε σε λίγο για να δείτε κρατήσεις, πληρωμές και έγγραφα από το σύστημα.",
+        message: "Τα στοιχεία λογαριασμού είναι προσωρινά μη διαθέσιμα. Ανανεώστε σε λίγο για να δείτε κρατήσεις και πληρωμές από το σύστημα.",
         tone: "error",
       });
     });
@@ -239,15 +269,18 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
 
   useEffect(() => {
     setLocalAccountProfile(getStoredAccountProfile(workspaceKey));
+    setProfileDraftDirty(false);
   }, [workspaceKey]);
 
   useEffect(() => {
+    if (profileDraftDirty) return;
+
     setProfileDraft({
       name: accountDisplayName,
       phone: accountPhone,
       city: accountCity,
     });
-  }, [accountCity, accountDisplayName, accountPhone]);
+  }, [accountCity, accountDisplayName, accountPhone, profileDraftDirty]);
 
   useEffect(() => {
     setActiveView(parseUserProfileTab(searchParams.get("tab")));
@@ -281,7 +314,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
       if (!active) return;
       setBookings([]);
       setPayments([]);
-      setPaymentSetupState({
+      setBookingActionState({
         loading: false,
         message: "Οι κρατήσεις και οι πληρωμές είναι προσωρινά μη διαθέσιμες. Δεν εμφανίζουμε τοπική κατάσταση όταν το σύστημα δεν απαντά.",
         tone: "error",
@@ -306,16 +339,34 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
 
   const paymentForBooking = (bookingId: string) => payments.find((payment) => payment.bookingId === bookingId);
   const activeBookings = bookings.filter((booking) => canCancelBooking(booking, paymentForBooking(booking.id)));
-  const completedBookings = bookings.filter((booking) => booking.status === "completed");
-  const reviewableBookings = completedBookings.filter(canSubmitReview);
-  const completionPendingBookings = completedBookings.filter((booking) => !isVerifiedBooking(booking));
+  const pendingPaymentBookings = bookings.filter((booking) => needsPaymentAction(booking, paymentForBooking(booking.id)));
   const nextBooking = activeBookings[0];
   const nextBookingPayment = nextBooking ? payments.find((payment) => payment.bookingId === nextBooking.id) : undefined;
+  const nextActionBooking = pendingPaymentBookings[0] || nextBooking;
+  const nextActionPayment = nextActionBooking ? paymentForBooking(nextActionBooking.id) : undefined;
+  const paymentSnapshotBooking = nextActionBooking || nextBooking;
+  const paymentSnapshotPayment = nextActionPayment || nextBookingPayment;
+  const paidPayments = payments.filter((payment) => getCanonicalPaymentState(payment) === "paid");
+  const receiptPayments = payments.filter((payment) => Boolean(payment.receiptUrl));
+  const filteredBookings = bookings.filter((booking) => {
+    const payment = paymentForBooking(booking.id);
+    const state = getCanonicalBookingState(booking, payment);
+    if (bookingFilter === "active") return canCancelBooking(booking, payment);
+    if (bookingFilter === "action") return needsPaymentAction(booking, payment);
+    if (bookingFilter === "completed") return state === "completed";
+    if (bookingFilter === "cancelled") return state === "cancelled";
+    return true;
+  });
+  const filterCounts: Record<BookingFilter, number> = {
+    all: bookings.length,
+    active: activeBookings.length,
+    action: pendingPaymentBookings.length,
+    completed: bookings.filter((booking) => getCanonicalBookingState(booking, paymentForBooking(booking.id)) === "completed").length,
+    cancelled: bookings.filter((booking) => getCanonicalBookingState(booking, paymentForBooking(booking.id)) === "cancelled").length,
+  };
   const retentionPrompts = getUserRetentionPrompts({
     bookings,
     payments,
-    reviews: workspace.reviews,
-    documents: workspace.documents,
   });
 
   const savedLawyers = useMemo(
@@ -326,14 +377,17 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     () => workspace.comparedLawyerIds.map((id) => lawyerCatalog.find((lawyer) => lawyer.id === id)).filter(Boolean),
     [lawyerCatalog, workspace.comparedLawyerIds],
   );
-  const completionItems = getCompletionItems(workspace, userEmail, accountPhone, accountCity);
-  const completion = Math.round((completionItems.filter(Boolean).length / completionItems.length) * 100);
 
-  const persistWorkspace = (nextWorkspace: UserWorkspace) => {
-    const normalized = saveUserWorkspace(workspaceKey, nextWorkspace);
-    setWorkspace(normalized);
-    void syncUserWorkspace(workspaceKey, normalized, userId).catch(() => {
-      setPaymentSetupState({
+  const persistWorkspace = (updater: (currentWorkspace: UserWorkspace) => UserWorkspace) => {
+    const nextWorkspace = updater(workspaceRef.current);
+    workspaceRef.current = nextWorkspace;
+    setWorkspace(nextWorkspace);
+    void syncUserWorkspace(workspaceKey, nextWorkspace, userId).then((syncedWorkspace) => {
+      workspaceRef.current = syncedWorkspace;
+      setWorkspace(syncedWorkspace);
+      setAccountSyncState({ loading: false, message: "", tone: "info" });
+    }).catch(() => {
+      setAccountSyncState({
         loading: false,
         message: "Δεν έγινε αποθήκευση στο σύστημα. Οι αλλαγές λογαριασμού δεν θεωρούνται οριστικές.",
         tone: "error",
@@ -342,6 +396,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   const updateProfileDraft = (updates: Partial<AccountProfileDraft>) => {
+    setProfileDraftDirty(true);
     setProfileDraft((current) => ({
       ...current,
       ...updates,
@@ -365,13 +420,13 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     if (!nextDraft.name) {
       setProfileSaveState({
         loading: false,
-        message: "Το όνομα προφίλ είναι υποχρεωτικό.",
+        message: "Το ονοματεπώνυμο είναι υποχρεωτικό για κρατήσεις και επικοινωνία.",
         tone: "error",
       });
       return;
     }
 
-    setProfileSaveState({ loading: true, message: "Αποθήκευση αλλαγών...", tone: "info" });
+    setProfileSaveState({ loading: true, message: "Αποθήκευση στοιχείων...", tone: "info" });
 
     try {
       if (userId) {
@@ -394,9 +449,10 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
 
       setWorkspace(nextWorkspace);
       setProfileDraft(nextDraft);
+      setProfileDraftDirty(false);
       setProfileSaveState({
         loading: false,
-        message: "Οι αλλαγές προφίλ αποθηκεύτηκαν.",
+        message: "Τα στοιχεία σας ενημερώθηκαν.",
         tone: "success",
       });
     } catch {
@@ -409,21 +465,29 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   const updatePreferences = (updates: Partial<UserWorkspace["preferences"]>) => {
-    persistWorkspace({
-      ...workspace,
+    persistWorkspace((currentWorkspace) => ({
+      ...currentWorkspace,
       preferences: {
-        ...workspace.preferences,
+        ...currentWorkspace.preferences,
         ...updates,
       },
-    });
+    }));
   };
 
   const toggleLegalCategory = (category: string) => {
-    const legalCategories = workspace.preferences.legalCategories.includes(category)
-      ? workspace.preferences.legalCategories.filter((item) => item !== category)
-      : [...workspace.preferences.legalCategories, category];
+    persistWorkspace((currentWorkspace) => {
+      const legalCategories = currentWorkspace.preferences.legalCategories.includes(category)
+        ? currentWorkspace.preferences.legalCategories.filter((item) => item !== category)
+        : [...currentWorkspace.preferences.legalCategories, category];
 
-    updatePreferences({ legalCategories });
+      return {
+        ...currentWorkspace,
+        preferences: {
+          ...currentWorkspace.preferences,
+          legalCategories,
+        },
+      };
+    });
   };
 
   const selectView = (view: ActiveView) => {
@@ -436,70 +500,27 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     setSearchParams(nextParams, { replace: true });
   };
 
-  const handleDocumentUpload = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.currentTarget.files || []);
-    if (files.length === 0) return;
-
-    const validation = validateLegalDocumentUpload(files);
-    const skippedMessage = summarizeDocumentValidation(validation);
-
-    if (validation.acceptedFiles.length === 0) {
-      setDocumentUploadState({
-        loading: false,
-        message: skippedMessage || "Δεν βρέθηκε αποδεκτό αρχείο. Επιτρέπονται PDF, Word, JPG και PNG έως 15 MB.",
-        tone: "error",
-      });
-      event.currentTarget.value = "";
-      return;
-    }
-
-    setDocumentUploadState({
-      loading: true,
-      message: skippedMessage
-        ? `${skippedMessage} Ανεβάζουμε τα αποδεκτά αρχεία.`
-        : "Ανεβάζουμε τα έγγραφα με ασφαλή σύνδεση.",
-      tone: "info",
-    });
-    void uploadUserDocuments(workspaceKey, validation.acceptedFiles, "Έγγραφο υπόθεσης", nextBooking?.id, userId)
-      .then((nextWorkspace) => {
-        setWorkspace(nextWorkspace);
-        setDocumentUploadState({
-          loading: false,
-          message: skippedMessage
-            ? `${skippedMessage} Τα αποδεκτά αρχεία αποθηκεύτηκαν.`
-            : "Τα έγγραφα αποθηκεύτηκαν και συνδέθηκαν με τον λογαριασμό σας.",
-          tone: skippedMessage ? "info" : "success",
-        });
-      })
-      .catch(() => {
-        setDocumentUploadState({
-          loading: false,
-          message: "Η αποθήκευση εγγράφων απέτυχε. Ελέγξτε τη σύνδεση και δοκιμάστε ξανά.",
-          tone: "error",
-        });
-      });
-    event.currentTarget.value = "";
-  };
-
   const removeSavedLawyer = (lawyerId: string) => {
-    persistWorkspace({
-      ...workspace,
-      savedLawyerIds: workspace.savedLawyerIds.filter((id) => id !== lawyerId),
-      comparedLawyerIds: workspace.comparedLawyerIds.filter((id) => id !== lawyerId),
-    });
+    persistWorkspace((currentWorkspace) => ({
+      ...currentWorkspace,
+      savedLawyerIds: currentWorkspace.savedLawyerIds.filter((id) => id !== lawyerId),
+      comparedLawyerIds: currentWorkspace.comparedLawyerIds.filter((id) => id !== lawyerId),
+    }));
   };
 
   const toggleComparedLawyer = (lawyerId: string) => {
-    const comparedLawyerIds = workspace.comparedLawyerIds.includes(lawyerId)
-      ? workspace.comparedLawyerIds.filter((id) => id !== lawyerId)
-      : [lawyerId, ...workspace.comparedLawyerIds].slice(0, 3);
+    persistWorkspace((currentWorkspace) => {
+      const comparedLawyerIds = currentWorkspace.comparedLawyerIds.includes(lawyerId)
+        ? currentWorkspace.comparedLawyerIds.filter((id) => id !== lawyerId)
+        : [lawyerId, ...currentWorkspace.comparedLawyerIds].slice(0, 3);
 
-    persistWorkspace({ ...workspace, comparedLawyerIds });
+      return { ...currentWorkspace, comparedLawyerIds };
+    });
   };
 
   const handleCancelBookingWithRefund = (bookingId: string) => {
     if (!userId) {
-      setPaymentSetupState({
+      setBookingActionState({
         loading: false,
         message: "Συνδεθείτε με λογαριασμό πελάτη για να ακυρώσετε επαληθευμένη κράτηση. Δεν έγινε καμία αλλαγή.",
         tone: "error",
@@ -530,13 +551,13 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
               `Δικηγόρος: ${booking.lawyerName}`,
             ],
           });
-          setPaymentSetupState({
+          setBookingActionState({
             loading: false,
             message: "Η ακύρωση καταχωρίστηκε. Η επιστροφή εξετάζεται από την υποστήριξη.",
             tone: "info",
           });
         } else {
-          setPaymentSetupState({
+          setBookingActionState({
             loading: false,
             message:
               refund.status === "refunded"
@@ -546,7 +567,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
           });
         }
       } else {
-        setPaymentSetupState({
+        setBookingActionState({
           loading: false,
           message: "Η ακύρωση καταχωρίστηκε. Δεν έγινε χρέωση για αυτή την κράτηση.",
           tone: "success",
@@ -555,78 +576,12 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
 
       setBookingVersion((version) => version + 1);
     })().catch(() => {
-      setPaymentSetupState({
+      setBookingActionState({
         loading: false,
         message: "Δεν μπορέσαμε να ολοκληρώσουμε την ακύρωση τώρα. Δοκιμάστε ξανά ή ανοίξτε υποστήριξη.",
         tone: "error",
       });
     });
-  };
-
-  const handleCancelBooking = (bookingId: string) => {
-    if (!userId) {
-      setPaymentSetupState({
-        loading: false,
-        message: "Συνδεθείτε με λογαριασμό πελάτη για να ακυρώσετε επαληθευμένη κράτηση. Δεν έγινε καμία αλλαγή.",
-        tone: "error",
-      });
-      setAuthOpen(true);
-      return;
-    }
-
-    void cancelBooking(bookingId).then(() => {
-      setBookingVersion((version) => version + 1);
-    }).catch(() => {
-      setPaymentSetupState({
-        loading: false,
-        message: "Δεν μπορέσαμε να ολοκληρώσουμε την ακύρωση τώρα. Δοκιμάστε ξανά μετά από ανανέωση ή ανοίξτε υποστήριξη.",
-        tone: "error",
-      });
-    });
-  };
-
-  const handlePaymentSetup = async () => {
-    if (!userId) {
-      setPaymentSetupState({
-        loading: false,
-        message: "Συνδεθείτε με λογαριασμό πελάτη για ασφαλή σύνδεση κάρτας μέσω Stripe.",
-        tone: "error",
-      });
-      setAuthOpen(true);
-      return;
-    }
-
-    setPaymentSetupState({ loading: true, message: "", tone: "info" });
-    try {
-      const session = await requestPaymentSetupSession(userId, userEmail);
-      const nextWorkspace = await syncUserWorkspace(workspaceKey, {
-        ...workspace,
-        paymentMethod: {
-          ...workspace.paymentMethod,
-          status: session.status,
-          setupRequestedAt: session.requestedAt,
-        },
-      }, userId);
-
-      setWorkspace(nextWorkspace);
-      setPaymentSetupState({
-        loading: false,
-        message: session.url
-          ? "Μεταφορά σε ασφαλή σύνδεση κάρτας μέσω Stripe."
-          : "Δεν μπορέσαμε να ανοίξουμε την ασφαλή σύνδεση κάρτας. Οι πληρωμές μένουν κλειδωμένες μέχρι να ολοκληρωθεί σωστά.",
-        tone: session.url ? "info" : "error",
-      });
-
-      if (session.url && typeof window !== "undefined") {
-        window.location.assign(session.url);
-      }
-    } catch {
-      setPaymentSetupState({
-        loading: false,
-        message: "Η ασφαλής σύνδεση κάρτας απέτυχε. Δοκιμάστε ξανά μετά από ανανέωση.",
-        tone: "error",
-      });
-    }
   };
 
   const handleBookingCheckout = async (booking: StoredBooking) => {
@@ -680,114 +635,17 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     }
   };
 
-  const handleReviewDraftChange = (
-    bookingId: string,
-    updates: Partial<{ rating: number; clarityRating: number; responsivenessRating: number; text: string }>,
-  ) => {
-    setReviewDrafts((current) => ({
-      ...current,
-      [bookingId]: {
-        rating: 5,
-        clarityRating: 5,
-        responsivenessRating: 5,
-        text: "",
-        ...(current[bookingId] || {}),
-        ...updates,
-      },
-    }));
-  };
-
-  const handleSubmitReview = (booking: StoredBooking) => {
-    const draft = reviewDrafts[booking.id] || {
-      rating: 5,
-      clarityRating: 5,
-      responsivenessRating: 5,
-      text: "",
-    };
-
-    if (draft.text.trim().length < 12) {
-      setReviewSubmitState((current) => ({
-        ...current,
-        [booking.id]: {
-          loading: false,
-          message: "Γράψτε τουλάχιστον 12 χαρακτήρες για να παραμείνει η κριτική χρήσιμη.",
-          tone: "error",
-        },
-      }));
-      return;
-    }
-
-    setReviewSubmitState((current) => ({
-      ...current,
-      [booking.id]: {
-        loading: true,
-        message: "Υποβολή κριτικής...",
-        tone: "info",
-      },
-    }));
-
-    void upsertUserReviewPersisted(workspaceKey, {
-      bookingId: booking.id,
-      lawyerId: booking.lawyerId,
-      lawyerName: booking.lawyerName,
-      rating: draft.rating,
-      clarityRating: draft.clarityRating,
-      responsivenessRating: draft.responsivenessRating,
-      text: draft.text.trim(),
-    }, userId).then((result) => {
-      setWorkspace(result.workspace);
-      if (result.persisted) {
-        trackFunnelEvent("review_submitted", {
-          bookingId: booking.id,
-          lawyerId: booking.lawyerId,
-          userId,
-          rating: draft.rating,
-        });
-        void createOperationalCase({
-          area: "reviews",
-          title: "Έλεγχος δημοσίευσης κριτικής",
-          summary: `Υποβλήθηκε κριτική μετά από ολοκληρωμένη κράτηση για ${booking.lawyerName}. Ελέγξτε σύνδεση κράτησης, προστασία ιδιωτικών λεπτομερειών υπόθεσης και κατάσταση δημοσίευσης.`,
-          priority: "normal",
-          requesterEmail: booking.clientEmail,
-          relatedReference: booking.referenceId,
-          evidence: [
-            `Συνολική βαθμολογία: ${draft.rating}/5`,
-            `Σαφήνεια: ${draft.clarityRating}/5`,
-            `Ανταπόκριση: ${draft.responsivenessRating}/5`,
-          ],
-        });
-      }
-      setReviewSubmitState((current) => ({
-        ...current,
-        [booking.id]: result.persisted
-          ? {
-              loading: false,
-              message: "Η κριτική υποβλήθηκε και περνά έλεγχο πριν δημοσιευτεί.",
-              tone: "success",
-            }
-          : {
-              loading: false,
-              message:
-                result.reason === "booking_not_completed"
-                  ? "Η συμβουλευτική δεν έχει επιβεβαιωθεί ακόμη ως ολοκληρωμένη από τον δικηγόρο. Οι κριτικές ανοίγουν μόλις ολοκληρωθεί αυτή η επιβεβαίωση."
-                  : "Δεν μπορέσαμε να καταχωρίσουμε την κριτική τώρα. Δοκιμάστε ξανά μετά από ανανέωση.",
-              tone: "error",
-            },
-      }));
-    });
-  };
-
   const updateBooleanSetting = (
     group: "privacy" | "notifications",
     key: keyof UserWorkspace["privacy"] | keyof UserWorkspace["notifications"],
   ) => {
-    persistWorkspace({
-      ...workspace,
+    persistWorkspace((currentWorkspace) => ({
+      ...currentWorkspace,
       [group]: {
-        ...workspace[group],
-        [key]: !workspace[group][key],
+        ...currentWorkspace[group],
+        [key]: !currentWorkspace[group][key],
       },
-    });
+    }));
   };
 
   const handleAccountSignOut = async () => {
@@ -805,22 +663,44 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     return (
       <div className={embedded ? "" : "min-h-screen bg-background"}>
         {embedded ? null : <Navbar />}
-        <main className="mx-auto max-w-4xl px-5 py-16 text-center lg:px-8">
-          <div className="rounded-2xl border border-border bg-card px-6 py-12 shadow-xl shadow-foreground/[0.05]">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-              <LockKeyhole className="h-6 w-6" />
-            </div>
-            <h1 className="mt-5 font-serif text-3xl tracking-tight text-foreground">Το προφίλ σας παραμένει ιδιωτικό.</h1>
-            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-              Συνδεθείτε για να δείτε ραντεβού, αποθηκευμένους δικηγόρους, έγγραφα, πληρωμές και ρυθμίσεις απορρήτου σε έναν ασφαλή χώρο.
-            </p>
-            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-              <Button onClick={() => setAuthOpen(true)} className="rounded-xl px-6 font-bold">
-                Σύνδεση
-              </Button>
-              <Button asChild variant="outline" className="rounded-xl px-6 font-bold">
-                <Link to="/search">Αναζήτηση δικηγόρου</Link>
-              </Button>
+        <main className="mx-auto max-w-5xl px-5 py-16 lg:px-8">
+          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-foreground/[0.05]">
+            <div className="grid gap-0 lg:grid-cols-[1fr_320px]">
+              <section className="p-6 text-left md:p-10">
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                  <LockKeyhole className="h-5 w-5" />
+                </div>
+                <p className="mt-6 text-xs font-bold uppercase tracking-widest text-primary">Ιδιωτικός χώρος πελάτη</p>
+                <h1 className="mt-2 max-w-2xl font-serif text-3xl tracking-tight text-foreground md:text-4xl">
+                  Ο ιδιωτικός χώρος πελάτη είναι διαθέσιμος μόνο μετά τη σύνδεση
+                </h1>
+                <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Εδώ διαχειρίζεστε κρατήσεις, πληρωμές, αποθηκευμένους δικηγόρους και ρυθμίσεις ιδιωτικότητας. Τα στοιχεία αυτά δεν προβάλλονται δημόσια.
+                </p>
+                <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                  <Button onClick={() => setAuthOpen(true)} className="rounded-lg px-6 font-bold">
+                    Σύνδεση
+                  </Button>
+                  <Button asChild variant="outline" className="rounded-lg px-6 font-bold">
+                    <Link to="/search">Αναζήτηση δικηγόρου</Link>
+                  </Button>
+                </div>
+              </section>
+              <aside className="border-t border-border bg-secondary/35 p-6 lg:border-l lg:border-t-0">
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Τι προστατεύεται</p>
+                <div className="mt-4 space-y-3">
+                  {[
+                    "Το προφίλ δεν είναι δημόσιο.",
+                    "Οι κρατήσεις και οι πληρωμές ανοίγουν μόνο μετά τη σύνδεση.",
+                    "Το τηλέφωνο κοινοποιείται μόνο όπου το επιτρέπετε.",
+                  ].map((item) => (
+                    <div key={item} className="flex gap-2 text-sm font-semibold leading-6 text-foreground">
+                      <ShieldCheck className="mt-1 h-4 w-4 shrink-0 text-sage-foreground" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </aside>
             </div>
           </div>
         </main>
@@ -834,171 +714,158 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     <div className={embedded ? "" : "min-h-screen bg-background"}>
       {embedded ? null : <Navbar />}
 
-      <main className={embedded ? "" : "mx-auto max-w-7xl px-5 py-6 lg:px-8 lg:py-8"}>
-        <section className="rounded-2xl border border-border bg-card p-6 shadow-xl shadow-foreground/[0.04] lg:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-sage/25 bg-sage/10 px-3 py-1 text-xs font-bold text-sage-foreground">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Ιδιωτικός χώρος πελάτη
-              </div>
-              <h1 className="mt-4 font-serif text-4xl tracking-tight text-foreground">Καλησπέρα, {displayName}</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Τα ραντεβού, τα έγγραφα, οι πληρωμές και οι επιλογές σας μένουν οργανωμένα χωρίς να εμφανίζονται δημόσια.
+      <main className={embedded ? "" : "mx-auto max-w-7xl px-4 py-4 lg:px-6 lg:py-6"}>
+        <section className="rounded-xl border border-border bg-card p-5 shadow-lg shadow-foreground/[0.03] lg:p-6">
+          <div className="grid gap-5 xl:grid-cols-[1fr_520px] xl:items-end">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-primary">Ιδιωτικός χώρος πελάτη</p>
+              <h1 className="mt-2 font-serif text-3xl tracking-tight text-foreground md:text-4xl">Καλησπέρα, {displayName}</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
+                Διαχειριστείτε ραντεβού, πληρωμές, αποθηκευμένους δικηγόρους και ρυθμίσεις ιδιωτικότητας χωρίς δημόσια προβολή.
               </p>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:w-[430px]">
-              <Metric label="Πληρότητα προφίλ" value={`${completion}%`} helper="Για πιο γρήγορη συνέχεια" />
-              <Metric label="Ενεργά ραντεβού" value={String(activeBookings.length)} helper={nextBooking ? nextBooking.dateLabel : "Δεν υπάρχει επόμενο"} />
+            <div className="grid gap-2 sm:grid-cols-3">
+              <SummaryStat label="Ενεργά ραντεβού" value={String(activeBookings.length)} />
+              <SummaryStat label="Επόμενο" value={nextBooking?.dateLabel || "Δεν υπάρχει"} />
+              <SummaryStat label="Εκκρεμότητες" value={pendingPaymentBookings.length ? `${pendingPaymentBookings.length} πληρωμή` : "Καμία"} tone={pendingPaymentBookings.length ? "attention" : "success"} />
             </div>
           </div>
         </section>
 
-        {retentionPrompts.length > 0 ? (
-          <section className="mt-6 rounded-2xl border border-border bg-card p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-primary">Χρήσιμες υπενθυμίσεις</p>
-                <h2 className="mt-2 font-serif text-2xl tracking-tight text-foreground">Επόμενες ενέργειες</h2>
-              </div>
-              <Button asChild variant="outline" className="rounded-xl font-bold">
-                <Link to="/intake">Νέα περιγραφή υπόθεσης</Link>
-              </Button>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {retentionPrompts.slice(0, 3).map((prompt) => (
-                <Link key={prompt.id} to={prompt.path} className="rounded-xl border border-border bg-secondary/40 p-4 transition hover:border-primary/25">
-                  <p className="text-sm font-bold text-foreground">{prompt.title}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{prompt.body}</p>
-                  <p className="mt-3 text-xs font-bold text-primary">{prompt.actionLabel}</p>
-                </Link>
-              ))}
-            </div>
-          </section>
+        {accountSyncState.message || bookingActionState.message ? (
+          <div className="mt-4 grid gap-3">
+            {accountSyncState.message ? (
+              <p
+                className={cn(
+                  "rounded-xl border px-4 py-3 text-sm font-semibold",
+                  accountSyncState.tone === "success" && "border-sage/25 bg-sage/10 text-sage-foreground",
+                  accountSyncState.tone === "error" && "border-destructive/20 bg-destructive/10 text-destructive",
+                  accountSyncState.tone === "info" && "border-primary/20 bg-primary/10 text-primary",
+                )}
+              >
+                {accountSyncState.message}
+              </p>
+            ) : null}
+            {bookingActionState.message ? (
+              <p
+                className={cn(
+                  "rounded-xl border px-4 py-3 text-sm font-semibold",
+                  bookingActionState.tone === "success" && "border-sage/25 bg-sage/10 text-sage-foreground",
+                  bookingActionState.tone === "error" && "border-destructive/20 bg-destructive/10 text-destructive",
+                  bookingActionState.tone === "info" && "border-primary/20 bg-primary/10 text-primary",
+                )}
+              >
+                {bookingActionState.message}
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
-        <div className="mt-7 grid gap-6 lg:grid-cols-[260px_1fr]">
-          <aside className="lg:sticky lg:top-24 lg:self-start">
-            <nav className="rounded-2xl border border-border bg-card p-2">
-              {navItems.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => selectView(id)}
-                  aria-current={activeView === id ? "page" : undefined}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition",
-                    activeView === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {label}
-                </button>
-              ))}
-            </nav>
-
-            <div className="mt-4 rounded-2xl border border-border bg-card p-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Λογαριασμός</p>
-              <p className="mt-2 truncate text-sm font-bold text-foreground">{userEmail}</p>
-              <Button variant="outline" onClick={() => void handleAccountSignOut()} className="mt-4 w-full rounded-xl font-bold">
-                Αποσύνδεση
-              </Button>
-            </div>
-          </aside>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[280px_1fr]">
+          <ClientSidebar
+            activeView={activeView}
+            accountName={accountDisplayName}
+            accountEmail={userEmail}
+            onSelect={selectView}
+            onSignOut={() => void handleAccountSignOut()}
+          />
 
           <section className="min-w-0">
             {activeView === "overview" ? (
-              <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-                <Panel title="Συνέχεια υπόθεσης" eyebrow="Επόμενη κίνηση">
-                  {nextBooking ? (
-                    <BookingCard booking={nextBooking} payment={nextBookingPayment} onCancel={handleCancelBookingWithRefund} featured />
-                  ) : (
-                    <EmptyState
-                      icon={CalendarDays}
-                      title="Δεν υπάρχει επόμενο ραντεβού"
-                      description="Αποθηκεύστε δικηγόρους ή κλείστε νέο ραντεβού όταν είστε έτοιμοι."
-                      action={<Button asChild className="rounded-xl font-bold"><Link to="/search">Βρείτε δικηγόρο</Link></Button>}
-                    />
-                  )}
-                </Panel>
+              <div className="space-y-5">
+                <PrimaryActionPanel
+                  booking={nextActionBooking}
+                  payment={nextActionPayment}
+                  onCheckout={handleBookingCheckout}
+                  onCancel={handleCancelBookingWithRefund}
+                />
 
-                <Panel title="Φάκελος επόμενου ραντεβού" eyebrow="Έγγραφα, πληρωμή, βήματα">
-                  {nextBooking ? (
-                    <div className="space-y-3">
-                      <WorkspaceAction
-                        icon={FileText}
-                        title="Έγγραφα προετοιμασίας"
-                        text="Ανεβάστε μόνο όσα χρειάζεται να δει ο δικηγόρος για αυτή τη συμβουλευτική."
-                        action={<Button type="button" variant="outline" onClick={() => selectView("documents")} className="rounded-lg text-xs font-bold">Άνοιγμα εγγράφων</Button>}
+                {paymentSetupState.message ? <ActionNotice state={paymentSetupState} /> : null}
+
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <OperationalCard title="Επόμενο ραντεβού" eyebrow="Τρέχουσα υπόθεση">
+                    {nextBooking ? (
+                      <BookingSnapshot booking={nextBooking} payment={nextBookingPayment} onManage={() => selectView("bookings")} />
+                    ) : (
+                      <EmptyState
+                        icon={CalendarDays}
+                        title="Δεν υπάρχει επόμενο ραντεβού"
+                        description="Αποθηκεύστε δικηγόρους ή κλείστε νέο ραντεβού όταν είστε έτοιμοι."
+                        action={<Button asChild className="rounded-lg font-bold"><Link to="/search">Βρείτε δικηγόρο</Link></Button>}
                       />
-                      <WorkspaceAction
+                    )}
+                  </OperationalCard>
+
+                  <OperationalCard title="Πληρωμή και απόδειξη" eyebrow="Οικονομική κατάσταση">
+                    {paymentSnapshotBooking ? (
+                      <PaymentSnapshot
+                        booking={paymentSnapshotBooking}
+                        payment={paymentSnapshotPayment}
+                        onOpenPayments={() => selectView("payments")}
+                        onCheckout={handleBookingCheckout}
+                      />
+                    ) : (
+                      <EmptyState
                         icon={CreditCard}
-                        title="Πληρωμή και απόδειξη"
-                        text={nextBookingPayment?.status === "paid" ? "Η πληρωμή έχει καταχωριστεί. Η απόδειξη εμφανίζεται στις πληρωμές." : "Η απόδειξη ανοίγει μόλις ολοκληρωθεί η επιβεβαιωμένη πληρωμή."}
-                        action={<Button type="button" variant="outline" onClick={() => selectView("payments")} className="rounded-lg text-xs font-bold">Πληρωμές</Button>}
+                        title="Καμία ενεργή πληρωμή"
+                        description="Η ασφαλής πληρωμή και η απόδειξη εμφανίζονται όταν υπάρχει επιβεβαιωμένη κράτηση."
                       />
-                      <WorkspaceAction
-                        icon={MessageSquareQuote}
-                        title="Τι ακολουθεί"
-                        text="Δείτε επόμενη επικοινωνία, προετοιμασία και διαδρομή υποστήριξης για το ραντεβού."
-                        action={<Button type="button" variant="outline" onClick={() => selectView("messages")} className="rounded-lg text-xs font-bold">Επόμενα βήματα</Button>}
-                      />
-                    </div>
-                  ) : (
-                    <EmptyState
-                      icon={FileText}
-                      title="Ο φάκελος ανοίγει μετά την κράτηση"
-                      description="Μόλις κλείσετε ραντεβού, εδώ θα βλέπετε έγγραφα, πληρωμή, απόδειξη και επόμενα βήματα."
-                    />
-                  )}
-                </Panel>
+                    )}
+                  </OperationalCard>
+                </div>
 
-                <Panel title="Αποθηκευμένοι δικηγόροι" eyebrow="Σύντομη λίστα">
-                  {savedLawyers.length > 0 ? (
-                    <div className="space-y-3">
-                      {savedLawyers.slice(0, 3).map((lawyer) => lawyer && (
-                        <SavedLawyerRow
-                          key={lawyer.id}
-                          lawyer={lawyer}
-                          compared={workspace.comparedLawyerIds.includes(lawyer.id)}
-                          onCompare={() => toggleComparedLawyer(lawyer.id)}
-                          onRemove={() => removeSavedLawyer(lawyer.id)}
-                        />
+                {retentionPrompts.length > 0 ? (
+                  <section className="rounded-xl border border-primary/15 bg-primary/5 p-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-primary">Επόμενες ενέργειες</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {retentionPrompts.slice(0, 3).map((prompt) => (
+                        <Link key={prompt.id} to={prompt.path} className="rounded-lg border border-primary/15 bg-card p-3 transition hover:border-primary/35">
+                          <p className="text-sm font-bold text-foreground">{prompt.title}</p>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">{prompt.body}</p>
+                          <p className="mt-3 text-xs font-bold text-primary">{prompt.actionLabel}</p>
+                        </Link>
                       ))}
                     </div>
-                  ) : (
-                    <EmptyState
-                      icon={Heart}
-                      title="Δεν έχετε αποθηκεύσει ακόμα δικηγόρο"
-                      description="Χρησιμοποιήστε την καρδιά σε ένα προφίλ για να φτιάξετε τη λίστα σας."
-                    />
-                  )}
-                </Panel>
+                  </section>
+                ) : null}
 
-                <Panel title="Απόρρητο" eyebrow="Ορατότητα">
-                  <div className="space-y-3">
-                    <SettingToggle
-                      icon={ShieldCheck}
-                      title="Κοινοποίηση τηλεφώνου μετά την κράτηση"
-                      description="Ο δικηγόρος βλέπει το τηλέφωνό σας μόνο για επιβεβαιωμένο ραντεβού."
-                      enabled={workspace.privacy.sharePhoneWithBookedLawyers}
-                      onToggle={() => updateBooleanSetting("privacy", "sharePhoneWithBookedLawyers")}
-                    />
-                    <SettingToggle
-                      icon={FileText}
-                      title="Έγγραφα διαθέσιμα ανά ραντεβού"
-                      description="Τα αρχεία εμφανίζονται μόνο όταν τα συνδέετε με υπόθεση ή ραντεβού."
-                      enabled={workspace.privacy.allowDocumentAccessByBooking}
-                      onToggle={() => updateBooleanSetting("privacy", "allowDocumentAccessByBooking")}
-                    />
-                  </div>
-                </Panel>
+                <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                  <OperationalCard title="Αποθηκευμένοι δικηγόροι" eyebrow="Ιδιωτική σύντομη λίστα">
+                    {savedLawyers.length > 0 ? (
+                      <>
+                        <div className="space-y-3">
+                          {savedLawyers.slice(0, 3).map((lawyer) => lawyer && (
+                            <SavedLawyerRow
+                              key={lawyer.id}
+                              lawyer={lawyer}
+                              compared={workspace.comparedLawyerIds.includes(lawyer.id)}
+                              onCompare={() => toggleComparedLawyer(lawyer.id)}
+                              onRemove={() => removeSavedLawyer(lawyer.id)}
+                            />
+                          ))}
+                        </div>
+                        <Button type="button" variant="outline" onClick={() => selectView("saved")} className="mt-4 rounded-lg font-bold">
+                          Δείτε όλους τους αποθηκευμένους δικηγόρους
+                        </Button>
+                      </>
+                    ) : (
+                      <EmptyState
+                        icon={Heart}
+                        title="Δεν έχετε αποθηκεύσει ακόμα δικηγόρο"
+                        description="Χρησιμοποιήστε την καρδιά σε ένα προφίλ για να φτιάξετε τη σύντομη λίστα σας."
+                      />
+                    )}
+                  </OperationalCard>
+
+                  <OperationalCard title="Ιδιωτικότητα" eyebrow="Έλεγχος ιδιωτικότητας">
+                    <PrivacySnapshot workspace={workspace} onOpenPrivacy={() => selectView("privacy")} />
+                  </OperationalCard>
+                </div>
               </div>
             ) : null}
 
             {activeView === "profile" ? (
-              <Panel title="Στοιχεία προφίλ" eyebrow="Λογαριασμός">
+              <Panel title="Στοιχεία πελάτη" eyebrow="Ακρίβεια επικοινωνίας">
                 <AccountProfileForm
                   draft={profileDraft}
                   email={userEmail}
@@ -1010,87 +877,25 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
             ) : null}
 
             {activeView === "bookings" ? (
-              <Panel title="Ραντεβού" eyebrow="Κέντρο κρατήσεων">
-                <div className="grid gap-4">
-                  {bookings.length > 0 ? (
-                    bookings.map((booking) => (
-                      <BookingCard key={booking.id} booking={booking} payment={payments.find((payment) => payment.bookingId === booking.id)} onCancel={handleCancelBookingWithRefund} />
+              <Panel title="Τα ραντεβού σας" eyebrow="Ραντεβού">
+                <BookingFilterBar activeFilter={bookingFilter} counts={filterCounts} onChange={setBookingFilter} />
+                <div className="mt-4 grid gap-3">
+                  {filteredBookings.length > 0 ? (
+                    filteredBookings.map((booking) => (
+                      <BookingCard
+                        key={booking.id}
+                        booking={booking}
+                        payment={payments.find((payment) => payment.bookingId === booking.id)}
+                        onCancel={handleCancelBookingWithRefund}
+                        onCheckout={handleBookingCheckout}
+                      />
                     ))
                   ) : (
                     <EmptyState
                       icon={CalendarDays}
-                      title="Δεν υπάρχουν ακόμα ραντεβού"
-                      description="Μόλις κλείσετε ραντεβού, θα εμφανιστεί εδώ με κατάσταση, κόστος και επόμενες ενέργειες."
-                      action={<Button asChild className="rounded-xl font-bold"><Link to="/search">Κλείστε ραντεβού</Link></Button>}
-                    />
-                  )}
-                </div>
-              </Panel>
-            ) : null}
-
-            {activeView === "messages" ? (
-              <Panel title="Επόμενα βήματα ραντεβού" eyebrow="Μετά την κράτηση">
-                <div className="grid gap-4">
-                  {bookings.length > 0 ? (
-                    bookings.map((booking) => {
-                      const payment = payments.find((item) => item.bookingId === booking.id);
-                      const linkedDocuments = workspace.documents.filter((document) => document.linkedBookingId === booking.id);
-
-                      return (
-                        <article key={booking.id} className="rounded-xl border border-border bg-card p-4">
-                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                            <div>
-                              <p className="text-xs font-bold uppercase tracking-wider text-primary">{booking.referenceId}</p>
-                              <h3 className="mt-1 text-lg font-bold text-foreground">{booking.lawyerName}</h3>
-                              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                                {booking.dateLabel} στις {booking.time} - {booking.consultationType}
-                              </p>
-                            </div>
-                            <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground">
-                              {bookingStateLabels[getCanonicalBookingState(booking, payment)]}
-                            </span>
-                          </div>
-
-                          <div className="mt-4 grid gap-3 md:grid-cols-3">
-                            <div className="rounded-lg bg-secondary/45 p-3">
-                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Πληρωμή</p>
-                              <p className="mt-1 text-sm font-bold text-foreground">
-                                {paymentStateLabels[getCanonicalPaymentState(payment)]}
-                              </p>
-                              <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">{getPaymentSituation(booking, payment)}</p>
-                            </div>
-                            <div className="rounded-lg bg-secondary/45 p-3">
-                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Έγγραφα</p>
-                              <p className="mt-1 text-sm font-bold text-foreground">{linkedDocuments.length} συνδεδεμένα</p>
-                            </div>
-                            <div className="rounded-lg bg-secondary/45 p-3">
-                              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Επόμενο βήμα</p>
-                              <p className="mt-1 text-sm font-bold text-foreground">{getBookingNextStep(booking, payment)}</p>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            <Button type="button" variant="outline" onClick={() => selectView("documents")} className="rounded-xl text-xs font-bold">
-                              <FileText className="h-4 w-4" />
-                              Ανέβασμα εγγράφων
-                            </Button>
-                            <Button type="button" variant="outline" onClick={() => selectView("payments")} className="rounded-xl text-xs font-bold">
-                              <CreditCard className="h-4 w-4" />
-                              Αποδείξεις
-                            </Button>
-                            <Button asChild variant="outline" className="rounded-xl text-xs font-bold">
-                              <Link to="/help">Υποστήριξη</Link>
-                            </Button>
-                          </div>
-                        </article>
-                      );
-                    })
-                  ) : (
-                    <EmptyState
-                      icon={MessageSquareQuote}
-                      title="Δεν υπάρχει ακόμη χώρος ραντεβού"
-                      description="Μετά την κράτηση, εδώ εμφανίζονται επόμενα βήματα, έγγραφα, αποδείξεις και διαδρομές υποστήριξης."
-                      action={<Button asChild className="rounded-xl font-bold"><Link to="/search">Βρείτε δικηγόρο</Link></Button>}
+                      title="Δεν υπάρχουν ραντεβού σε αυτό το φίλτρο"
+                      description="Αλλάξτε φίλτρο ή κλείστε νέο ραντεβού όταν είστε έτοιμοι."
+                      action={<Button asChild className="rounded-lg font-bold"><Link to="/search">Κλείστε ραντεβού</Link></Button>}
                     />
                   )}
                 </div>
@@ -1098,10 +903,10 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
             ) : null}
 
             {activeView === "saved" ? (
-              <div className="space-y-6">
-                <Panel title="Αποθηκευμένοι δικηγόροι" eyebrow="Σύγκριση και σημειώσεις">
+              <div className="space-y-5">
+                <Panel title="Αποθηκευμένοι δικηγόροι" eyebrow="Ιδιωτική λίστα αποφάσεων">
                   {savedLawyers.length > 0 ? (
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       {savedLawyers.map((lawyer) => lawyer && (
                         <SavedLawyerRow
                           key={lawyer.id}
@@ -1111,13 +916,13 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                           onCompare={() => toggleComparedLawyer(lawyer.id)}
                           onRemove={() => removeSavedLawyer(lawyer.id)}
                           onNote={(note) =>
-                            persistWorkspace({
-                              ...workspace,
+                            persistWorkspace((currentWorkspace) => ({
+                              ...currentWorkspace,
                               lawyerNotes: {
-                                ...workspace.lawyerNotes,
+                                ...currentWorkspace.lawyerNotes,
                                 [lawyer.id]: note,
                               },
-                            })
+                            }))
                           }
                         />
                       ))}
@@ -1127,11 +932,12 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                   )}
                 </Panel>
 
-                {comparedLawyers.length > 0 ? (
-                  <Panel title="Σύγκριση" eyebrow="Έως 3 δικηγόροι">
+                <Panel title="Ενεργή σύγκριση έως 3 δικηγόρων" eyebrow="Απόφαση">
+                  {comparedLawyers.length > 0 ? (
+                    <>
                     <div className="grid gap-3 md:grid-cols-3">
                       {comparedLawyers.map((lawyer) => lawyer && (
-                        <div key={lawyer.id} className="rounded-xl border border-border bg-secondary/45 p-4">
+                        <div key={lawyer.id} className="rounded-lg border border-border bg-secondary/45 p-4">
                           <p className="font-bold text-foreground">{lawyer.name}</p>
                           <p className="mt-1 text-xs font-semibold text-primary/80">{lawyer.specialty}</p>
                           <div className="mt-4 space-y-2 text-sm text-muted-foreground">
@@ -1148,209 +954,29 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                         Δείτε την πλήρη σύγκριση
                       </Link>
                     </Button>
-                  </Panel>
-                ) : null}
+                    </>
+                  ) : (
+                    <EmptyState
+                      icon={Heart}
+                      title="Δεν υπάρχει ενεργή σύγκριση"
+                      description="Αποθηκεύστε έως 3 δικηγόρους για άμεση σύγκριση βασικών διαφορών."
+                    />
+                  )}
+                </Panel>
               </div>
             ) : null}
 
-            {activeView === "documents" ? (
-              <Panel title="Έγγραφα" eyebrow="Αρχεία υπόθεσης">
-                <div className="rounded-xl border border-dashed border-border bg-secondary/40 p-5">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="font-bold text-foreground">Ανέβασμα εγγράφων</p>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                        Δεχόμαστε PDF, Word, JPG και PNG έως 15 MB ανά αρχείο. Τα έγγραφα ανοίγουν σε δικηγόρο μόνο όταν τα αφήσετε ορατά για συνδεδεμένο ραντεβού.
-                      </p>
-                    </div>
-                    <label className="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl bg-primary px-5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90">
-                      {documentUploadState.loading ? "Ανέβασμα..." : "Επιλογή αρχείων"}
-                      <input
-                        type="file"
-                        multiple
-                        accept={legalDocumentPolicy.acceptAttribute}
-                        className="sr-only"
-                        onChange={handleDocumentUpload}
-                      />
-                    </label>
-                  </div>
-                  {documentUploadState.message ? (
-                    <p
-                      className={cn(
-                        "mt-4 rounded-lg border px-3 py-2 text-sm font-semibold",
-                        documentUploadState.tone === "success" && "border-sage/25 bg-sage/10 text-sage-foreground",
-                        documentUploadState.tone === "error" && "border-destructive/20 bg-destructive/10 text-destructive",
-                        documentUploadState.tone === "info" && "border-primary/20 bg-primary/10 text-primary",
-                      )}
-                    >
-                      {documentUploadState.message}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="mt-5 space-y-3">
-                  {workspace.documents.length > 0 ? (
-                    workspace.documents.map((document) => (
-                      <div key={document.id} className="rounded-xl border border-border bg-card p-4">
-                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                          <div className="min-w-0">
-                            <p className="truncate font-bold text-foreground">{document.name}</p>
-                            <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                              {document.category} · {formatFileSize(document.size)} · {new Date(document.uploadedAt).toLocaleDateString("el-GR")}
-                            </p>
-                            <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">
-                              {getDocumentVisibilityExplanation(document)}
-                            </p>
-                            <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
-                              Έλεγχος ασφαλείας:{" "}
-                              {document.malwareScanStatus === "clean"
-                                ? "καθαρό"
-                                : document.malwareScanStatus === "blocked"
-                                  ? "μπλοκαρισμένο"
-                                  : document.malwareScanStatus === "failed"
-                                    ? "χρειάζεται έλεγχο υποστήριξης"
-                                    : "σε εξέλιξη"}
-                            </p>
-                            <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
-                              Διατήρηση έως {new Date(document.retentionUntil || document.uploadedAt).toLocaleDateString("el-GR")} · Κατάσταση διαγραφής: {document.deletionStatus === "deletion_requested" ? "ζητήθηκε διαγραφή" : document.deletionStatus === "deleted" ? "διαγράφηκε" : document.deletionStatus === "retained_for_legal_reason" ? "κρατείται με αιτιολογία" : "ενεργό"}
-                            </p>
-                            {document.visibilityHistory?.[0] ? (
-                              <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">
-                                Τελευταία αλλαγή ορατότητας: {new Date(document.visibilityHistory[0].at).toLocaleString("el-GR")}
-                              </p>
-                            ) : null}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={document.deletionStatus === "deletion_requested" || document.malwareScanStatus !== "clean" || (!document.storagePath && !document.downloadUrl)}
-                              onClick={() =>
-                                void createUserDocumentDownloadUrl(document).then((url) => {
-                                  if (url && typeof window !== "undefined") {
-                                    window.open(url, "_blank", "noopener,noreferrer");
-                                    return;
-                                  }
-
-                                  setDocumentUploadState({
-                                    loading: false,
-                                    tone: "info",
-                                    message: "Το έγγραφο θα είναι διαθέσιμο μόνο αφού ολοκληρωθεί ο έλεγχος ασφαλείας στο σύστημα.",
-                                  });
-                                }).catch(() => {
-                                  setDocumentUploadState({
-                                    loading: false,
-                                    tone: "error",
-                                    message: "Η λήψη είναι προσωρινά μη διαθέσιμη. Δεν δημιουργήθηκε τοπικός σύνδεσμος πρόσβασης.",
-                                  });
-                                })
-                              }
-                              className="rounded-xl font-bold"
-                            >
-                              <Download className="h-4 w-4" />
-                              Λήψη
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                void setUserDocumentVisibilityPersisted(workspaceKey, document.id, !document.visibleToLawyer, userId)
-                                  .then((nextWorkspace) => {
-                                    setWorkspace(nextWorkspace);
-                                    setDocumentUploadState({
-                                      loading: false,
-                                      tone: "success",
-                                      message: "Η ορατότητα ενημερώθηκε στο σύστημα.",
-                                    });
-                                  })
-                                  .catch(() => {
-                                    setDocumentUploadState({
-                                      loading: false,
-                                      tone: "error",
-                                      message: "Η αλλαγή ορατότητας είναι προσωρινά μη διαθέσιμη. Δεν αποθηκεύτηκε τοπική κατάσταση.",
-                                    });
-                                  })
-                              }
-                              aria-pressed={document.visibleToLawyer}
-                              disabled={document.deletionStatus === "deletion_requested"}
-                              className="rounded-xl font-bold"
-                            >
-                              {document.visibleToLawyer ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                              {document.visibleToLawyer ? "Ορατό" : "Ιδιωτικό"}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={document.deletionStatus === "deletion_requested"}
-                              onClick={() =>
-                                void removeUserDocumentPersisted(workspaceKey, document.id, userId).then((nextWorkspace) => {
-                                  setWorkspace(nextWorkspace);
-                                  setDocumentUploadState({
-                                    loading: false,
-                                    tone: "success",
-                                    message: "Το αίτημα διαγραφής καταγράφηκε στο σύστημα.",
-                                  });
-                                  void createOperationalCase({
-                                    area: "privacyDocuments",
-                                    title: "Καταγραφή αιτήματος διαγραφής εγγράφου",
-                                    summary: `Ο χρήστης διέγραψε το αρχείο ${document.name}. Ελέγξτε υποχρεώσεις διατήρησης/διαγραφής και την κατάσταση ορατότητας στην υποστήριξη.`,
-                                    priority: "normal",
-                                    requesterEmail: userEmail,
-                                    relatedReference: document.id,
-                                    evidence: [
-                                      `Κατηγορία εγγράφου: ${document.category}`,
-                                      `Ορατό στον δικηγόρο πριν τη διαγραφή: ${document.visibleToLawyer ? "ναι" : "όχι"}`,
-                                    ],
-                                  }).catch(() => {
-                                    setDocumentUploadState({
-                                      loading: false,
-                                      tone: "error",
-                                      message: "Το αίτημα διαγραφής αποθηκεύτηκε, αλλά η υπόθεση υποστήριξης δεν δημιουργήθηκε. Η ομάδα λειτουργιών πρέπει να ελέγξει το ιστορικό ελέγχου.",
-                                    });
-                                  });
-                                }).catch(() => {
-                                  setDocumentUploadState({
-                                    loading: false,
-                                    tone: "error",
-                                    message: "Η διαγραφή είναι προσωρινά μη διαθέσιμη. Δεν έγινε τοπική αλλαγή στο έγγραφο.",
-                                  });
-                                })
-                              }
-                              aria-label={`Διαγραφή ${document.name}`}
-                              className="rounded-xl font-bold text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Διαγραφή
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <EmptyState icon={FileText} title="Δεν υπάρχουν έγγραφα" description="Ανεβάστε αρχεία που θέλετε να βρίσκονται δίπλα στα ραντεβού σας." />
-                  )}
-                </div>
-              </Panel>
-            ) : null}
-
             {activeView === "payments" ? (
-              <div className="space-y-6">
-                <Panel title="Μέθοδος πληρωμής" eyebrow="Κάρτα">
-                  <SecurePaymentMethodForm
-                    paymentMethod={workspace.paymentMethod}
-                    onSetup={handlePaymentSetup}
-                    loading={paymentSetupState.loading}
-                    message={paymentSetupState.message}
-                    tone={paymentSetupState.tone}
-                  />
-                </Panel>
-
-                <Panel title="Πληρωμές και αποδείξεις" eyebrow="Τιμολόγια">
+              <div className="space-y-5">
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <SummaryStat label="Εκκρεμείς πληρωμές" value={String(pendingPaymentBookings.length)} tone={pendingPaymentBookings.length ? "attention" : "success"} />
+                  <SummaryStat label="Ολοκληρωμένες πληρωμές" value={String(paidPayments.length)} />
+                  <SummaryStat label="Διαθέσιμες αποδείξεις" value={String(receiptPayments.length)} />
+                </div>
+                <Panel title="Πληρωμές και αποδείξεις" eyebrow="Κατάσταση πληρωμής και απόδειξης">
+                  {paymentSetupState.message ? <ActionNotice state={paymentSetupState} /> : null}
                   {bookings.length > 0 ? (
-                    <div className="space-y-3">
+                    <div className="mt-4 space-y-3">
                       {bookings.map((booking) => (
                         <InvoiceCard
                           key={booking.id}
@@ -1361,91 +987,50 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                       ))}
                     </div>
                   ) : (
-                    <EmptyState icon={CreditCard} title="Δεν υπάρχουν πληρωμές" description="Οι αποδείξεις και οι χρεώσεις θα εμφανίζονται μετά από κράτηση." />
+                    <EmptyState icon={CreditCard} title="Καμία ενεργή πληρωμή" description="Οι ασφαλείς πληρωμές και οι αποδείξεις εμφανίζονται μόνο μετά από κράτηση." />
                   )}
                 </Panel>
               </div>
             ) : null}
 
-            {activeView === "reviews" ? (
-              <Panel title="Κριτικές μετά από ραντεβού" eyebrow="Επαληθευμένες κριτικές">
-                <div className="space-y-4">
-                  {reviewableBookings.length > 0 ? (
-                    reviewableBookings.map((booking) => {
-                      const existingReview = workspace.reviews.find((review) => review.bookingId === booking.id);
-                      const draft = reviewDrafts[booking.id] || {
-                        rating: existingReview?.rating || 5,
-                        clarityRating: existingReview?.clarityRating || 5,
-                        responsivenessRating: existingReview?.responsivenessRating || 5,
-                        text: existingReview?.text || "",
-                      };
-
-                      return (
-                        <ReviewComposer
-                          key={booking.id}
-                          booking={booking}
-                          draft={draft}
-                          submitted={Boolean(existingReview)}
-                          status={existingReview?.status}
-                          submitState={reviewSubmitState[booking.id]}
-                          onChange={(updates) => handleReviewDraftChange(booking.id, updates)}
-                          onSubmit={() => handleSubmitReview(booking)}
-                        />
-                      );
-                    })
-                  ) : (
-                    <EmptyState
-                      icon={MessageSquareQuote}
-                      title={completionPendingBookings.length > 0 ? "Η ολοκλήρωση του ραντεβού επιβεβαιώνεται" : "Οι κριτικές ανοίγουν μετά από ολοκληρωμένο ραντεβού"}
-                      description={
-                        completionPendingBookings.length > 0
-                          ? "Οι κριτικές ανοίγουν μόλις ο δικηγόρος επιβεβαιώσει ότι η συμβουλευτική ολοκληρώθηκε."
-                          : "Μόνο επιβεβαιωμένες κρατήσεις μπορούν να αφήσουν κριτική, ώστε το δημόσιο προφίλ του δικηγόρου να παραμένει αξιόπιστο."
-                      }
-                    />
-                  )}
-                </div>
-              </Panel>
-            ) : null}
-
             {activeView === "privacy" ? (
-              <div className="space-y-6">
-                <Panel title="Νομικές προτιμήσεις" eyebrow="Προσωποποίηση">
-                  <PreferencesForm workspace={workspace} updatePreferences={updatePreferences} toggleLegalCategory={toggleLegalCategory} />
-                </Panel>
+              <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
+                <div className="space-y-5">
+                  <Panel title="Προτιμήσεις αναζήτησης και αντιστοίχισης" eyebrow="Καλύτερη αναζήτηση">
+                    <p className="mb-4 text-sm leading-6 text-muted-foreground">
+                      Οι επιλογές αυτές βοηθούν στη γρηγορότερη και πιο σχετική αναζήτηση δικηγόρου.
+                    </p>
+                    <PreferencesForm workspace={workspace} updatePreferences={updatePreferences} toggleLegalCategory={toggleLegalCategory} />
+                  </Panel>
 
-                <Panel title="Απόρρητο και ειδοποιήσεις" eyebrow="Έλεγχος δεδομένων">
-                  <div className="grid gap-3">
-                    <SettingToggle
-                      icon={ShieldCheck}
-                      title="Κοινοποίηση τηλεφώνου μετά την κράτηση"
-                      description="Το τηλέφωνό σας δεν εμφανίζεται σε δικηγόρους που απλώς βλέπετε ή αποθηκεύετε."
-                      enabled={workspace.privacy.sharePhoneWithBookedLawyers}
-                      onToggle={() => updateBooleanSetting("privacy", "sharePhoneWithBookedLawyers")}
-                    />
-                    <SettingToggle
-                      icon={FileText}
-                      title="Έγγραφα ορατά μόνο σε συνδεδεμένα ραντεβού"
-                      description="Κάθε αρχείο κρατά δική του ένδειξη ορατότητας."
-                      enabled={workspace.privacy.allowDocumentAccessByBooking}
-                      onToggle={() => updateBooleanSetting("privacy", "allowDocumentAccessByBooking")}
-                    />
-                    <SettingToggle
-                      icon={Bell}
-                      title="Υπενθυμίσεις ραντεβού"
-                      description="Στείλτε μου χρήσιμες υπενθυμίσεις πριν από το ραντεβού."
-                      enabled={workspace.notifications.reminders}
-                      onToggle={() => updateBooleanSetting("notifications", "reminders")}
-                    />
-                    <SettingToggle
-                      icon={Settings2}
-                      title="Ενημερώσεις προϊόντος"
-                      description="Λάβετε σπάνιες ενημερώσεις για νέες λειτουργίες."
-                      enabled={workspace.privacy.productUpdates}
-                      onToggle={() => updateBooleanSetting("privacy", "productUpdates")}
-                    />
-                  </div>
-                </Panel>
+                  <Panel title="Ιδιωτικότητα και ειδοποιήσεις" eyebrow="Έλεγχος δεδομένων">
+                    <div className="grid gap-3">
+                      <SettingToggle
+                        icon={ShieldCheck}
+                        title="Κοινοποίηση τηλεφώνου μετά την κράτηση"
+                        description="Το τηλέφωνό σας δεν εμφανίζεται σε δικηγόρους που απλώς βλέπετε ή αποθηκεύετε."
+                        enabled={workspace.privacy.sharePhoneWithBookedLawyers}
+                        onToggle={() => updateBooleanSetting("privacy", "sharePhoneWithBookedLawyers")}
+                      />
+                      <SettingToggle
+                        icon={Bell}
+                        title="Υπενθυμίσεις ραντεβού"
+                        description="Λαμβάνετε χρήσιμες υπενθυμίσεις πριν από προγραμματισμένο ραντεβού."
+                        enabled={workspace.notifications.reminders}
+                        onToggle={() => updateBooleanSetting("notifications", "reminders")}
+                      />
+                      <SettingToggle
+                        icon={Settings2}
+                        title="Ενημερώσεις προϊόντος"
+                        description="Προαιρετικές ενημερώσεις που δεν επηρεάζουν κρατήσεις ή πληρωμές."
+                        enabled={workspace.privacy.productUpdates}
+                        onToggle={() => updateBooleanSetting("privacy", "productUpdates")}
+                        secondary
+                      />
+                    </div>
+                  </Panel>
+                </div>
+                <PrivacyTrustBlock />
               </div>
             ) : null}
           </section>
@@ -1456,6 +1041,309 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     </div>
   );
 };
+
+const openReceipt = (payment?: StoredPayment) => {
+  if (payment?.receiptUrl && typeof window !== "undefined") {
+    window.open(payment.receiptUrl, "_blank", "noopener,noreferrer");
+  }
+};
+
+const StatusChip = ({ label, tone }: { label: string; tone: StatusTone }) => (
+  <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold", statusToneClasses[tone])}>
+    {label}
+  </span>
+);
+
+const SummaryStat = ({ label, value, tone = "info" }: { label: string; value: string; tone?: StatusTone }) => (
+  <div className={cn("rounded-lg border px-3 py-2", tone === "attention" ? "border-gold/25 bg-gold/10" : tone === "success" ? "border-sage/25 bg-sage/10" : "border-border bg-secondary/35")}>
+    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+    <p className="mt-1 truncate text-sm font-bold text-foreground">{value}</p>
+  </div>
+);
+
+const ActionNotice = ({ state }: { state: PaymentActionState }) => (
+  <p
+    aria-live="polite"
+    className={cn(
+      "rounded-lg border px-3 py-2 text-sm font-semibold",
+      state.tone === "success" && "border-sage/25 bg-sage/10 text-sage-foreground",
+      state.tone === "error" && "border-destructive/20 bg-destructive/10 text-destructive",
+      state.tone === "info" && "border-primary/20 bg-primary/10 text-primary",
+    )}
+  >
+    {state.message}
+  </p>
+);
+
+const ClientSidebar = ({
+  activeView,
+  accountName,
+  accountEmail,
+  onSelect,
+  onSignOut,
+}: {
+  activeView: ActiveView;
+  accountName: string;
+  accountEmail: string;
+  onSelect: (view: ActiveView) => void;
+  onSignOut: () => void;
+}) => (
+  <aside className="lg:sticky lg:top-24 lg:self-start">
+    <div className="rounded-xl border border-border bg-card p-4 shadow-lg shadow-foreground/[0.03]">
+      <p className="text-xs font-bold uppercase tracking-widest text-primary">Χώρος πελάτη</p>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">
+        Κρατήσεις, πληρωμές, αποθηκευμένοι δικηγόροι και ιδιωτικότητα σε έναν ιδιωτικό χώρο.
+      </p>
+      <nav className="mt-4 space-y-1">
+        {navItems.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onSelect(id)}
+            aria-current={activeView === id ? "page" : undefined}
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-bold transition",
+              activeView === id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
+      </nav>
+    </div>
+
+    <div className="mt-3 rounded-xl border border-border bg-card p-4">
+      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Λογαριασμός</p>
+      <p className="mt-2 truncate text-sm font-bold text-foreground">{accountName}</p>
+      <p className="mt-1 truncate text-xs font-semibold text-muted-foreground">{accountEmail}</p>
+      <Button variant="outline" onClick={onSignOut} className="mt-4 w-full rounded-lg font-bold">
+        Αποσύνδεση
+      </Button>
+    </div>
+  </aside>
+);
+
+const OperationalCard = ({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) => (
+  <section className="rounded-xl border border-border bg-card p-4 shadow-lg shadow-foreground/[0.025]">
+    <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{eyebrow}</p>
+    <h2 className="mt-1 font-serif text-xl tracking-tight text-foreground">{title}</h2>
+    <div className="mt-4">{children}</div>
+  </section>
+);
+
+const PrimaryActionPanel = ({
+  booking,
+  payment,
+  onCheckout,
+  onCancel,
+}: {
+  booking?: StoredBooking;
+  payment?: StoredPayment;
+  onCheckout: (booking: StoredBooking) => void;
+  onCancel: (bookingId: string) => void;
+}) => {
+  if (!booking) {
+    return (
+      <section className="rounded-xl border border-primary/20 bg-primary/5 p-5 shadow-lg shadow-primary/[0.04]">
+        <p className="text-xs font-bold uppercase tracking-widest text-primary">Επόμενη ενέργεια</p>
+        <h2 className="mt-2 font-serif text-2xl tracking-tight text-foreground">Ξεκινήστε από την αναζήτηση δικηγόρου</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+          Αποθηκεύστε δικηγόρους ή κλείστε νέο ραντεβού για να εμφανίζεται εδώ η βασική επόμενη κίνηση.
+        </p>
+        <Button asChild className="mt-5 rounded-lg font-bold">
+          <Link to="/search">Αναζήτηση δικηγόρου</Link>
+        </Button>
+      </section>
+    );
+  }
+
+  const bookingState = getCanonicalBookingState(booking, payment);
+  const paymentState = getCanonicalPaymentState(payment);
+  const paymentNeeded = needsPaymentAction(booking, payment);
+  const title = paymentNeeded
+    ? "Πληρωμή για επιβεβαίωση κράτησης"
+    : bookingState === "pending_confirmation"
+      ? "Ραντεβού σε έλεγχο από την ομάδα"
+      : "Επόμενο ραντεβού";
+  const helper = paymentNeeded
+    ? "Ολοκληρώστε την ασφαλή πληρωμή για να εμφανιστεί απόδειξη."
+    : bookingState === "pending_confirmation"
+      ? "Θα ενημερωθείτε μόλις ολοκληρωθεί ο έλεγχος."
+      : "Ελέγξτε την ώρα ή διαχειριστείτε το ραντεβού σας.";
+
+  return (
+    <section className={cn("rounded-xl border p-5 shadow-lg", paymentNeeded ? "border-gold/30 bg-gold/10 shadow-gold/[0.04]" : "border-primary/15 bg-card shadow-foreground/[0.03]")}>
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-primary">Επόμενη ενέργεια</p>
+            <StatusChip label={bookingStatusLabels[bookingState]} tone={getBookingTone(bookingState)} />
+            {paymentState === "refund_requested" ? <StatusChip label={paymentStatusLabels[paymentState]} tone="attention" /> : null}
+          </div>
+          <h2 className="mt-3 font-serif text-2xl tracking-tight text-foreground">{title}</h2>
+          <p className="mt-2 text-base font-bold text-foreground">Ραντεβού με {booking.lawyerName}</p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            {booking.dateLabel} · {booking.time} · {booking.consultationType}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{helper}</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 lg:justify-end">
+          {paymentNeeded ? (
+            <Button type="button" onClick={() => onCheckout(booking)} className="rounded-lg font-bold">
+              Πληρωμή τώρα
+            </Button>
+          ) : null}
+          {bookingState !== "pending_confirmation" && bookingState !== "cancelled" && bookingState !== "completed" ? (
+            <Button asChild variant={paymentNeeded ? "outline" : "default"} className="rounded-lg font-bold">
+              <Link to={`/booking/${booking.lawyerId}`}>Αλλαγή ώρας</Link>
+            </Button>
+          ) : null}
+          {canCancelBooking(booking, payment) && isVerifiedBooking(booking) ? (
+            <Button type="button" variant="outline" onClick={() => onCancel(booking.id)} className="rounded-lg font-bold">
+              Ακύρωση
+            </Button>
+          ) : null}
+          <Button asChild variant="outline" className="rounded-lg font-bold">
+            <Link to={`/lawyer/${booking.lawyerId}`}>Προφίλ</Link>
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const BookingSnapshot = ({ booking, payment, onManage }: { booking: StoredBooking; payment?: StoredPayment; onManage: () => void }) => {
+  const bookingState = getCanonicalBookingState(booking, payment);
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusChip label={bookingStatusLabels[bookingState]} tone={getBookingTone(bookingState)} />
+        <span className="text-xs font-semibold text-muted-foreground">{booking.referenceId}</span>
+      </div>
+      <div>
+        <p className="font-bold text-foreground">{booking.lawyerName}</p>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">{booking.consultationType}</p>
+      </div>
+      <div className="grid gap-2 text-sm font-semibold text-muted-foreground sm:grid-cols-2">
+        <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{booking.dateLabel}</span>
+        <span className="inline-flex items-center gap-1.5"><Clock className="h-4 w-4" />{booking.time}</span>
+      </div>
+      <Button type="button" variant="outline" onClick={onManage} className="rounded-lg font-bold">
+        Διαχείριση ραντεβού
+      </Button>
+    </div>
+  );
+};
+
+const PaymentSnapshot = ({
+  booking,
+  payment,
+  onOpenPayments,
+  onCheckout,
+}: {
+  booking: StoredBooking;
+  payment?: StoredPayment;
+  onOpenPayments: () => void;
+  onCheckout: (booking: StoredBooking) => void;
+}) => {
+  const paymentState = getCanonicalPaymentState(payment);
+  const canCheckout = needsPaymentAction(booking, payment);
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusChip label={getPaymentStatusLabel(payment)} tone={getPaymentTone(paymentState, Boolean(payment?.receiptUrl))} />
+        <StatusChip label={getReceiptStatusLabel(booking, payment)} tone={payment?.receiptUrl ? "success" : "muted"} />
+      </div>
+      <div>
+        <p className="font-bold text-foreground">{payment?.invoiceNumber || booking.referenceId}</p>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">{booking.lawyerName} · €{booking.price}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {payment?.receiptUrl ? (
+          <Button type="button" onClick={() => openReceipt(payment)} className="rounded-lg font-bold">
+            Άνοιγμα απόδειξης
+          </Button>
+        ) : canCheckout ? (
+          <Button type="button" onClick={() => onCheckout(booking)} className="rounded-lg font-bold">
+            Πληρωμή
+          </Button>
+        ) : null}
+        <Button type="button" variant="outline" onClick={onOpenPayments} className="rounded-lg font-bold">
+          Πληρωμές και αποδείξεις
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+const PrivacySnapshot = ({ workspace, onOpenPrivacy }: { workspace: UserWorkspace; onOpenPrivacy: () => void }) => (
+  <div className="space-y-4">
+    <div className="grid gap-2">
+      <PrivacyState label="Κοινοποίηση τηλεφώνου" enabled={workspace.privacy.sharePhoneWithBookedLawyers} enabledText="Μόνο μετά την κράτηση" disabledText="Απενεργοποιημένη" />
+      <PrivacyState label="Υπενθυμίσεις" enabled={workspace.notifications.reminders} enabledText="Ενεργές" disabledText="Ανενεργές" />
+    </div>
+    <p className="rounded-lg border border-sage/20 bg-sage/10 px-3 py-2 text-xs font-semibold leading-5 text-sage-foreground">
+      Τα στοιχεία σας δεν εμφανίζονται δημόσια και κοινοποιούνται μόνο όπου το επιτρέπετε.
+    </p>
+    <Button type="button" variant="outline" onClick={onOpenPrivacy} className="rounded-lg font-bold">
+      Ρυθμίσεις ιδιωτικότητας
+    </Button>
+  </div>
+);
+
+const PrivacyState = ({ label, enabled, enabledText, disabledText }: { label: string; enabled: boolean; enabledText: string; disabledText: string }) => (
+  <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary/35 px-3 py-2">
+    <span className="text-sm font-bold text-foreground">{label}</span>
+    <span className={cn("text-xs font-bold", enabled ? "text-sage-foreground" : "text-muted-foreground")}>{enabled ? enabledText : disabledText}</span>
+  </div>
+);
+
+const BookingFilterBar = ({
+  activeFilter,
+  counts,
+  onChange,
+}: {
+  activeFilter: BookingFilter;
+  counts: Record<BookingFilter, number>;
+  onChange: (filter: BookingFilter) => void;
+}) => (
+  <div className="flex gap-2 overflow-x-auto pb-1">
+    {bookingFilters.map((filter) => (
+      <button
+        key={filter.id}
+        type="button"
+        onClick={() => onChange(filter.id)}
+        className={cn(
+          "shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold transition",
+          activeFilter === filter.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground hover:border-primary/30 hover:text-foreground",
+        )}
+      >
+        {filter.label} · {counts[filter.id]}
+      </button>
+    ))}
+  </div>
+);
+
+const PrivacyTrustBlock = () => (
+  <aside className="rounded-xl border border-sage/20 bg-sage/10 p-4 xl:sticky xl:top-24 xl:self-start">
+    <p className="text-xs font-bold uppercase tracking-widest text-sage-foreground">Τι παραμένει ιδιωτικό</p>
+    <div className="mt-4 space-y-3">
+      {[
+        "Το προφίλ σας δεν είναι δημόσιο.",
+        "Τα στοιχεία σας δεν εμφανίζονται σε άλλους χρήστες.",
+        "Το τηλέφωνό σας κοινοποιείται μόνο όπου το επιτρέπετε.",
+        "Τα έγγραφα εμφανίζονται μόνο όταν πληρούνται οι κανόνες πρόσβασης.",
+      ].map((item) => (
+        <div key={item} className="flex gap-2 text-sm font-semibold leading-6 text-foreground">
+          <ShieldCheck className="mt-1 h-4 w-4 shrink-0 text-sage-foreground" />
+          <span>{item}</span>
+        </div>
+      ))}
+    </div>
+  </aside>
+);
 
 const AccountProfileForm = ({
   draft,
@@ -1470,44 +1358,56 @@ const AccountProfileForm = ({
   onChange: (updates: Partial<AccountProfileDraft>) => void;
   onSave: () => void;
 }) => (
-  <div className="rounded-lg border border-border bg-secondary/35 p-5">
-    <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Ηλεκτρονικό ταχυδρομείο σύνδεσης">
-        <input
-          value={email}
-          readOnly
-          className="h-11 w-full rounded-lg border border-border bg-muted px-3 text-sm font-medium text-muted-foreground"
-        />
-      </Field>
-      <Field label="Όνομα">
-        <input
-          value={draft.name}
-          onChange={(event) => onChange({ name: event.target.value })}
-          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
-        />
-      </Field>
-      <Field label="Τηλέφωνο">
-        <input
-          type="tel"
-          value={draft.phone}
-          onChange={(event) => onChange({ phone: event.target.value })}
-          placeholder="π.χ. 69..."
-          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
-        />
-      </Field>
-      <Field label="Πόλη / περιοχή">
-        <select
-          value={draft.city}
-          onChange={(event) => onChange({ city: event.target.value })}
-          className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
-        >
-          <option value="">Δεν έχει οριστεί</option>
-          {allowedMarketplaceCityNames.map((city) => (
-            <option key={city} value={city}>{city}</option>
-          ))}
-        </select>
-      </Field>
+  <div className="overflow-hidden rounded-lg border border-border bg-card">
+    <div className="border-b border-border bg-secondary/35 p-4">
+      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Ηλεκτρονικό ταχυδρομείο σύνδεσης</p>
+      <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+        <LockKeyhole className="h-4 w-4 text-muted-foreground" />
+        <span className="truncate text-sm font-bold text-foreground">{email}</span>
+        <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Κλειδωμένο</span>
+      </div>
     </div>
+
+    <div className="p-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Ονοματεπώνυμο *">
+          <input
+            value={draft.name}
+            onChange={(event) => onChange({ name: event.target.value })}
+            aria-invalid={!draft.name.trim()}
+            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+          />
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">Χρησιμοποιείται σε κρατήσεις, αποδείξεις και υποστήριξη.</p>
+        </Field>
+        <Field label="Τηλέφωνο">
+          <input
+            type="tel"
+            inputMode="tel"
+            value={draft.phone}
+            onChange={(event) => onChange({ phone: event.target.value })}
+            placeholder="π.χ. 69..."
+            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+          />
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">Κοινοποιείται σε δικηγόρο μόνο όπου το επιτρέπετε.</p>
+        </Field>
+        <Field label="Πόλη / περιοχή">
+          <select
+            value={draft.city}
+            onChange={(event) => onChange({ city: event.target.value })}
+            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+          >
+            <option value="">Δεν έχει οριστεί</option>
+            {allowedMarketplaceCityNames.map((city) => (
+              <option key={city} value={city}>{city}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">Πόλεις αγοράς για καλύτερη αντιστοίχιση δικηγόρων.</p>
+        </Field>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-sm leading-6 text-muted-foreground">
+        Τα στοιχεία αυτά χρησιμοποιούνται για κρατήσεις, αποδείξεις, επικοινωνία και καλύτερη αντιστοίχιση με δικηγόρους.
+      </div>
 
     {saveState.message ? (
       <p
@@ -1523,159 +1423,118 @@ const AccountProfileForm = ({
       </p>
     ) : null}
 
-    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm leading-6 text-muted-foreground">
-        Το όνομα, το τηλέφωνο και η πόλη αποθηκεύονται στον ασφαλή λογαριασμό σας.
-      </p>
-      <Button
-        type="button"
-        onClick={onSave}
-        disabled={saveState.loading || !draft.name.trim()}
-        className="rounded-lg font-bold"
-      >
-        {saveState.loading ? "Αποθήκευση..." : "Αποθήκευση αλλαγών"}
-      </Button>
+      <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs leading-5 text-muted-foreground">
+          Το ονοματεπώνυμο είναι υποχρεωτικό για ασφαλή συνέχεια της υπόθεσης.
+        </p>
+        <Button
+          type="button"
+          onClick={onSave}
+          disabled={saveState.loading || !draft.name.trim()}
+          className="rounded-lg font-bold"
+        >
+          {saveState.loading ? "Αποθήκευση..." : "Αποθήκευση στοιχείων"}
+        </Button>
+      </div>
     </div>
   </div>
-);
-
-const WorkspaceAction = ({
-  icon: Icon,
-  title,
-  text,
-  action,
-}: {
-  icon: LucideIcon;
-  title: string;
-  text: string;
-  action: ReactNode;
-}) => (
-  <article className="rounded-xl border border-border bg-secondary/35 p-4">
-    <div className="flex items-start gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-card text-primary">
-        <Icon className="h-5 w-5" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-bold text-foreground">{title}</h3>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{text}</p>
-        <div className="mt-3">{action}</div>
-      </div>
-    </div>
-  </article>
 );
 
 const BookingCard = ({
   booking,
   payment,
   onCancel,
+  onCheckout,
   featured = false,
 }: {
   booking: StoredBooking;
   payment?: StoredPayment;
   onCancel: (bookingId: string) => void;
+  onCheckout: (booking: StoredBooking) => void;
   featured?: boolean;
 }) => {
   const verified = isVerifiedBooking(booking);
   const bookingState = getCanonicalBookingState(booking, payment);
+  const paymentState = getCanonicalPaymentState(payment);
+  const paymentNeeded = needsPaymentAction(booking, payment);
+  const cancelled = bookingState === "cancelled";
+  const completed = bookingState === "completed";
+  const pendingReview = bookingState === "pending_confirmation";
 
   return (
-  <article className={cn("rounded-xl border border-border bg-card p-4", featured && "border-sage/25 bg-sage/10")}>
-    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-      <div>
+  <article
+    className={cn(
+      "rounded-lg border bg-card p-4",
+      featured && "border-sage/25 bg-sage/10",
+      paymentNeeded && "border-gold/30 bg-gold/10",
+      cancelled && "bg-secondary/35 opacity-85",
+    )}
+  >
+    <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr_auto] xl:items-start">
+      <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-primary px-2.5 py-1 text-[11px] font-bold text-primary-foreground">
-            {bookingStateLabels[bookingState]}
-          </span>
-          {!verified ? (
-            <span className="rounded-full border border-destructive/20 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive">
-              Σε επιβεβαίωση
-            </span>
-          ) : null}
+          <StatusChip label={bookingStatusLabels[bookingState]} tone={getBookingTone(bookingState)} />
+          {paymentState === "refund_requested" ? <StatusChip label={paymentStatusLabels[paymentState]} tone="attention" /> : null}
           <span className="text-xs font-semibold text-muted-foreground">{booking.referenceId}</span>
         </div>
-        <h3 className="mt-3 font-bold text-foreground">{booking.lawyerName}</h3>
+        <h3 className="mt-2 font-bold text-foreground">{booking.lawyerName}</h3>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{booking.issueSummary || booking.consultationType}</p>
-        {!verified ? (
-          <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-semibold leading-5 text-destructive">
-            Το ραντεβού σας ελέγχεται από την ομάδα. Δεν χρειάζεται ενέργεια από εσάς τώρα. Η πληρωμή, η απόδειξη και η κριτική ανοίγουν μετά τον έλεγχο και την ολοκλήρωση της συμβουλευτικής.
+        {pendingReview ? (
+          <p className="mt-3 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs font-semibold leading-5 text-primary">
+            Σε έλεγχο από την ομάδα. Θα ενημερωθείτε μόλις ολοκληρωθεί ο έλεγχος.
           </p>
         ) : null}
-        <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" />{booking.dateLabel}</span>
-          <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />{booking.time}</span>
-          <span>€{booking.price}</span>
-        </div>
+        {cancelled && paymentState === "refund_requested" ? (
+          <p className="mt-3 rounded-lg border border-gold/20 bg-gold/10 px-3 py-2 text-xs font-semibold leading-5 text-gold-foreground">
+            Η κράτηση ακυρώθηκε και η επιστροφή ελέγχεται.
+          </p>
+        ) : null}
       </div>
-      <div className="flex flex-wrap gap-2 md:justify-end">
-        <Button asChild variant="outline" size="sm" className="rounded-xl font-bold">
+
+      <div className="grid gap-2 rounded-lg border border-border bg-background/70 p-3 text-sm font-semibold text-muted-foreground sm:grid-cols-2 xl:grid-cols-1">
+        <span>{booking.consultationType}</span>
+        <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" />{booking.dateLabel}</span>
+        <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />{booking.time}</span>
+        <span className="font-bold text-foreground">€{booking.price}</span>
+      </div>
+
+      <div className="flex flex-wrap gap-2 xl:w-44 xl:flex-col xl:items-stretch">
+        {paymentNeeded ? (
+          <Button type="button" size="sm" onClick={() => onCheckout(booking)} className="rounded-lg font-bold">
+            Πληρωμή
+          </Button>
+        ) : !pendingReview && !cancelled && !completed ? (
+          <Button asChild size="sm" className="rounded-lg font-bold">
+            <Link to={`/booking/${booking.lawyerId}`}>Αλλαγή ώρας</Link>
+          </Button>
+        ) : null}
+
+        {completed && payment?.receiptUrl ? (
+          <Button type="button" size="sm" onClick={() => openReceipt(payment)} className="rounded-lg font-bold">
+            Απόδειξη
+          </Button>
+        ) : null}
+
+        {!pendingReview && canCancelBooking(booking, payment) && verified ? (
+          <Button type="button" variant="outline" size="sm" onClick={() => onCancel(booking.id)} className="rounded-lg font-bold">
+            Ακύρωση
+          </Button>
+        ) : null}
+
+        <Button asChild variant="outline" size="sm" className="rounded-lg font-bold">
           <Link to={`/lawyer/${booking.lawyerId}`}>Προφίλ</Link>
         </Button>
-        {canCancelBooking(booking, payment) ? (
-          <>
-            <Button asChild size="sm" className="rounded-xl font-bold">
-              <Link to={`/booking/${booking.lawyerId}`}>Αλλαγή ώρας</Link>
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => onCancel(booking.id)} disabled={!verified} className="rounded-xl font-bold">
-              Ακύρωση
-            </Button>
-            {!verified ? (
-              <Button asChild variant="outline" size="sm" className="rounded-xl font-bold">
-                <Link to="/help">Υποστήριξη</Link>
-              </Button>
-            ) : null}
-          </>
+
+        {pendingReview ? (
+          <Button asChild variant="outline" size="sm" className="rounded-lg font-bold">
+            <Link to="/help">Υποστήριξη</Link>
+          </Button>
         ) : null}
       </div>
     </div>
   </article>
   );
 };
-
-const SecurePaymentMethodForm = ({
-  paymentMethod,
-  onSetup,
-  loading,
-  message,
-  tone,
-}: {
-  paymentMethod: UserWorkspace["paymentMethod"];
-  onSetup: () => void;
-  loading: boolean;
-  message: string;
-  tone: PaymentActionState["tone"];
-}) => (
-  <div className="rounded-xl border border-border bg-secondary/35 p-5">
-    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-      <div>
-        <p className="font-bold text-foreground">Ασφαλές προφίλ πληρωμής μέσω Stripe</p>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">
-          Τα στοιχεία κάρτας συλλέγονται μόνο σε ασφαλή ροή Stripe και δεν πληκτρολογούνται μέσα στο προφίλ.
-        </p>
-        <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          Κατάσταση: {paymentMethodStatusLabels[paymentMethod.status]}
-        </p>
-        {paymentMethod.defaultMethodLabel ? (
-          <p className="mt-1 text-sm font-semibold text-foreground">{paymentMethod.defaultMethodLabel}</p>
-        ) : null}
-        {message ? (
-          <p
-            className={cn(
-              "mt-3 rounded-xl border px-3 py-2 text-sm font-semibold",
-              tone === "error" && "border-destructive/20 bg-destructive/10 text-destructive",
-              tone === "success" && "border-sage/25 bg-sage/10 text-sage-foreground",
-              tone === "info" && "border-primary/20 bg-primary/10 text-primary",
-            )}
-          >
-            {message}
-          </p>
-        ) : null}
-      </div>
-      <Button type="button" onClick={onSetup} disabled={loading} className="rounded-xl font-bold">
-        {loading ? "Προετοιμασία..." : "Ασφαλής σύνδεση"}
-      </Button>
-    </div>
-  </div>
-);
 
 const InvoiceCard = ({
   booking,
@@ -1687,130 +1546,64 @@ const InvoiceCard = ({
   onCheckout: () => void;
 }) => {
   const canOpenReceipt = Boolean(payment?.receiptUrl);
-  const verified = isVerifiedBooking(booking);
   const bookingState = getCanonicalBookingState(booking, payment);
   const paymentStatus = getCanonicalPaymentState(payment);
-  const canCheckout = verified && canOpenCheckout(booking, payment);
+  const canCheckout = needsPaymentAction(booking, payment);
   const statusText =
-    !verified
-      ? "Το ραντεβού ελέγχεται · δεν χρειάζεται ενέργεια τώρα"
-      : paymentStatus === "paid"
-      ? "Πληρωμένο · η απόδειξη ανοίγει από εδώ"
-      : paymentStatus === "refunded"
-      ? "Επιστράφηκε · η χρέωση έχει γυρίσει στην αρχική μέθοδο"
-      : paymentStatus === "refund_requested"
-      ? "Η επιστροφή ελέγχεται από την υποστήριξη"
-      : paymentStatus === "failed"
-      ? "Η πληρωμή δεν ολοκληρώθηκε · δεν έγινε χρέωση"
-      : bookingState === "cancelled"
-      ? "Ακυρωμένο χωρίς χρέωση"
-      : bookingState === "completed"
-        ? "Η συμβουλευτική ολοκληρώθηκε · δεν υπάρχει ολοκληρωμένη πληρωμή εδώ"
-        : "Η πληρωμή δεν έχει ολοκληρωθεί · η απόδειξη ανοίγει μετά την πληρωμή";
+    bookingState === "pending_confirmation"
+      ? "Το ραντεβού ελέγχεται · η πληρωμή δεν ανοίγει ακόμη"
+      : paymentStatus === "paid" && canOpenReceipt
+        ? "Πληρωμένο · η απόδειξη είναι διαθέσιμη"
+        : paymentStatus === "paid"
+          ? "Πληρωμένο · η απόδειξη αναμένεται από τον πάροχο"
+          : paymentStatus === "refund_requested"
+            ? "Η επιστροφή ελέγχεται από την υποστήριξη"
+            : paymentStatus === "refunded"
+              ? "Επιστράφηκε στην αρχική μέθοδο πληρωμής"
+              : paymentStatus === "failed"
+                ? "Η πληρωμή δεν ολοκληρώθηκε · δεν έγινε χρέωση"
+                : bookingState === "cancelled"
+                  ? "Ακυρώθηκε χωρίς ολοκληρωμένη χρέωση"
+                  : "Η πληρωμή χρειάζεται ολοκλήρωση για να εμφανιστεί απόδειξη";
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="font-bold text-foreground">{payment?.invoiceNumber || booking.referenceId}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{booking.lawyerName} · {booking.consultationType}</p>
-          <p className="mt-1 text-xs font-semibold text-muted-foreground">{statusText}</p>
+    <article className={cn("rounded-lg border bg-card p-4", canCheckout && "border-gold/30 bg-gold/10", bookingState === "cancelled" && "bg-secondary/35")}>
+      <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-center">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{payment?.invoiceNumber || booking.referenceId}</p>
+          <p className="mt-1 font-bold text-foreground">{booking.lawyerName}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{booking.consultationType} · {booking.dateLabel}</p>
         </div>
-        <div className="flex flex-col gap-2 text-left md:items-end md:text-right">
-          <p className="text-xl font-bold text-foreground">€{booking.price}</p>
+        <div>
+          <div className="flex flex-wrap gap-2">
+            <StatusChip label={getPaymentStatusLabel(payment)} tone={getPaymentTone(paymentStatus, canOpenReceipt)} />
+            <StatusChip label={getReceiptStatusLabel(booking, payment)} tone={canOpenReceipt ? "success" : paymentStatus === "refund_requested" ? "attention" : "muted"} />
+          </div>
+          <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">{statusText}</p>
+        </div>
+        <div className="flex flex-col gap-2 text-left lg:w-44 lg:items-end lg:text-right">
+          <p className="text-lg font-bold text-foreground">€{booking.price}</p>
           <Button
             type="button"
-            variant="outline"
+            variant={canCheckout || canOpenReceipt ? "default" : "outline"}
             size="sm"
             disabled={!canCheckout && !canOpenReceipt}
             onClick={() => {
-              if (canOpenReceipt && payment?.receiptUrl && typeof window !== "undefined") {
-                window.open(payment.receiptUrl, "_blank", "noopener,noreferrer");
+              if (canOpenReceipt) {
+                openReceipt(payment);
                 return;
               }
               onCheckout();
             }}
-            className="rounded-xl font-bold"
+            className="rounded-lg font-bold"
           >
             {canOpenReceipt ? "Άνοιγμα απόδειξης" : canCheckout ? "Πληρωμή" : "Απόδειξη σε αναμονή"}
           </Button>
         </div>
       </div>
-    </div>
+    </article>
   );
 };
-
-const ReviewComposer = ({
-  booking,
-  draft,
-  submitted,
-  status,
-  submitState,
-  onChange,
-  onSubmit,
-}: {
-  booking: StoredBooking;
-  draft: { rating: number; clarityRating: number; responsivenessRating: number; text: string };
-  submitted: boolean;
-  status?: UserWorkspace["reviews"][number]["status"];
-  submitState?: ReviewSubmitState;
-  onChange: (updates: Partial<typeof draft>) => void;
-  onSubmit: () => void;
-}) => (
-  <article className="rounded-xl border border-border bg-card p-4">
-    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-      <div>
-        <p className="font-bold text-foreground">{booking.lawyerName}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{booking.referenceId} · {booking.consultationType}</p>
-      </div>
-      {submitted ? (
-        <span className="rounded-full bg-sage/15 px-3 py-1 text-xs font-bold text-sage-foreground">
-          {reviewPublicationStateLabels[status || "under_moderation"]}
-        </span>
-      ) : null}
-    </div>
-    <div className="mt-4 grid gap-3 md:grid-cols-3">
-      <RatingField label="Συνολικά" value={draft.rating} onChange={(rating) => onChange({ rating })} />
-      <RatingField label="Σαφήνεια" value={draft.clarityRating} onChange={(clarityRating) => onChange({ clarityRating })} />
-      <RatingField label="Ανταπόκριση" value={draft.responsivenessRating} onChange={(responsivenessRating) => onChange({ responsivenessRating })} />
-    </div>
-    <textarea
-      value={draft.text}
-      onChange={(event) => onChange({ text: event.target.value })}
-      placeholder="Γράψτε τι βοήθησε περισσότερο στο ραντεβού."
-      className="mt-4 min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/25"
-    />
-    {submitState?.message ? (
-      <p
-        className={cn(
-          "mt-3 rounded-xl border px-3 py-2 text-sm font-semibold",
-          submitState.tone === "success" && "border-sage/25 bg-sage/10 text-sage-foreground",
-          submitState.tone === "error" && "border-destructive/20 bg-destructive/10 text-destructive",
-          submitState.tone === "info" && "border-primary/20 bg-primary/10 text-primary",
-        )}
-      >
-        {submitState.message}
-      </p>
-    ) : null}
-    <Button type="button" onClick={onSubmit} disabled={draft.text.trim().length < 12 || submitState?.loading} className="mt-3 rounded-xl font-bold">
-      {submitState?.loading ? "Υποβολή..." : submitted ? "Ενημέρωση κριτικής" : "Υποβολή κριτικής"}
-    </Button>
-  </article>
-);
-
-const RatingField = ({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) => (
-  <Field label={label}>
-    <select
-      value={value}
-      onChange={(event) => onChange(Number(event.target.value))}
-      className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
-    >
-      {[5, 4, 3, 2, 1].map((rating) => (
-        <option key={rating} value={rating}>{rating}/5</option>
-      ))}
-    </select>
-  </Field>
-);
 
 const SavedLawyerRow = ({
   lawyer,
@@ -1827,9 +1620,9 @@ const SavedLawyerRow = ({
   onRemove: () => void;
   onNote?: (note: string) => void;
 }) => (
-  <article className="rounded-xl border border-border bg-card p-4">
-    <div className="flex flex-col gap-4 md:flex-row md:items-start">
-      <img src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-xl object-cover ring-2 ring-background" />
+  <article className="rounded-lg border border-border bg-card p-3">
+    <div className="flex flex-col gap-3 md:flex-row md:items-start">
+      <LawyerPhoto src={lawyer.image} alt={lawyer.name} className="h-14 w-14 rounded-lg object-cover ring-2 ring-background" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
@@ -1842,24 +1635,27 @@ const SavedLawyerRow = ({
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant={compared ? "default" : "outline"} size="sm" onClick={onCompare} className="rounded-xl font-bold">
+            <Button type="button" variant={compared ? "default" : "outline"} size="sm" onClick={onCompare} className="rounded-lg font-bold">
               {compared ? "Στη σύγκριση" : "Σύγκριση"}
             </Button>
-            <Button asChild variant="outline" size="sm" className="rounded-xl font-bold">
+            <Button asChild variant="outline" size="sm" className="rounded-lg font-bold">
               <Link to={`/lawyer/${lawyer.id}`}>Προφίλ</Link>
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={onRemove} aria-label={`Αφαίρεση ${lawyer.name}`} className="rounded-xl font-bold text-destructive hover:text-destructive">
+            <Button type="button" variant="outline" size="sm" onClick={onRemove} aria-label={`Αφαίρεση ${lawyer.name}`} className="rounded-lg font-bold text-destructive hover:text-destructive">
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
         </div>
         {onNote ? (
-          <textarea
-            value={note || ""}
-            onChange={(event) => onNote(event.target.value)}
-            placeholder="Ιδιωτική σημείωση, π.χ. καλός για μισθωτική διαφορά"
-            className="mt-4 min-h-20 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/25"
-          />
+          <label className="mt-3 block">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Ιδιωτική σημείωση μόνο για εσάς</span>
+            <textarea
+              value={note || ""}
+              onChange={(event) => onNote(event.target.value)}
+              placeholder="π.χ. καλός για μισθωτική διαφορά"
+              className="mt-2 min-h-16 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/25"
+            />
+          </label>
         ) : null}
       </div>
     </div>
@@ -1877,13 +1673,13 @@ const PreferencesForm = ({
   toggleLegalCategory: (category: string) => void;
   compact?: boolean;
 }) => (
-  <div className="space-y-5">
+  <div className="space-y-4">
     <div className={cn("grid gap-3", compact ? "md:grid-cols-2" : "md:grid-cols-3")}>
       <Field label="Πόλη / περιοχή">
         <select
           value={workspace.preferences.city}
           onChange={(event) => updatePreferences({ city: event.target.value })}
-          className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
         >
           <option value="">Δεν έχει οριστεί</option>
           {allowedMarketplaceCityNames.map((city) => (
@@ -1895,7 +1691,7 @@ const PreferencesForm = ({
         <select
           value={workspace.preferences.consultationMode}
           onChange={(event) => updatePreferences({ consultationMode: event.target.value as ConsultationMode | "any" })}
-          className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
         >
           {consultationOptions.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
@@ -1906,7 +1702,7 @@ const PreferencesForm = ({
         <select
           value={workspace.preferences.budgetRange}
           onChange={(event) => updatePreferences({ budgetRange: event.target.value })}
-          className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
         >
           <option value="">Δεν έχει οριστεί</option>
           {budgetOptions.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -1916,7 +1712,7 @@ const PreferencesForm = ({
         <select
           value={workspace.preferences.urgency}
           onChange={(event) => updatePreferences({ urgency: event.target.value })}
-          className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
         >
           <option value="">Δεν έχει οριστεί</option>
           {urgencyOptions.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -1926,7 +1722,7 @@ const PreferencesForm = ({
         <input
           value={workspace.preferences.language}
           onChange={(event) => updatePreferences({ language: event.target.value })}
-          className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+          className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
         />
       </Field>
     </div>

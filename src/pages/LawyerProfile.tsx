@@ -20,6 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
+import LawyerPhoto from "@/components/LawyerPhoto";
 import Navbar from "@/components/Navbar";
 import SEO from "@/components/SEO";
 import { consultationModeIcons, type Lawyer } from "@/data/lawyers";
@@ -180,7 +181,7 @@ const LawyerProfile = () => {
             <section className="rounded-2xl border border-border bg-card p-6 md:p-7">
               <div className="flex flex-col gap-5 md:flex-row md:items-start">
                 <div className="relative shrink-0">
-                  <img
+                  <LawyerPhoto
                     src={lawyer.image}
                     alt={lawyer.name}
                     className="h-32 w-32 rounded-2xl object-cover shadow-xl ring-2 ring-background md:h-36 md:w-36"

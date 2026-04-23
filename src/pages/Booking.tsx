@@ -13,11 +13,11 @@ import {
   ReceiptText,
   ShieldCheck,
   Star,
-  Upload,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AuthContainer from "@/components/auth/AuthContainer";
+import LawyerPhoto from "@/components/LawyerPhoto";
 import Navbar from "@/components/Navbar";
 import { consultationModeIcons, type Lawyer } from "@/data/lawyers";
 import { useAuth } from "@/context/AuthContext";
@@ -467,7 +467,7 @@ const Booking = () => {
 
         <section className="mb-6 flex items-center gap-4 rounded-xl border border-border bg-card p-4">
           <div className="relative">
-            <img
+            <LawyerPhoto
               src={lawyer.image}
               alt={lawyer.name}
               className="h-14 w-14 rounded-xl object-cover shadow-md ring-2 ring-background"
@@ -779,7 +779,6 @@ const Booking = () => {
                 <NextStep icon={ReceiptText}>Η απόδειξη και η κατάσταση πληρωμής εμφανίζονται στις πληρωμές του λογαριασμού σας.</NextStep>
                 <NextStep icon={CalendarDays}>Προσθέστε τη συμβουλευτική στο ημερολόγιό σας από την επιβεβαίωση.</NextStep>
                 <NextStep icon={Mail}>Ο δικηγόρος βλέπει τα στοιχεία του ραντεβού και ακολουθεί η επόμενη επικοινωνία από το Dikigoros ή το γραφείο.</NextStep>
-                <NextStep icon={Upload}>Ανεβάστε ή στείλτε έγγραφα προετοιμασίας πριν από το ραντεβού.</NextStep>
                 <NextStep icon={ShieldCheck}>Δωρεάν ακύρωση ή αλλαγή έως 24 ώρες πριν από την ώρα.</NextStep>
                 {confirmedBooking?.persistenceSource === "local" ? (
                   <NextStep icon={ShieldCheck}>Το ραντεβού σας ελέγχεται από την ομάδα. Αν δεν λάβετε email, ανοίξτε υποστήριξη.</NextStep>
@@ -788,9 +787,6 @@ const Booking = () => {
 
               <Button asChild className="mt-8 w-full max-w-sm rounded-xl font-bold">
                 <a href={buildCalendarUrl(confirmedBooking, lawyer.name)} target="_blank" rel="noreferrer">Προσθήκη στο ημερολόγιο</a>
-              </Button>
-              <Button asChild variant="outline" className="mt-3 w-full max-w-sm rounded-xl font-bold">
-                <Link to="/account?tab=documents">Ανέβασμα ή αποστολή εγγράφων</Link>
               </Button>
               {user ? (
                 <Button asChild variant="outline" className="mt-3 w-full max-w-sm rounded-xl font-bold">

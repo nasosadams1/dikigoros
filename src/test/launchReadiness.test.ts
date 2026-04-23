@@ -59,8 +59,6 @@ describe("launch readiness gates", () => {
       event("lawyer_application_submitted", 8),
       event("lawyer_application_approved", 7),
       event("approved_lawyer_first_completed_consultation", 0),
-      event("intake_submitted", 6),
-      event("intake_routed", 6),
       event("partner_plan_checkout_opened", 5),
       event("partner_subscription_active", 4),
       event("pipeline_status_updated", 3),

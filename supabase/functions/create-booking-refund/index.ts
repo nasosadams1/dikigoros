@@ -173,15 +173,6 @@ Deno.serve(async (request) => {
       return json(request, { error: "Refund is available only after payment has completed." }, 400);
     }
 
-    await patchPayment(supabaseUrl, serviceRoleKey, String(bookingId), {
-      status: "refund_requested",
-      provider_payload: {
-        ...(payment.provider_payload || {}),
-        refundRequestedAt: new Date().toISOString(),
-        refundReason: reason,
-      },
-    });
-
     const form = new URLSearchParams();
     form.set("payment_intent", payment.stripe_payment_intent_id);
     form.set("reason", String(reason));
@@ -194,6 +185,7 @@ Deno.serve(async (request) => {
       headers: {
         Authorization: `Bearer ${stripeSecretKey}`,
         "Content-Type": "application/x-www-form-urlencoded",
+        "Idempotency-Key": `booking-refund-${bookingId}`,
         "Stripe-Version": stripeApiVersion,
       },
       body: form,

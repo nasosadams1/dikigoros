@@ -39,6 +39,18 @@ const json = (request: Request, body: unknown, status = 200) =>
     },
   });
 
+class HttpError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 const getRequiredEnv = (name: string) => {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`Missing ${name}`);
@@ -54,11 +66,11 @@ const assertStripeMode = (secretKey: string) => {
   }
 };
 
-const normalizeReturnUrl = (returnUrl: unknown, request: Request) => {
+const normalizeReturnUrl = (returnUrl: unknown, request: Request, fallbackPath = "/for-lawyers/portal?view=pipeline") => {
   const allowedOrigins = getAllowedOrigins();
   const requestOrigin = request.headers.get("Origin")?.replace(/\/+$/, "") || "";
   const fallbackOrigin = requestOrigin && allowedOrigins.includes(requestOrigin) ? requestOrigin : allowedOrigins[0];
-  const fallbackUrl = `${fallbackOrigin}/for-lawyers/portal?view=pipeline`;
+  const fallbackUrl = `${fallbackOrigin}${fallbackPath}`;
 
   try {
     const parsedUrl = new URL(String(returnUrl || ""), fallbackOrigin);
@@ -168,7 +180,13 @@ const fetchPartnerContext = async (
     }),
   });
 
-  if (!response.ok) throw new Error(`Partner subscription context failed: ${await response.text()}`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    if (errorText.includes("PARTNER_SESSION_INVALID") || errorText.includes('"code":"42501"')) {
+      throw new HttpError("PARTNER_SESSION_INVALID", 403, "PARTNER_SESSION_INVALID");
+    }
+    throw new HttpError(`Partner subscription context failed: ${errorText}`, 500);
+  }
   return response.json();
 };
 
@@ -182,7 +200,7 @@ Deno.serve(async (request) => {
     const stripeSecretKey = getRequiredEnv("STRIPE_SECRET_KEY");
     assertStripeMode(stripeSecretKey);
 
-    const { planId, partnerEmail, sessionToken, returnUrl, billingInterval } = await request.json();
+    const { planId, partnerEmail, sessionToken, returnUrl, cancelUrl, billingInterval } = await request.json();
     const normalizedPlanId = String(planId || "").trim().toLowerCase();
     const normalizedBillingInterval = normalizeBillingInterval(billingInterval);
     if (!["basic", "pro", "premium", "firms"].includes(normalizedPlanId)) {
@@ -218,13 +236,15 @@ Deno.serve(async (request) => {
     }
 
     const normalizedReturnUrl = normalizeReturnUrl(returnUrl, request);
-    const separator = normalizedReturnUrl.includes("?") ? "&" : "?";
+    const normalizedCancelUrl = normalizeReturnUrl(cancelUrl, request, "/for-lawyers/plans");
+    const successSeparator = normalizedReturnUrl.includes("?") ? "&" : "?";
+    const cancelSeparator = normalizedCancelUrl.includes("?") ? "&" : "?";
     const form = new URLSearchParams();
     form.set("mode", "subscription");
     form.set("client_reference_id", String(context.lawyer_id));
     form.set("customer_email", String(context.partner_email));
-    form.set("success_url", `${normalizedReturnUrl}${separator}subscription=success&session_id={CHECKOUT_SESSION_ID}`);
-    form.set("cancel_url", `${normalizedReturnUrl}${separator}subscription=cancelled`);
+    form.set("success_url", `${normalizedReturnUrl}${successSeparator}subscription=success&session_id={CHECKOUT_SESSION_ID}`);
+    form.set("cancel_url", `${normalizedCancelUrl}${cancelSeparator}subscription=cancelled`);
     form.set("line_items[0][quantity]", "1");
     form.set("line_items[0][price]", priceId);
     form.set("metadata[subscription_kind]", "partner_plan");
@@ -268,6 +288,9 @@ Deno.serve(async (request) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Partner subscription checkout failed";
+    if (error instanceof HttpError) {
+      return json(request, { error: message, code: error.code }, error.status);
+    }
     return json(request, { error: message }, 500);
   }
 });

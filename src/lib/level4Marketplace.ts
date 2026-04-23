@@ -9,8 +9,8 @@ import {
 import { allowedMarketplaceCities, legalPracticeAreas } from "@/lib/marketplaceTaxonomy";
 
 export type PartnerPlanId = "basic" | "pro" | "premium" | "firms";
-export type IntakeUrgency = "today" | "this_week" | "flexible";
-export type IntakeBudget = "under_50" | "50_80" | "80_120" | "120_plus" | "flexible";
+export type MarketplaceUrgency = "today" | "this_week" | "flexible";
+export type MarketplaceBudget = "under_50" | "50_80" | "80_120" | "120_plus" | "flexible";
 
 export interface PartnerPlan {
   id: PartnerPlanId;
@@ -41,8 +41,8 @@ export interface MarketplaceRankingContext {
   city?: string;
   category?: string;
   consultationMode?: ConsultationMode | "any";
-  urgency?: IntakeUrgency;
-  budget?: IntakeBudget;
+  urgency?: MarketplaceUrgency;
+  budget?: MarketplaceBudget;
   query?: string;
 }
 
@@ -173,8 +173,6 @@ export const level4FunnelEvents = [
   "lawyer_application_submitted",
   "lawyer_application_approved",
   "approved_lawyer_first_completed_consultation",
-  "intake_submitted",
-  "intake_routed",
   "partner_plan_checkout_opened",
   "partner_subscription_active",
   "pipeline_status_updated",
@@ -252,7 +250,7 @@ const matchesCity = (lawyer: Lawyer, city?: string) => {
   return queries.some((query) => includesMarketplaceText(lawyer.city, query));
 };
 
-const matchesBudget = (price: number, budget?: IntakeBudget) => {
+const matchesBudget = (price: number, budget?: MarketplaceBudget) => {
   if (!budget || budget === "flexible") return true;
   if (budget === "under_50") return price <= 50;
   if (budget === "50_80") return price > 50 && price <= 80;

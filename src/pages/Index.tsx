@@ -17,6 +17,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Footer from "@/components/Footer";
+import LawyerPhoto from "@/components/LawyerPhoto";
 import Navbar from "@/components/Navbar";
 import SEO from "@/components/SEO";
 import { type ConsultationMode } from "@/data/lawyers";
@@ -223,7 +224,7 @@ const Index = () => {
           {heroLawyer ? (
             <aside className="self-center rounded-lg border border-border bg-card p-5 shadow-2xl shadow-foreground/[0.07]">
               <div className="flex items-start gap-4">
-                <img src={heroLawyer.image} alt={heroLawyer.name} className="h-20 w-20 rounded-lg object-cover shadow-md ring-2 ring-background" />
+                <LawyerPhoto src={heroLawyer.image} alt={heroLawyer.name} className="h-20 w-20 rounded-lg object-cover shadow-md ring-2 ring-background" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold uppercase tracking-wider text-sage">{copy.featuredCard.verified}</p>
                   <h2 className="mt-1 truncate text-lg font-bold text-foreground">{heroLawyer.name}</h2>
@@ -301,7 +302,7 @@ const Index = () => {
               className="rounded-lg border border-border bg-card p-5 transition hover:border-primary/25 hover:shadow-xl hover:shadow-foreground/[0.05]"
             >
               <div className="flex items-start gap-4">
-                <img src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-lg object-cover ring-2 ring-background" />
+                <LawyerPhoto src={lawyer.image} alt={lawyer.name} className="h-16 w-16 rounded-lg object-cover ring-2 ring-background" />
                 <div className="min-w-0">
                   <p className="text-xs font-bold uppercase tracking-wider text-primary">{lawyer.specialty}</p>
                   <h3 className="mt-1 truncate text-base font-bold text-foreground">{lawyer.name}</h3>

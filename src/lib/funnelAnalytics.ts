@@ -14,8 +14,6 @@ export type FunnelEventName =
   | "lawyer_application_submitted"
   | "lawyer_application_approved"
   | "approved_lawyer_first_completed_consultation"
-  | "intake_submitted"
-  | "intake_routed"
   | "partner_plan_checkout_opened"
   | "partner_subscription_active"
   | "pipeline_status_updated"
@@ -63,8 +61,6 @@ export const funnelSteps: Array<{ name: FunnelEventName; label: string }> = [
 ];
 
 funnelSteps.push(
-  { name: "intake_submitted", label: "Guided intake submitted" },
-  { name: "intake_routed", label: "Guided intake routed" },
   { name: "partner_plan_checkout_opened", label: "Partner plan checkout opened" },
   { name: "partner_subscription_active", label: "Partner subscription active" },
   { name: "pipeline_status_updated", label: "Partner pipeline updated" },

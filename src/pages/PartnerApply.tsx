@@ -21,6 +21,7 @@ import {
   type StoredPartnerApplication,
 } from "@/lib/platformRepository";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
+import { partnerPlans, type PartnerPlan, type PartnerPlanId } from "@/lib/level4Marketplace";
 import { allowedMarketplaceCityNames, legalPracticeAreaLabels } from "@/lib/marketplaceTaxonomy";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +56,16 @@ const steps = [
       "Γράψτε βιογραφικό τουλάχιστον 120 χαρακτήρων",
       "Ανεβάστε έγγραφα επαλήθευσης",
       "Ελέγξτε ότι τα αρχεία είναι ευανάγνωστα",
+    ],
+  },
+  {
+    title: "Πλάνο",
+    railTitle: "Επιλογή πλάνου",
+    railDescription: "Επιλέξτε το πλάνο με το οποίο θέλετε να ξεκινήσετε.",
+    checklist: [
+      "Το Βασικό ξεκινά χωρίς πάγιο",
+      "Τα συνδρομητικά πλάνα ενεργοποιούνται μετά την έγκριση",
+      "Μπορείτε να αλλάξετε επιλογή πριν την υποβολή",
     ],
   },
   {
@@ -93,6 +104,7 @@ interface ApplicationForm {
   yearsOfExperience: string;
   specialties: string[];
   professionalBio: string;
+  preferredPlanId: PartnerPlanId;
 }
 
 type ValidationField = keyof ApplicationForm | "specialties" | "documents";
@@ -109,11 +121,44 @@ const initialForm: ApplicationForm = {
   yearsOfExperience: "",
   specialties: [],
   professionalBio: "",
+  preferredPlanId: "basic",
 };
 
 const formatFileSize = (bytes: number) => {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
+
+const formatEuro = (amount: number) =>
+  `€${amount.toLocaleString("en-US", {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+const getApplicationPlanPrice = (plan: PartnerPlan) => {
+  if (plan.salesOnly) return `από ${formatEuro(plan.monthlyPrice)} / μήνα`;
+  if (plan.completedConsultationFee > 0) return `€0 / μήνα + ${formatEuro(plan.completedConsultationFee)} ανά ολοκληρωμένη πρώτη συμβουλευτική`;
+  if (plan.annualMonthlyPrice) return `${formatEuro(plan.monthlyPrice)} / μήνα ή ${formatEuro(plan.annualMonthlyPrice)} / μήνα ετησίως`;
+  return `${formatEuro(plan.monthlyPrice)} / μήνα`;
+};
+
+const getApplicationPlanPriceLead = (plan: PartnerPlan) => {
+  if (plan.salesOnly) return `από ${formatEuro(plan.monthlyPrice)} / μήνα`;
+  return `${formatEuro(plan.monthlyPrice)} / μήνα`;
+};
+
+const getApplicationPlanPriceDetail = (plan: PartnerPlan) => {
+  if (plan.completedConsultationFee > 0) return `+ ${formatEuro(plan.completedConsultationFee)} ανά ολοκληρωμένη πρώτη συμβουλευτική`;
+  if (plan.annualMonthlyPrice) return `ή ${formatEuro(plan.annualMonthlyPrice)} / μήνα ετησίως`;
+  if (plan.salesOnly) return "Προσαρμοσμένη εγκατάσταση για ομάδα";
+  return "";
+};
+
+const getApplicationPlanDescription = (plan: PartnerPlan) => {
+  if (plan.id === "basic") return "Για να ξεκινήσετε χωρίς πάγιο και να πληρώνετε μόνο ανά ολοκληρωμένη πρώτη συμβουλευτική.";
+  if (plan.id === "pro") return "Για ενισχυμένη, καθαρά σημειωμένη προβολή και στατιστικά απόδοσης.";
+  if (plan.id === "premium") return "Για οργανωμένη ροή υποθέσεων, σημειώσεις, υπενθυμίσεις και αιτήματα εγγράφων.";
+  return "Για γραφεία ή ομάδες που χρειάζονται περισσότερες θέσεις και προσαρμοσμένη εγκατάσταση.";
 };
 
 const LabelRow = ({ label, optional = false }: { label: string; optional?: boolean }) => (
@@ -150,6 +195,60 @@ const DetailRow = ({ label, value, muted = false }: { label: string; value: Reac
     <span className="text-[12px] font-semibold text-[hsl(var(--partner-navy-soft))]">{label}</span>
     <div className={cn("text-sm leading-6 text-[hsl(var(--partner-ink))]", muted && "text-muted-foreground")}>{value}</div>
   </div>
+);
+
+const PlanChoiceCard = ({
+  plan,
+  selected,
+  onSelect,
+}: {
+  plan: PartnerPlan;
+  selected: boolean;
+  onSelect: () => void;
+}) => (
+  <button
+    type="button"
+    aria-pressed={selected}
+    onClick={onSelect}
+    className={cn(
+      "relative flex min-h-[238px] flex-col overflow-hidden rounded-[16px] border bg-white p-5 text-left transition",
+      selected
+        ? "border-[hsl(var(--partner-navy))] shadow-[0_16px_36px_rgba(18,30,44,0.12)]"
+        : "border-[hsl(var(--partner-line))] hover:border-[hsl(var(--partner-navy))]/32",
+    )}
+  >
+    <span
+      className={cn(
+        "absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border bg-white transition",
+        selected
+          ? "border-[hsl(var(--partner-navy))] bg-[hsl(var(--partner-navy))] text-white shadow-[0_8px_18px_rgba(18,30,44,0.18)]"
+          : "border-[hsl(var(--partner-line))] text-transparent",
+      )}
+      aria-hidden="true"
+    >
+      <Check className="h-4 w-4" />
+    </span>
+    <div className="min-w-0 pr-11">
+      <p className="break-words text-xs font-semibold uppercase tracking-[0.16em] text-[hsl(var(--partner-navy-soft))]">{plan.name}</p>
+      <p className="mt-3 text-[28px] font-semibold leading-none tracking-[-0.02em] text-[hsl(var(--partner-ink))]">{getApplicationPlanPriceLead(plan)}</p>
+      {getApplicationPlanPriceDetail(plan) ? (
+        <p className="mt-2 max-w-[24ch] text-[15px] font-semibold leading-6 text-[hsl(var(--partner-ink))]/80">{getApplicationPlanPriceDetail(plan)}</p>
+      ) : null}
+    </div>
+    <p className="mt-4 text-sm leading-6 text-muted-foreground">{getApplicationPlanDescription(plan)}</p>
+    <div className="mt-auto pt-4">
+      {plan.recommended ? (
+        <span className="rounded-full border border-[hsl(var(--partner-navy))]/16 bg-[hsl(var(--partner-navy))]/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--partner-navy))]">
+          Προτεινόμενο
+        </span>
+      ) : null}
+      {plan.salesOnly ? (
+        <span className="rounded-full border border-[hsl(var(--partner-line))] bg-[rgba(247,241,231,0.78)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--partner-navy-soft))]">
+          Για ομάδες
+        </span>
+      ) : null}
+    </div>
+  </button>
 );
 
 const UploadedFileRow = ({ file, onRemove, compact = false }: { file: File; onRemove?: () => void; compact?: boolean }) => (
@@ -212,6 +311,7 @@ const PartnerApply = () => {
       yearsOfExperience: form.yearsOfExperience.trim() && Number(form.yearsOfExperience) >= 0 ? "" : "Το πεδίο είναι υποχρεωτικό.",
       specialties: form.specialties.length > 0 ? "" : "Επιλέξτε τουλάχιστον μία ειδικότητα.",
       professionalBio: form.professionalBio.trim().length >= minBioLength ? "" : `Το βιογραφικό πρέπει να περιλαμβάνει τουλάχιστον ${minBioLength} χαρακτήρες.`,
+      preferredPlanId: partnerPlans.some((plan) => plan.id === form.preferredPlanId) ? "" : "Επιλέξτε πλάνο συνεργασίας.",
       documents: documents.length > 0 ? "" : "Ανεβάστε τουλάχιστον ένα έγγραφο επαλήθευσης.",
     };
 
@@ -222,6 +322,7 @@ const PartnerApply = () => {
     if (step === 0) return !errors.fullName && !errors.workEmail && !errors.phone && !errors.city;
     if (step === 1) return !errors.barAssociation && !errors.registrationNumber && !errors.yearsOfExperience && !errors.specialties;
     if (step === 2) return !errors.professionalBio && !errors.documents;
+    if (step === 3) return !errors.preferredPlanId;
     return true;
   }, [errors, step]);
 
@@ -240,6 +341,7 @@ const PartnerApply = () => {
     if (step === 0) return errors.fullName || errors.workEmail || errors.phone || errors.city;
     if (step === 1) return errors.barAssociation || errors.registrationNumber || errors.yearsOfExperience || errors.specialties;
     if (step === 2) return errors.professionalBio || errors.documents;
+    if (step === 3) return errors.preferredPlanId;
     return "";
   }, [errors, step]);
 
@@ -248,6 +350,10 @@ const PartnerApply = () => {
   const bioPreviewStyle: CSSProperties = showFullBio
     ? wrapStyle
     : { ...wrapStyle, display: "-webkit-box", overflow: "hidden", WebkitBoxOrient: "vertical", WebkitLineClamp: 6 };
+  const selectedPlan = useMemo(
+    () => partnerPlans.find((plan) => plan.id === form.preferredPlanId) || partnerPlans[0],
+    [form.preferredPlanId],
+  );
 
   const shouldShowError = (field: ValidationField) => Boolean(touched[field] || attemptedStep === step);
   const updateField = (field: keyof ApplicationForm, value: string | string[]) => setForm((current) => ({ ...current, [field]: value }));
@@ -258,6 +364,7 @@ const PartnerApply = () => {
       ["fullName", "workEmail", "phone", "city"],
       ["barAssociation", "registrationNumber", "yearsOfExperience", "specialties"],
       ["professionalBio", "documents"],
+      ["preferredPlanId"],
       [],
     ];
 
@@ -352,6 +459,7 @@ const PartnerApply = () => {
         yearsOfExperience: form.yearsOfExperience.trim(),
         specialties: form.specialties,
         professionalBio: form.professionalBio.trim(),
+        preferredPlanId: form.preferredPlanId,
         documents: documents.map((document) => ({
           name: document.name,
           size: document.size,
@@ -365,6 +473,7 @@ const PartnerApply = () => {
         referenceId: result.record.referenceId,
         city: result.record.city,
         specialties: result.record.specialties.length,
+        preferredPlanId: result.record.preferredPlanId,
       });
       setSubmitted(true);
     } catch {
@@ -427,6 +536,7 @@ const PartnerApply = () => {
                     <p style={wrapStyle}>Σύλλογος: {form.barAssociation}</p>
                     <p>{form.specialties.length} ενεργές ειδικότητες δηλώθηκαν</p>
                     <p>{documents.length} αρχείο(α) υποβλήθηκαν για έλεγχο</p>
+                    <p>Προτιμώμενο πλάνο: {selectedPlan.name}</p>
                     {submittedApplication?.persistenceSource === "local" ? (
                       <p className="text-[hsl(var(--partner-navy-soft))]">Ο φάκελος καταχωρίστηκε και θα περάσει από έλεγχο ένταξης.</p>
                     ) : null}
@@ -505,7 +615,7 @@ const PartnerApply = () => {
             </Link>
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-4">
+          <div className="mt-5 grid gap-3 md:grid-cols-5">
             {steps.map((item, index) => {
               const isActive = step === index;
               const isComplete = step > index;
@@ -763,6 +873,40 @@ const PartnerApply = () => {
             {step === 3 ? (
               <div className="space-y-5">
                 <div>
+                  <h3 className="font-sans text-[26px] font-semibold tracking-[-0.02em] text-[hsl(var(--partner-ink))]">Επιλογή πλάνου συνεργασίας</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    Επιλέξτε το πλάνο με το οποίο θέλετε να ξεκινήσετε μετά την έγκριση του φακέλου σας.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {partnerPlans.map((plan) => (
+                    <PlanChoiceCard
+                      key={plan.id}
+                      plan={plan}
+                      selected={form.preferredPlanId === plan.id}
+                      onSelect={() => {
+                        updateField("preferredPlanId", plan.id);
+                        markTouched("preferredPlanId");
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {shouldShowError("preferredPlanId") && errors.preferredPlanId ? <p className="text-xs font-medium text-destructive">{errors.preferredPlanId}</p> : null}
+
+                <div className="partner-soft-card-strong p-5">
+                  <p className="font-sans text-[20px] font-semibold tracking-[-0.02em] text-[hsl(var(--partner-ink))]">Πότε ενεργοποιείται</p>
+                  <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                    Η επιλογή πλάνου καταγράφεται στην αίτηση. Η πρόσβαση συνεργάτη και οποιαδήποτε συνδρομή ενεργοποιούνται μόνο αφού εγκριθεί ο φάκελος και συνεχίσετε από τον λογαριασμό συνεργάτη.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {step === 4 ? (
+              <div className="space-y-5">
+                <div>
                   <h3 className="font-sans text-[26px] font-semibold tracking-[-0.02em] text-[hsl(var(--partner-ink))]">Τελικός έλεγχος υποβολής</h3>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">Ελέγξτε συνοπτικά τα στοιχεία πριν προχωρήσετε στην αποστολή για εξέταση.</p>
                 </div>
@@ -823,6 +967,12 @@ const PartnerApply = () => {
                       ) : null}
                     </div>
                   </ReviewCard>
+
+                  <ReviewCard title="Πλάνο συνεργασίας" onEdit={() => setStep(3)}>
+                    <DetailRow label="Πλάνο" value={<span style={wrapStyle}>{selectedPlan.name}</span>} />
+                    <DetailRow label="Χρέωση" value={<span style={wrapStyle}>{getApplicationPlanPrice(selectedPlan)}</span>} />
+                    <DetailRow label="Σημείωση" value="Η ενεργοποίηση γίνεται μετά την έγκριση συνεργάτη." muted />
+                  </ReviewCard>
                 </div>
 
                 <div className="partner-soft-card-strong p-6">
@@ -833,7 +983,7 @@ const PartnerApply = () => {
             ) : null}
           </div>
 
-          <div className={cn("mt-7 flex flex-col gap-4 border-t border-[hsl(var(--partner-line))] pt-5 sm:flex-row sm:items-start sm:justify-between", step === 3 && "sticky bottom-4 rounded-[16px] border bg-[rgba(255,252,247,0.98)] px-5 py-4 shadow-[0_10px_30px_rgba(18,30,44,0.06)] backdrop-blur")}>
+          <div className={cn("mt-7 flex flex-col gap-4 border-t border-[hsl(var(--partner-line))] pt-5 sm:flex-row sm:items-start sm:justify-between", step === steps.length - 1 && "sticky bottom-4 rounded-[16px] border bg-[rgba(255,252,247,0.98)] px-5 py-4 shadow-[0_10px_30px_rgba(18,30,44,0.06)] backdrop-blur")}>
             <div className="space-y-2">
               {step > 0 ? (
                 <Button type="button" variant="outline" className="h-[48px] rounded-[14px] border-[hsl(var(--partner-line))] bg-white px-5 text-sm font-semibold text-[hsl(var(--partner-ink))] hover:bg-white" onClick={() => setStep((current) => Math.max(0, current - 1))}>
@@ -841,7 +991,7 @@ const PartnerApply = () => {
                   Προηγούμενο
                 </Button>
               ) : null}
-              {step < 3 && !canContinue ? <p className="max-w-[360px] text-sm text-muted-foreground">{disabledReason}</p> : null}
+              {step < steps.length - 1 && !canContinue ? <p className="max-w-[360px] text-sm text-muted-foreground">{disabledReason}</p> : null}
             </div>
 
             {step < steps.length - 1 ? (
