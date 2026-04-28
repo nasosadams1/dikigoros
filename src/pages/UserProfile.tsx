@@ -12,7 +12,6 @@ import {
   Search,
   Settings2,
   ShieldCheck,
-  Star,
   Trash2,
   UserRound,
 } from "lucide-react";
@@ -72,7 +71,7 @@ const navItems = [
 
 type ActiveView = (typeof navItems)[number]["id"];
 type BookingFilter = "all" | "active" | "action" | "completed" | "cancelled";
-type StatusTone = "attention" | "review" | "success" | "muted" | "danger" | "info";
+type StatusTone = "attention" | "primary" | "success" | "muted" | "danger" | "info";
 type PaymentActionState = {
   loading: boolean;
   message: string;
@@ -119,7 +118,7 @@ const paymentStatusLabels: Record<PaymentState, string> = {
 
 const statusToneClasses: Record<StatusTone, string> = {
   attention: "border-gold/30 bg-gold/15 text-gold-foreground",
-  review: "border-primary/25 bg-primary/10 text-primary",
+  primary: "border-primary/25 bg-primary/10 text-primary",
   success: "border-sage/30 bg-sage/15 text-sage-foreground",
   muted: "border-border bg-secondary text-muted-foreground",
   danger: "border-destructive/25 bg-destructive/10 text-destructive",
@@ -130,7 +129,7 @@ const getBookingTone = (state: BookingState): StatusTone =>
   state === "confirmed_unpaid"
     ? "attention"
     : state === "pending_confirmation"
-      ? "review"
+      ? "primary"
       : state === "confirmed_paid" || state === "completed"
         ? "success"
         : "muted";
@@ -139,7 +138,7 @@ const getPaymentTone = (state: PaymentState, hasReceipt = false): StatusTone =>
   state === "paid" && hasReceipt
     ? "success"
     : state === "paid" || state === "checkout_opened"
-      ? "review"
+      ? "primary"
       : state === "refund_requested"
         ? "attention"
         : state === "failed"
@@ -251,6 +250,7 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
   const accountDisplayName = localAccountProfile.name || displayName;
   const accountPhone = localAccountProfile.phone || userPhone;
   const accountCity = normalizeAllowedMarketplaceCity(localAccountProfile.city || userCity || workspace.preferences.city);
+  const paymentForBooking = (bookingId: string) => payments.find((payment) => payment.bookingId === bookingId);
 
   useEffect(() => {
     workspaceRef.current = workspace;
@@ -337,7 +337,6 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     };
   }, [workspace.savedLawyerIds, workspace.comparedLawyerIds]);
 
-  const paymentForBooking = (bookingId: string) => payments.find((payment) => payment.bookingId === bookingId);
   const activeBookings = bookings.filter((booking) => canCancelBooking(booking, paymentForBooking(booking.id)));
   const pendingPaymentBookings = bookings.filter((booking) => needsPaymentAction(booking, paymentForBooking(booking.id)));
   const nextBooking = activeBookings[0];
@@ -943,7 +942,6 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                           <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                             <ComparisonLine label="Τιμή από" value={`€${getPriceFrom(lawyer)}`} />
                             <ComparisonLine label="Εμπειρία" value={`${lawyer.experience} έτη`} />
-                            <ComparisonLine label="Αξιολόγηση" value={`${lawyer.rating}/5`} />
                             <ComparisonLine label="Απάντηση" value={lawyer.response} />
                           </div>
                         </div>
@@ -1459,7 +1457,7 @@ const BookingCard = ({
   const paymentNeeded = needsPaymentAction(booking, payment);
   const cancelled = bookingState === "cancelled";
   const completed = bookingState === "completed";
-  const pendingReview = bookingState === "pending_confirmation";
+  const pendingConfirmation = bookingState === "pending_confirmation";
 
   return (
   <article
@@ -1479,7 +1477,7 @@ const BookingCard = ({
         </div>
         <h3 className="mt-2 font-bold text-foreground">{booking.lawyerName}</h3>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{booking.issueSummary || booking.consultationType}</p>
-        {pendingReview ? (
+        {pendingConfirmation ? (
           <p className="mt-3 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs font-semibold leading-5 text-primary">
             Σε έλεγχο από την ομάδα. Θα ενημερωθείτε μόλις ολοκληρωθεί ο έλεγχος.
           </p>
@@ -1503,7 +1501,7 @@ const BookingCard = ({
           <Button type="button" size="sm" onClick={() => onCheckout(booking)} className="rounded-lg font-bold">
             Πληρωμή
           </Button>
-        ) : !pendingReview && !cancelled && !completed ? (
+        ) : !pendingConfirmation && !cancelled && !completed ? (
           <Button asChild size="sm" className="rounded-lg font-bold">
             <Link to={`/booking/${booking.lawyerId}`}>Αλλαγή ώρας</Link>
           </Button>
@@ -1515,7 +1513,7 @@ const BookingCard = ({
           </Button>
         ) : null}
 
-        {!pendingReview && canCancelBooking(booking, payment) && verified ? (
+        {!pendingConfirmation && canCancelBooking(booking, payment) && verified ? (
           <Button type="button" variant="outline" size="sm" onClick={() => onCancel(booking.id)} className="rounded-lg font-bold">
             Ακύρωση
           </Button>
@@ -1525,7 +1523,7 @@ const BookingCard = ({
           <Link to={`/lawyer/${booking.lawyerId}`}>Προφίλ</Link>
         </Button>
 
-        {pendingReview ? (
+        {pendingConfirmation ? (
           <Button asChild variant="outline" size="sm" className="rounded-lg font-bold">
             <Link to="/help">Υποστήριξη</Link>
           </Button>
@@ -1630,7 +1628,6 @@ const SavedLawyerRow = ({
             <p className="mt-1 text-sm font-semibold text-primary/80">{lawyer.specialty}</p>
             <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold text-muted-foreground">
               <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{lawyer.city}</span>
-              <span className="inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 fill-gold text-gold" />{lawyer.rating}</span>
               <span>από €{getPriceFrom(lawyer)}</span>
             </div>
           </div>

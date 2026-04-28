@@ -1,9 +1,4 @@
-import {
-  canSubmitReview,
-  getCanonicalBookingState,
-  getCanonicalPaymentState,
-  isBookingScheduled,
-} from "@/lib/bookingState";
+import { getCanonicalBookingState, getCanonicalPaymentState, isBookingScheduled } from "@/lib/bookingState";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import type { Level4PipelineStatus } from "@/lib/level4Marketplace";
 import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
@@ -13,7 +8,6 @@ import {
   type PartnerSession,
   type StoredBooking,
   type StoredBookingDocument,
-  type StoredLawyerReview,
   type StoredPayment,
 } from "@/lib/platformRepository";
 
@@ -39,7 +33,6 @@ export interface PartnerPipelineItem {
   booking: StoredBooking;
   payment?: StoredPayment;
   documents: StoredBookingDocument[];
-  reviews: StoredLawyerReview[];
   status: Level4PipelineStatus;
   privateNotes: PartnerCaseNote[];
   followups: PartnerFollowupTask[];
@@ -80,14 +73,12 @@ const createId = () =>
 const inferPipelineStatus = (
   booking: StoredBooking,
   payment?: StoredPayment,
-  reviews: StoredLawyerReview[] = [],
   followups: PartnerFollowupTask[] = [],
 ): Level4PipelineStatus => {
   const bookingState = getCanonicalBookingState(booking);
   const paymentState = payment ? getCanonicalPaymentState(payment) : "not_opened";
   if (paymentState === "refund_requested" || paymentState === "failed") return "refund_risk";
   if (followups.some((task) => task.status === "open")) return "follow_up_needed";
-  if (bookingState === "completed" && reviews.length === 0 && canSubmitReview(booking, payment)) return "review_pending";
   if (bookingState === "completed") return "completed";
   if (isBookingScheduled(booking, payment)) return "upcoming";
   if (paymentState === "paid") return "paid";
@@ -98,27 +89,23 @@ export const buildPartnerPipelineItems = ({
   bookings,
   payments,
   documents,
-  reviews,
   notes,
   followups,
 }: {
   bookings: StoredBooking[];
   payments: StoredPayment[];
   documents: StoredBookingDocument[];
-  reviews: StoredLawyerReview[];
   notes: PartnerCaseNote[];
   followups: PartnerFollowupTask[];
 }): PartnerPipelineItem[] =>
   bookings.map((booking) => {
     const payment = payments.find((candidate) => candidate.bookingId === booking.id);
-    const bookingReviews = reviews.filter((review) => review.bookingId === booking.id);
     const bookingFollowups = followups.filter((task) => task.bookingId === booking.id);
     return {
       booking,
       payment,
       documents: documents.filter((document) => document.bookingId === booking.id),
-      reviews: bookingReviews,
-      status: inferPipelineStatus(booking, payment, bookingReviews, bookingFollowups),
+      status: inferPipelineStatus(booking, payment, bookingFollowups),
       privateNotes: notes.filter((note) => note.bookingId === booking.id),
       followups: bookingFollowups,
     };

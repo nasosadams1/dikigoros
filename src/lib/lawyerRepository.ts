@@ -9,6 +9,7 @@ import {
   normalizeLegalPracticeArea,
   normalizeLegalPracticeAreas,
 } from "@/lib/marketplaceTaxonomy";
+import { localizeLawyerProfile, localizeProfileText } from "@/lib/lawyerDisplay";
 import { allowLocalCriticalFallback } from "@/lib/runtimeGuards";
 import { publicSupabase } from "@/lib/supabase";
 
@@ -75,47 +76,48 @@ const hasMeaningfulText = (value: string | undefined, minLength: number) => {
   return normalized.length >= minLength && !genericProfileValues.has(normalized);
 };
 
-const mapLawyerRow = (row: LawyerProfileRow): Lawyer => ({
-  id: row.id,
-  name: row.name,
-  specialty: normalizeLegalPracticeArea(row.specialty) || row.specialty,
-  specialtyShort: normalizeLegalPracticeArea(row.specialty_short) || row.specialty_short,
-  specialties: normalizeLegalPracticeAreas(row.specialties || []),
-  specialtyKeywords: row.specialty_keywords || [],
-  bestFor: row.best_for,
-  city: normalizeAllowedMarketplaceCity(row.city) || row.city,
-  rating: Number(row.rating),
-  reviews: Number(row.reviews),
-  experience: Number(row.experience),
-  price: Number(row.price),
-  available: row.available,
-  response: row.response,
-  responseMinutes: Number(row.response_minutes),
-  consultationModes: (row.consultation_modes || []).filter(isConsultationMode),
-  bio: row.bio,
-  education: row.education,
-  languages: row.languages || [],
-  credentials: row.credentials || [],
-  verification:
-    row.verification ||
-    (allowLocalCriticalFallback
-      ? fallbackLawyers.find((lawyer) => lawyer.id === row.id)?.verification || fallbackLawyers[0].verification
-      : emptyVerification),
-  consultations:
-    row.consultations ||
-    (allowLocalCriticalFallback ? fallbackLawyers.find((lawyer) => lawyer.id === row.id)?.consultations : undefined) ||
-    [],
-  image: row.image,
-});
+const mapLawyerRow = (row: LawyerProfileRow): Lawyer =>
+  localizeLawyerProfile({
+    id: row.id,
+    name: row.name,
+    specialty: normalizeLegalPracticeArea(row.specialty) || row.specialty,
+    specialtyShort: normalizeLegalPracticeArea(row.specialty_short) || row.specialty_short,
+    specialties: normalizeLegalPracticeAreas(row.specialties || []),
+    specialtyKeywords: row.specialty_keywords || [],
+    bestFor: row.best_for,
+    city: normalizeAllowedMarketplaceCity(row.city) || row.city,
+    rating: Number(row.rating),
+    reviews: Number(row.reviews),
+    experience: Number(row.experience),
+    price: Number(row.price),
+    available: row.available,
+    response: row.response,
+    responseMinutes: Number(row.response_minutes),
+    consultationModes: (row.consultation_modes || []).filter(isConsultationMode),
+    bio: row.bio,
+    education: row.education,
+    languages: row.languages || [],
+    credentials: row.credentials || [],
+    verification:
+      row.verification ||
+      (allowLocalCriticalFallback
+        ? fallbackLawyers.find((lawyer) => lawyer.id === row.id)?.verification || fallbackLawyers[0].verification
+        : emptyVerification),
+    consultations:
+      row.consultations ||
+      (allowLocalCriticalFallback ? fallbackLawyers.find((lawyer) => lawyer.id === row.id)?.consultations : undefined) ||
+      [],
+    image: row.image,
+  });
 
 export const applyPublishedPartnerProfile = (lawyer: Lawyer): Lawyer => {
   const publishedWorkspace = getPublishedPartnerWorkspaceForLawyer(lawyer.id);
-  return publishedWorkspace ? applyPartnerWorkspaceToLawyer(lawyer, publishedWorkspace) : lawyer;
+  return publishedWorkspace ? applyPartnerWorkspaceToLawyer(lawyer, publishedWorkspace) : localizeLawyerProfile(lawyer);
 };
 
 const applyPublishedPartnerProfileRemote = async (lawyer: Lawyer): Promise<Lawyer> => {
   const publishedWorkspace = await fetchPublishedPartnerWorkspaceForLawyer(lawyer.id);
-  return publishedWorkspace ? applyPartnerWorkspaceToLawyer(lawyer, publishedWorkspace) : lawyer;
+  return publishedWorkspace ? applyPartnerWorkspaceToLawyer(lawyer, publishedWorkspace) : localizeLawyerProfile(lawyer);
 };
 
 export const getPublicLawyerProfileReadiness = (lawyer: Lawyer): PublicLawyerProfileReadiness => {
@@ -277,8 +279,8 @@ export const getLawyerReviews = async (lawyerId: string): Promise<PublicLawyerRe
         responsivenessRating: Number(review.responsiveness_rating),
         text: review.review_text,
         lawyerReply: review.lawyer_reply || "",
-        consultationType: review.booking_requests?.consultation_type || "Συνεδρία",
-        type: review.booking_requests?.consultation_type || "Συνεδρία",
+        consultationType: localizeProfileText(review.booking_requests?.consultation_type || "Συνεδρία"),
+        type: localizeProfileText(review.booking_requests?.consultation_type || "Συνεδρία"),
         date: new Date(review.created_at).toLocaleDateString("el-GR", {
           day: "numeric",
           month: "long",

@@ -1,25 +1,41 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  ArrowUpRight,
   BarChart3,
+  BadgeCheck,
   BellRing,
+  CalendarCheck2,
+  CalendarClock,
   CalendarDays,
   CheckCircle2,
+  ChevronRight,
+  CircleAlert,
   Clock3,
   CreditCard,
+  FileCheck2,
   FileText,
-  MessageSquareQuote,
+  Gauge,
+  Landmark,
+  ListChecks,
+  MailCheck,
+  MapPin,
+  PhoneCall,
+  ReceiptText,
+  SearchCheck,
   Settings2,
   ShieldCheck,
-  Star,
+  SlidersHorizontal,
+  TimerReset,
+  WalletCards,
   Workflow,
   UserRoundCog,
   type LucideIcon,
 } from "lucide-react";
 import PartnerShell from "@/components/partner/PartnerShell";
 import { Button } from "@/components/ui/button";
-import { consultationModeLabels, type ConsultationMode, type Lawyer } from "@/data/lawyers";
+import { type ConsultationMode, type Lawyer } from "@/data/lawyers";
 import { getLawyerBaseProfileById, getPublicLawyerProfileReadiness } from "@/lib/lawyerRepository";
 import {
   clearPartnerSession,
@@ -28,24 +44,20 @@ import {
   fetchBookingsForLawyer,
   fetchDocumentsForLawyer,
   fetchPaymentsForLawyer,
-  fetchReviewsForLawyer,
   getPartnerSession,
   isPartnerSessionInvalidError,
   isVerifiedBooking,
-  updateLawyerReview,
   type StoredBooking,
   type StoredBookingDocument,
-  type StoredLawyerReview,
   type StoredPayment,
 } from "@/lib/platformRepository";
 import {
-  bookingStateLabels,
   canSubmitReview,
   getCanonicalBookingState,
   getCanonicalPaymentState,
   isBookingScheduled,
-  paymentStateLabels,
-  reviewPublicationStateLabels,
+  type BookingState,
+  type PaymentState,
 } from "@/lib/bookingState";
 import {
   applyPartnerWorkspaceToLawyer,
@@ -75,7 +87,6 @@ import {
   type PartnerPipelineItem,
 } from "@/lib/partnerCrmRepository";
 import { level4PipelineStatuses, type Level4PipelineStatus } from "@/lib/level4Marketplace";
-import { allowedMarketplaceCityNames, legalPracticeAreaLabels } from "@/lib/marketplaceTaxonomy";
 
 const navItems = [
   { id: "pipeline", label: "Ροή υποθέσεων", icon: Workflow },
@@ -84,7 +95,6 @@ const navItems = [
   { id: "availability", label: "Διαθεσιμότητα", icon: Clock3 },
   { id: "profile", label: "Προφίλ", icon: UserRoundCog },
   { id: "earnings", label: "Πληρωμές", icon: CreditCard },
-  { id: "reviews", label: "Κριτικές", icon: MessageSquareQuote },
   { id: "settings", label: "Ρυθμίσεις", icon: Settings2 },
 ] as const;
 
@@ -99,6 +109,14 @@ type SaveState = {
   message: string;
   tone: "success" | "error" | "info";
 };
+type DashboardTone = "navy" | "sage" | "amber" | "danger" | "neutral";
+type PartnerPriorityAction = {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  view: PartnerView;
+  tone: DashboardTone;
+};
 
 const partnerViewIds = new Set<PartnerView>(navItems.map((item) => item.id));
 const parsePartnerView = (value: string | null): PartnerView =>
@@ -107,7 +125,7 @@ const parsePartnerView = (value: string | null): PartnerView =>
 const viewMeta: Record<PartnerView, { title: string; description: string }> = {
   pipeline: {
     title: "Ροή υποθέσεων για κάθε στάδιο πελάτη.",
-    description: "Παρακολουθήστε κρατήσεις, πληρωμές, επερχόμενα ραντεβού, ολοκληρώσεις, εκκρεμείς αξιολογήσεις, πιθανές επιστροφές και υπενθυμίσεις συνέχειας.",
+    description: "Παρακολουθήστε κρατήσεις, πληρωμές, επερχόμενα ραντεβού, ολοκληρώσεις, πιθανές επιστροφές και υπενθυμίσεις συνέχειας.",
   },
   appointments: {
     title: "Ραντεβού και αιτήματα με καθαρή εικόνα ημέρας.",
@@ -115,7 +133,7 @@ const viewMeta: Record<PartnerView, { title: string; description: string }> = {
   },
   performance: {
     title: "Απόδοση συνεργασίας από μία ενιαία καρτέλα.",
-    description: "Παρακολουθήστε ζήτηση, πληρωμένες κρατήσεις, πρώτες συνεδρίες, κριτικές και λειτουργικές εκκρεμότητες.",
+    description: "Παρακολουθήστε ζήτηση, πληρωμένες κρατήσεις, πρώτες συνεδρίες και λειτουργικές εκκρεμότητες.",
   },
   availability: {
     title: "Διαθεσιμότητα που αποθηκεύεται άμεσα.",
@@ -129,10 +147,6 @@ const viewMeta: Record<PartnerView, { title: string; description: string }> = {
     title: "Πληρωμές, εκταμιεύσεις και τιμολόγια.",
     description: "Παρακολουθήστε ολοκληρωμένες συνεδρίες, έσοδα σε αναμονή και αποδείξεις συνεργασίας.",
   },
-  reviews: {
-    title: "Κριτικές από πραγματικά ραντεβού.",
-    description: "Απαντήστε δημόσια, σημάνετε προβληματικές κριτικές και παρακολουθήστε την εικόνα σας.",
-  },
   settings: {
     title: "Ρυθμίσεις λογαριασμού και λειτουργίας.",
     description: "Ελέγξτε ειδοποιήσεις, αυτόματη επιβεβαίωση, παράθυρο κράτησης και χρόνο κενού.",
@@ -140,6 +154,19 @@ const viewMeta: Record<PartnerView, { title: string; description: string }> = {
 };
 
 const consultationModeOptions: ConsultationMode[] = ["video", "phone", "inPerson"];
+const partnerConsultationModeLabels: Record<ConsultationMode, string> = {
+  video: "Βιντεοκλήση",
+  phone: "Τηλέφωνο",
+  inPerson: "Στο γραφείο",
+};
+const partnerPracticeAreaOptions = [
+  "Ενοχικό / οφειλές",
+  "Οικογενειακό δίκαιο",
+  "Τροχαία / αποζημιώσεις",
+  "Εργατικό δίκαιο",
+  "Μισθώσεις / ενοίκια / εξώσεις",
+];
+const partnerCityOptions = ["Αθήνα", "Θεσσαλονίκη", "Πειραιάς", "Ηράκλειο", "Πάτρα"];
 
 const getConsultationDescription = (profile: PartnerWorkspace["profile"], mode: ConsultationMode) => {
   if (mode === "phone") return profile.phoneDescription;
@@ -231,7 +258,6 @@ const PartnerPortal = () => {
   const [bookingsVersion, setBookingsVersion] = useState(0);
   const [partnerBookings, setPartnerBookings] = useState<StoredBooking[]>([]);
   const [partnerPayments, setPartnerPayments] = useState<StoredPayment[]>([]);
-  const [partnerReviews, setPartnerReviews] = useState<StoredLawyerReview[]>([]);
   const [partnerDocuments, setPartnerDocuments] = useState<StoredBookingDocument[]>([]);
   const [partnerCaseNotes, setPartnerCaseNotes] = useState<PartnerCaseNote[]>([]);
   const [partnerFollowups, setPartnerFollowups] = useState<PartnerFollowupTask[]>([]);
@@ -314,15 +340,13 @@ const PartnerPortal = () => {
     void Promise.all([
       fetchBookingsForLawyer(workspace.profile.lawyerId, session),
       fetchPaymentsForLawyer(workspace.profile.lawyerId, session),
-      fetchReviewsForLawyer(workspace.profile.lawyerId, true, session),
       fetchDocumentsForLawyer(workspace.profile.lawyerId, session),
       fetchPartnerCrmState(workspace.profile.lawyerId, session),
     ])
-      .then(([nextBookings, nextPayments, nextReviews, nextDocuments, nextCrm]) => {
+      .then(([nextBookings, nextPayments, nextDocuments, nextCrm]) => {
         if (!active) return;
         setPartnerBookings(nextBookings);
         setPartnerPayments(nextPayments);
-        setPartnerReviews(nextReviews);
         setPartnerDocuments(nextDocuments);
         setPartnerCaseNotes(nextCrm.notes);
         setPartnerFollowups(nextCrm.followups);
@@ -333,7 +357,6 @@ const PartnerPortal = () => {
         else {
           setPartnerBookings([]);
           setPartnerPayments([]);
-          setPartnerReviews([]);
           setPartnerDocuments([]);
           setPartnerCaseNotes([]);
           setPartnerFollowups([]);
@@ -387,11 +410,10 @@ const PartnerPortal = () => {
         bookings: partnerBookings,
         payments: partnerPayments,
         documents: partnerDocuments,
-        reviews: partnerReviews,
         notes: partnerCaseNotes,
         followups: partnerFollowups,
       }),
-    [partnerBookings, partnerCaseNotes, partnerDocuments, partnerFollowups, partnerPayments, partnerReviews],
+    [partnerBookings, partnerCaseNotes, partnerDocuments, partnerFollowups, partnerPayments],
   );
   const paymentForBooking = (bookingId: string) => partnerPayments.find((payment) => payment.bookingId === bookingId);
   const confirmedBookings = partnerBookings.filter((booking) => isBookingScheduled(booking, paymentForBooking(booking.id)));
@@ -408,11 +430,6 @@ const PartnerPortal = () => {
   const paidBookings = partnerPayments.filter((payment) => getCanonicalPaymentState(payment) === "paid").length;
   const failedPaymentCount = partnerPayments.filter((payment) => getCanonicalPaymentState(payment) === "failed").length;
   const refundIssueCount = partnerPayments.filter((payment) => getCanonicalPaymentState(payment) === "refund_requested").length;
-  const reviewRate = completedBookings.length ? Math.round((partnerReviews.length / completedBookings.length) * 100) : 0;
-  const pendingModerationCount = partnerReviews.filter((review) => review.status === "under_moderation" || review.status === "submitted").length;
-  const averageReview = partnerReviews.length
-    ? (partnerReviews.reduce((sum, review) => sum + review.rating, 0) / partnerReviews.length).toFixed(1)
-    : "0.0";
   const currentView = viewMeta[activeView];
   const hasUnsavedChanges = hasWorkspaceSaveChanges(workspace, savedWorkspace);
   const searchVisibility = useMemo(() => {
@@ -439,6 +456,169 @@ const PartnerPortal = () => {
       ...getPublicLawyerProfileReadiness(applyPartnerWorkspaceToLawyer(searchVisibilityBaseLawyer, workspace)),
     };
   }, [searchVisibilityBaseLawyer, workspace]);
+  const enabledAvailabilityDays = workspace.availability.filter((slot) => slot.enabled).length;
+  const openFollowupsCount = partnerFollowups.filter((task) => task.status === "open").length;
+  const activeNavItem = navItems.find((item) => item.id === activeView) ?? navItems[1];
+  const ActiveViewIcon = activeNavItem.icon;
+  const publicProfileStatus = searchVisibility.loading
+    ? "Έλεγχος δημόσιου προφίλ"
+    : searchVisibility.ready
+      ? "Έτοιμο για αναζήτηση"
+      : "Χρειάζεται συμπλήρωση";
+  const workspaceStatus = hasUnsavedChanges ? "Υπάρχουν πρόχειρες αλλαγές" : "Όλα συγχρονισμένα";
+  const heroHighlights = [
+    {
+      label: "Επόμενα ραντεβού",
+      value: String(confirmedBookings.length || displayBookings.length),
+      helper: confirmedBookings.length > 0 ? "επιβεβαιωμένες συνεδρίες" : "κρατήσεις προς διαχείριση",
+    },
+    {
+      label: "Ολοκληρωμένα",
+      value: String(completedBookings.length),
+      helper: "ραντεβού που έκλεισαν σωστά",
+    },
+    {
+      label: "Ανοιχτές συνέχειες",
+      value: String(openFollowupsCount),
+      helper: openFollowupsCount > 0 ? "υπενθυμίσεις που περιμένουν" : "καμία εκκρεμής συνέχεια",
+    },
+    {
+      label: "Διαθεσιμότητα",
+      value: String(enabledAvailabilityDays),
+      helper: enabledAvailabilityDays > 0 ? "ημέρες στο δημοσιευμένο πρόγραμμα" : "δεν υπάρχει ακόμα ανοιχτό πρόγραμμα",
+    },
+  ];
+  const readinessScore = searchVisibility.loading
+    ? 68
+    : searchVisibility.ready
+      ? 100
+      : Math.max(28, 100 - searchVisibility.issues.length * 18);
+  const nextBooking = confirmedBookings[0] || displayBookings[0];
+  const partnerPriorityActions: PartnerPriorityAction[] = [
+    ...(openFollowupsCount > 0
+      ? [
+          {
+            icon: BellRing,
+            title: `${openFollowupsCount} συνέχειες χρειάζονται κλείσιμο`,
+            description: "Δείτε τις υποθέσεις που έχουν υπενθύμιση και σημειώστε το επόμενο βήμα.",
+            view: "pipeline" as PartnerView,
+            tone: "amber" as DashboardTone,
+          },
+        ]
+      : []),
+    ...(nextBooking
+      ? [
+          {
+            icon: CalendarClock,
+            title: `Επόμενο ραντεβού: ${nextBooking.clientName}`,
+            description: `${nextBooking.dateLabel} στις ${nextBooking.time}. ${nextBooking.issueSummary || nextBooking.consultationType}`,
+            view: "appointments" as PartnerView,
+            tone: "navy" as DashboardTone,
+          },
+        ]
+      : []),
+    ...(!searchVisibility.loading && !searchVisibility.ready
+      ? [
+          {
+            icon: SearchCheck,
+            title: "Το δημόσιο προφίλ δεν περνά ακόμα τον έλεγχο",
+            description: `${searchVisibility.issues.length} σημεία κρατούν το προφίλ εκτός αναζήτησης.`,
+            view: "profile" as PartnerView,
+            tone: "danger" as DashboardTone,
+          },
+        ]
+      : []),
+    ...(enabledAvailabilityDays < 3
+      ? [
+          {
+            icon: Clock3,
+            title: "Χαμηλή κάλυψη διαθεσιμότητας",
+            description: "Ανοίξτε τουλάχιστον τρεις ημέρες για καλύτερη πιθανότητα κράτησης.",
+            view: "availability" as PartnerView,
+            tone: "amber" as DashboardTone,
+          },
+        ]
+      : []),
+    ...(pendingRevenueCents > 0
+      ? [
+          {
+            icon: WalletCards,
+            title: `${formatEuroCents(pendingRevenueCents)} σε οικονομική αναμονή`,
+            description: "Ελέγξτε ποιες κρατήσεις πρέπει να ολοκληρωθούν ή να εκκαθαριστούν.",
+            view: "earnings" as PartnerView,
+            tone: "sage" as DashboardTone,
+          },
+        ]
+      : []),
+  ].slice(0, 3);
+  const navBadges: Partial<Record<PartnerView, string>> = {
+    pipeline: pipelineItems.length > 0 ? String(pipelineItems.length) : undefined,
+    appointments: displayBookings.length > 0 ? String(displayBookings.length) : undefined,
+    performance: paidBookings > 0 ? String(paidBookings) : undefined,
+    availability: enabledAvailabilityDays > 0 ? String(enabledAvailabilityDays) : undefined,
+    profile: searchVisibility.ready ? "OK" : searchVisibility.loading ? "..." : String(searchVisibility.issues.length),
+    earnings: pendingRevenueCents > 0 ? formatEuroCents(pendingRevenueCents) : undefined,
+    settings: hasUnsavedChanges ? "Draft" : undefined,
+  };
+  const focusPanelByView: Record<PartnerView, { title: string; description: string; badge: string }> = {
+    pipeline: {
+      title: `${pipelineItems.length} ενεργές υποθέσεις στον κύκλο εργασίας`,
+      description:
+        openFollowupsCount > 0
+          ? `Υπάρχουν ${openFollowupsCount} ανοικτές συνέχειες που χρειάζονται παρακολούθηση.`
+          : "Οι νέες κρατήσεις και οι σημειώσεις σας συγκεντρώνονται σε ένα σημείο.",
+      badge: openFollowupsCount > 0 ? "Χρειάζεται follow-up" : "Ροή σε τάξη",
+    },
+    appointments: {
+      title: `${confirmedBookings.length || displayBookings.length} ραντεβού σε ενεργή διαχείριση`,
+      description:
+        confirmedBookings.length > 0
+          ? "Υπάρχουν επιβεβαιωμένες συνεδρίες που πρέπει να παρακολουθήσετε μέχρι την ολοκλήρωση."
+          : "Οι νέες κρατήσεις θα εμφανίζονται εδώ μόλις περάσουν τον έλεγχο επιβεβαίωσης.",
+      badge: confirmedBookings.length > 0 ? "Ημέρα σε εξέλιξη" : "Αναμονή νέων ραντεβού",
+    },
+    performance: {
+      title: `${paidBookings} πληρωμένες κρατήσεις στον συνεργατικό κύκλο`,
+      description:
+        failedPaymentCount + refundIssueCount > 0
+          ? `Υπάρχουν ${failedPaymentCount + refundIssueCount} οικονομικές εκκρεμότητες που επηρεάζουν την εικόνα του μήνα.`
+          : "Η απόδοση συγκεντρώνει ζήτηση, ολοκληρώσεις και λειτουργικές εκκρεμότητες.",
+      badge: failedPaymentCount + refundIssueCount > 0 ? "Θέλει έλεγχο" : "Σταθερή εικόνα",
+    },
+    availability: {
+      title: `${enabledAvailabilityDays} ημέρες ανοιχτές στο εβδομαδιαίο πρόγραμμα`,
+      description:
+        enabledAvailabilityDays >= 3
+          ? "Το δημόσιο πρόγραμμα έχει αρκετές διαθέσιμες ημέρες για να μην κόβεται η ζήτηση."
+          : "Ανεβάστε περισσότερες ενεργές ημέρες για να μη χάνεται ενδιαφέρον από το marketplace.",
+      badge: enabledAvailabilityDays >= 3 ? "Καλυμμένο πρόγραμμα" : "Χαμηλή κάλυψη",
+    },
+    profile: {
+      title: searchVisibility.ready ? "Το δημόσιο προφίλ μπορεί να εμφανιστεί στην αναζήτηση" : "Το δημόσιο προφίλ δεν είναι ακόμα έτοιμο",
+      description: searchVisibility.ready
+        ? "Ειδικότητες, τρόποι συνεδρίας και περιγραφή είναι αρκετά για δημόσια προβολή."
+        : searchVisibility.loading
+          ? "Γίνεται έλεγχος της τρέχουσας δημόσιας εικόνας."
+          : "Συμπληρώστε τα σημεία που λείπουν και αποθηκεύστε για να περάσει ο έλεγχος readiness.",
+      badge: publicProfileStatus,
+    },
+    earnings: {
+      title: `${formatEuroCents(pendingRevenueCents)} σε αναμονή και ${formatEuroCents(completedRevenueCents)} καθαρά`,
+      description:
+        pendingRevenueCents > 0
+          ? "Υπάρχουν πληρωμές που δεν έχουν κλείσει ακόμα στο οικονομικό flow."
+          : "Οι ολοκληρωμένες συνεδρίες έχουν ήδη μεταφερθεί στη συνολική εικόνα εσόδων.",
+      badge: pendingRevenueCents > 0 ? "Αναμονή εκκαθάρισης" : "Καθαρή εικόνα",
+    },
+    settings: {
+      title: workspace.notifications.weeklyDigest ? "Οι βασικές ειδοποιήσεις είναι ενεργές" : "Χρειάζεται έλεγχος ρυθμίσεων ειδοποιήσεων",
+      description: workspace.notifications.weeklyDigest
+        ? "Το σύστημα παραμένει ενεργό για νέα ραντεβού, SMS και εβδομαδιαία σύνοψη."
+        : "Ρυθμίστε digest και αυτόματη επιβεβαίωση ώστε να μην χάνεται λειτουργική συνέχεια.",
+      badge: workspace.notifications.weeklyDigest ? "Live ρυθμίσεις" : "Θέλει ρύθμιση",
+    },
+  };
+  const focusPanel = focusPanelByView[activeView];
 
   useEffect(() => {
     if (hasUnsavedChanges) return;
@@ -515,34 +695,6 @@ const PartnerPortal = () => {
         ...updates,
       },
     });
-  };
-
-  const updateReview = (reviewId: string, updates: Partial<StoredLawyerReview>) => {
-    setPartnerReviews((current) =>
-      current.map((review) => (review.id === reviewId ? { ...review, ...updates } : review)),
-    );
-    void updateLawyerReview(
-      reviewId,
-      {
-        reply: updates.reply,
-        status: updates.status,
-      },
-      session,
-    )
-      .then(() => {
-        setBookingsVersion((version) => version + 1);
-      })
-      .catch((error) => {
-        if (isPartnerSessionInvalidError(error)) {
-          handleExpiredPartnerSession();
-          return;
-        }
-        setProfileSaveState({
-          loading: false,
-          message: getPartnerWorkspaceSaveErrorMessage(error),
-          tone: "error",
-        });
-      });
   };
 
   const addPipelineNote = async (booking: StoredBooking, note: string) => {
@@ -663,7 +815,7 @@ const PartnerPortal = () => {
         ...current,
         [booking.id]: {
           loading: false,
-          message: "Η ολοκλήρωση ανοίγει μόνο αφού η πληρωμή έχει επιβεβαιωθεί. Ο πελάτης δεν μπορεί να αφήσει κριτική πριν πληρωθεί και ολοκληρωθεί η συμβουλευτική.",
+          message: "Η ολοκλήρωση ανοίγει μόνο αφού η πληρωμή έχει επιβεβαιωθεί.",
           tone: "error",
         },
       }));
@@ -689,7 +841,7 @@ const PartnerPortal = () => {
       [booking.id]: result.synced
         ? {
             loading: false,
-            message: "Η συμβουλευτική σημειώθηκε ως ολοκληρωμένη. Ο πελάτης μπορεί να αφήσει κριτική μετά τον έλεγχο.",
+            message: "Η συμβουλευτική σημειώθηκε ως ολοκληρωμένη.",
             tone: "success",
           }
         : {
@@ -796,74 +948,100 @@ const PartnerPortal = () => {
   };
 
   return (
-    <PartnerShell>
-      <section className="grid gap-6 xl:grid-cols-[0.28fr_0.72fr]">
-        <aside className="partner-dark-panel p-6 sm:p-7">
-          <div className="partner-dark-card-featured p-5">
-            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[hsl(var(--partner-gold))]">Χώρος συνεργάτη</p>
-            <h1 className="mt-4 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ivory))]">{workspace.profile.displayName}</h1>
-            <p className="mt-3 text-sm leading-7 text-white/72">{workspace.profile.officeName}</p>
+    <PartnerShell className="pb-8">
+      <section className="space-y-4">
+        <header className="partner-panel px-4 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--partner-navy))] text-white">
+                <ShieldCheck className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Πίνακας συνεργάτη</p>
+                <h1 className="truncate text-lg font-semibold tracking-[-0.02em] text-[hsl(var(--partner-ink))]">
+                  {workspace.profile.displayName || workspace.profile.officeName || email}
+                </h1>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
+              {workspace.profile.city ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-2.5 py-1 ring-1 ring-[hsl(var(--partner-line))]/70">
+                  <MapPin className="h-3.5 w-3.5" />
+                  {workspace.profile.city}
+                </span>
+              ) : null}
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/75 px-2.5 py-1 ring-1 ring-[hsl(var(--partner-line))]/70">
+                <BadgeCheck className="h-3.5 w-3.5" />
+                {publicProfileStatus}
+              </span>
+              <span className="rounded-full bg-white/75 px-2.5 py-1 ring-1 ring-[hsl(var(--partner-line))]/70">{workspaceStatus}</span>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleSignOut}
+                className="h-9 rounded-xl border-[hsl(var(--partner-line))] bg-white/80 px-3 text-xs font-bold text-[hsl(var(--partner-ink))] hover:bg-white"
+              >
+                Αποσύνδεση
+              </Button>
+            </div>
           </div>
+        </header>
 
-          <nav className="mt-6 space-y-2">
-            {navItems.map(({ id, label, icon: Icon }) => {
-              const active = activeView === id;
+        <div className="grid gap-4 xl:grid-cols-[250px_minmax(0,1fr)]">
+          <aside className="xl:sticky xl:top-[96px] xl:self-start">
+            <nav className="partner-panel p-2">
+              <div className="grid gap-1">
+                {navItems.map(({ id, label, icon: Icon }) => {
+                  const active = activeView === id;
+                  const badge = navBadges[id];
 
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => selectPartnerView(id)}
-                  className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${
-                    active ? "bg-white/12 text-white" : "text-white/68 hover:bg-white/6 hover:text-white"
-                  }`}
-                >
-                  <Icon className={`h-4 w-4 ${active ? "text-[hsl(var(--partner-gold))]" : "text-white/55"}`} />
-                  {label}
-                </button>
-              );
-            })}
-          </nav>
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => selectPartnerView(id)}
+                      className={`group flex min-h-10 w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                        active
+                          ? "bg-[hsl(var(--partner-navy))] text-white"
+                          : "text-[hsl(var(--partner-ink))] hover:bg-white/80"
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <Icon className={`h-4 w-4 shrink-0 ${active ? "text-[hsl(var(--partner-gold))]" : "text-[hsl(var(--partner-navy-soft))]"}`} />
+                        <span className="truncate">{label}</span>
+                      </span>
+                      {badge ? (
+                        <span className={`max-w-[60px] truncate rounded-full px-2 py-0.5 text-[10px] font-bold ${active ? "bg-white/14 text-white" : "bg-white/90 text-muted-foreground ring-1 ring-[hsl(var(--partner-line))]/60"}`}>
+                          {badge}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+          </aside>
 
-          <div className="mt-6 grid gap-3">
-            <div className="partner-dark-card p-5">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--partner-gold))]" />
-                <div>
-                  <p className="text-sm font-semibold text-white">Ασφαλής πρόσβαση</p>
-                  <p className="mt-1 text-sm leading-6 text-white/68">{email}</p>
+          <div className="space-y-4">
+            <section className="partner-panel px-4 py-3">
+              <div className="flex flex-col gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <ActiveViewIcon className="h-4 w-4 text-[hsl(var(--partner-navy-soft))]" />
+                    <h2 className="truncate text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">
+                      {activeNavItem.label}
+                    </h2>
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{currentView.description}</p>
                 </div>
               </div>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleSignOut}
-              className="h-11 rounded-[14px] border-white/14 bg-white/8 text-sm font-semibold text-white hover:bg-white/12 hover:text-white"
-            >
-              Αποσύνδεση
-            </Button>
-          </div>
-        </aside>
-
-        <div className="space-y-6">
-          <section className="partner-panel overflow-hidden p-7 sm:p-8">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-2xl">
-                <p className="partner-kicker">Πίνακας συνεργάτη</p>
-                <h2 className="mt-4 font-serif text-[2.6rem] leading-[1.02] tracking-[-0.03em] text-[hsl(var(--partner-ink))]">
-                  {currentView.title}
-                </h2>
-                <p className="mt-4 text-sm leading-7 text-muted-foreground">{currentView.description}</p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3 lg:w-[520px]">
-                <Metric label="Επόμενα" value={String(confirmedBookings.length || displayBookings.length)} helper="κρατήσεις" />
-                <Metric label="Σε αναμονή" value={formatEuroCents(pendingRevenueCents)} helper="προς εκκαθάριση" />
-                <Metric label="Αξιολόγηση" value={averageReview} helper={`${partnerReviews.length} κριτικές`} />
-              </div>
-            </div>
-          </section>
+              {profileSaveState.message ? (
+                <div className="mt-3">
+                  <SaveMessage saveState={profileSaveState} />
+                </div>
+              ) : null}
+            </section>
 
           {activeView === "performance" ? (
             <PartnerPerformanceDashboard
@@ -875,11 +1053,8 @@ const PartnerPortal = () => {
               completedFirstConsultations={completedBookings.length}
               responseSpeed={workspace.profile.bufferMinutes <= 30 ? "Γρήγορη διαχείριση" : `${workspace.profile.bufferMinutes} λεπτά κενό`}
               categoryPerformance={workspace.profile.specialties.slice(0, 3)}
-              reviewRate={reviewRate}
-              averageRating={averageReview}
               availabilityHealth={workspace.availability.filter((slot) => slot.enabled).length}
               missingProfileProof={searchVisibility.loading ? [] : searchVisibility.issues}
-              pendingModerationItems={pendingModerationCount}
               pendingPaymentIssues={failedPaymentCount + refundIssueCount}
             />
           ) : null}
@@ -939,10 +1114,6 @@ const PartnerPortal = () => {
             />
           ) : null}
 
-          {activeView === "reviews" ? (
-            <ReviewsView reviews={partnerReviews} updateReview={updateReview} />
-          ) : null}
-
           {activeView === "settings" ? (
             <SettingsView
               workspace={workspace}
@@ -954,6 +1125,7 @@ const PartnerPortal = () => {
             />
           ) : null}
         </div>
+        </div>
       </section>
     </PartnerShell>
   );
@@ -964,9 +1136,26 @@ const pipelineStatusLabels: Record<Level4PipelineStatus, string> = {
   paid: "Πληρωμένο",
   upcoming: "Επερχόμενο",
   completed: "Ολοκληρωμένο",
-  review_pending: "Αναμονή αξιολόγησης",
+  review_pending: "Μετά τη συνεδρία",
   refund_risk: "Πιθανή επιστροφή",
   follow_up_needed: "Χρειάζεται συνέχεια",
+};
+
+const partnerBookingStateLabels: Record<BookingState, string> = {
+  pending_confirmation: "Σε έλεγχο",
+  confirmed_unpaid: "Χρειάζεται πληρωμή",
+  confirmed_paid: "Επιβεβαιωμένο",
+  completed: "Ολοκληρωμένο",
+  cancelled: "Ακυρωμένο",
+};
+
+const partnerPaymentStateLabels: Record<PaymentState, string> = {
+  not_opened: "Δεν άνοιξε πληρωμή",
+  checkout_opened: "Άνοιξε checkout",
+  paid: "Πληρωμένο",
+  failed: "Απέτυχε",
+  refund_requested: "Αίτημα επιστροφής",
+  refunded: "Επιστράφηκε",
 };
 
 const formatEuroCents = (amountCents: number) => {
@@ -986,6 +1175,168 @@ const getPartnerNetCents = (payment?: StoredPayment, fallbackBooking?: StoredBoo
   return Math.max(0, grossCents - getPartnerFeeCents(payment));
 };
 
+const getToneClasses = (tone: DashboardTone) => {
+  if (tone === "sage") {
+    return "border-[hsl(var(--sage))]/25 bg-[hsl(var(--sage))]/10 text-[hsl(var(--sage-foreground))]";
+  }
+  if (tone === "amber") {
+    return "border-amber-300/45 bg-amber-50 text-amber-900";
+  }
+  if (tone === "danger") {
+    return "border-destructive/20 bg-destructive/10 text-destructive";
+  }
+  if (tone === "navy") {
+    return "border-[hsl(var(--partner-navy))]/15 bg-[hsl(var(--partner-navy))]/8 text-[hsl(var(--partner-navy-soft))]";
+  }
+  return "border-[hsl(var(--partner-line))] bg-white/72 text-[hsl(var(--partner-ink))]";
+};
+
+const CompactDarkMetric = ({ label, value }: { label: string; value: string }) => (
+  <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-3">
+    <p className="truncate text-[10px] font-bold uppercase tracking-[0.14em] text-white/44">{label}</p>
+    <p className="mt-1 truncate text-sm font-semibold text-white">{value}</p>
+  </div>
+);
+
+const PriorityActionCard = ({
+  action,
+  onSelect,
+}: {
+  action: PartnerPriorityAction;
+  onSelect: () => void;
+}) => {
+  const Icon = action.icon;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`group w-full rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(18,30,44,0.07)] ${getToneClasses(action.tone)}`}
+    >
+      <span className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/72">
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-bold leading-5">{action.title}</span>
+          <span className="mt-1 block text-xs leading-5 opacity-80">{action.description}</span>
+        </span>
+        <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 opacity-45 transition group-hover:opacity-80" />
+      </span>
+    </button>
+  );
+};
+
+const ReadinessRing = ({ score, label }: { score: number; label: string }) => {
+  const clampedScore = Math.max(0, Math.min(100, Math.round(score)));
+
+  return (
+    <div className="rounded-2xl border border-[hsl(var(--partner-line))] bg-white/72 p-4">
+      <div
+        className="flex h-14 w-14 items-center justify-center rounded-full text-sm font-bold text-[hsl(var(--partner-ink))]"
+        style={{ background: `conic-gradient(hsl(var(--sage)) ${clampedScore * 3.6}deg, rgba(18,30,44,0.08) 0deg)` }}
+      >
+        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white">{clampedScore}</span>
+      </div>
+      <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+    </div>
+  );
+};
+
+const SignalRow = ({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  tone: DashboardTone;
+}) => (
+  <div className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${getToneClasses(tone)}`}>
+    <span className="flex min-w-0 items-center gap-2">
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate text-[10px] font-bold uppercase tracking-[0.11em] opacity-75">{label}</span>
+    </span>
+    <span className="max-w-[140px] truncate text-sm font-bold">{value}</span>
+  </div>
+);
+
+const formatShortDate = (value?: string) => {
+  if (!value) return "Δεν έχει οριστεί";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString("el-GR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const getPipelineStatusTone = (status: Level4PipelineStatus): DashboardTone => {
+  if (status === "completed" || status === "paid") return "sage";
+  if (status === "refund_risk") return "danger";
+  if (status === "follow_up_needed") return "amber";
+  if (status === "upcoming") return "navy";
+  return "neutral";
+};
+
+const StageCard = ({ label, value, tone }: { label: string; value: string; tone: DashboardTone }) => (
+  <div className={`rounded-xl border px-3 py-2.5 ${getToneClasses(tone)}`}>
+    <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">{label}</p>
+    <p className="mt-1 text-xl font-semibold tracking-[-0.03em]">{value}</p>
+  </div>
+);
+
+const StatusPill = ({ tone, children }: { tone: DashboardTone; children: ReactNode }) => (
+  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] ${getToneClasses(tone)}`}>
+    {children}
+  </span>
+);
+
+const CaseFact = ({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) => (
+  <div className="min-w-0 rounded-xl border border-[hsl(var(--partner-line))] bg-white/72 px-3 py-2">
+    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.11em] text-muted-foreground">
+      <Icon className="h-3 w-3 shrink-0" />
+      <span className="truncate">{label}</span>
+    </div>
+    <p className="mt-1 truncate text-sm font-semibold text-[hsl(var(--partner-ink))]">{value}</p>
+  </div>
+);
+
+const PerformanceStep = ({
+  label,
+  value,
+  helper,
+  tone,
+}: {
+  label: string;
+  value: number;
+  helper: string;
+  tone: DashboardTone;
+}) => (
+  <div className={`rounded-xl border px-3 py-2.5 ${getToneClasses(tone)}`}>
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">{label}</p>
+        <p className="mt-0.5 text-xs font-semibold opacity-80">{helper}</p>
+      </div>
+      <p className="text-2xl font-semibold tracking-[-0.04em]">{value}</p>
+    </div>
+  </div>
+);
+
 const PipelineView = ({
   items,
   onAddNote,
@@ -1004,116 +1355,150 @@ const PipelineView = ({
     status,
     count: items.filter((item) => item.status === status).length,
   }));
+  const activeItems = items.filter((item) => item.status !== "completed");
+  const urgentItems = items.filter((item) => item.status === "refund_risk" || item.status === "follow_up_needed");
 
   return (
-    <section className="partner-panel p-7 sm:p-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className="partner-kicker">Ροή υποθέσεων</p>
-          <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Πελάτες ανά στάδιο</h3>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-            Δείτε ποιες υποθέσεις είναι κρατημένες, πληρωμένες, επερχόμενες, ολοκληρωμένες ή χρειάζονται αξιολόγηση, επιστροφή ή συνέχεια.
-          </p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:w-[520px]">
-          {counts.map((item) => (
-            <Metric key={item.status} label={pipelineStatusLabels[item.status]} value={String(item.count)} helper="πελάτες" />
-          ))}
-        </div>
+    <section className="space-y-4">
+      <div className="partner-panel p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="partner-kicker">Ροή υποθέσεων</p>
+              <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Υποθέσεις ανά στάδιο</h3>
+            </div>
+            <div className="grid grid-cols-3 gap-2 lg:w-[320px]">
+              <Metric label="Ενεργές" value={String(activeItems.length)} helper="σε διαχείριση" />
+              <Metric label="Επείγοντα" value={String(urgentItems.length)} helper="θέλουν έλεγχο" />
+              <Metric label="Σύνολο" value={String(items.length)} helper="υποθέσεις" />
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {counts.map((item) => (
+              <StageCard
+                key={item.status}
+                label={pipelineStatusLabels[item.status]}
+                value={String(item.count)}
+                tone={getPipelineStatusTone(item.status)}
+              />
+            ))}
+          </div>
       </div>
 
-      <div className="mt-6 grid gap-4">
+      <div className="grid gap-4">
         {items.length > 0 ? items.map((item) => {
           const noteDraft = noteDrafts[item.booking.id] || "";
           const followupTitle = followupTitles[item.booking.id] || "";
           const followupDate = followupDates[item.booking.id] || "";
+          const paymentState = item.payment ? getCanonicalPaymentState(item.payment) : null;
+          const bookingState = getCanonicalBookingState(item.booking);
+          const openFollowups = item.followups.filter((task) => task.status === "open");
+
           return (
-            <article key={item.booking.id} className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/70 p-5">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-[hsl(var(--partner-muted))]">{pipelineStatusLabels[item.status]}</p>
-                  <h4 className="mt-1 text-lg font-semibold text-[hsl(var(--partner-ink))]">{item.booking.clientName}</h4>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    {item.booking.consultationType} · {item.booking.dateLabel} {item.booking.time}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.booking.issueSummary || "Δεν έχει καταγραφεί περιγραφή υπόθεσης."}</p>
-                </div>
-                <select
-                  className="h-10 rounded-xl border border-[hsl(var(--partner-line))] bg-white px-3 text-sm font-semibold text-[hsl(var(--partner-ink))]"
-                  value={item.status}
-                  onChange={(event) => onChangeStatus(item.booking, event.target.value as Level4PipelineStatus)}
-                >
-                  {level4PipelineStatuses.map((status) => (
-                    <option key={status} value={status}>{pipelineStatusLabels[status]}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-4">
-                <Metric label="Πληρωμή" value={item.payment ? paymentStateLabels[getCanonicalPaymentState(item.payment)] : "καμία"} helper="κατάσταση" />
-                <Metric label="Έγγραφα" value={String(item.documents.length)} helper="ορατά αρχεία" />
-                <Metric label="Κριτικές" value={String(item.reviews.length)} helper="μετά την ολοκλήρωση" />
-                <Metric label="Συνέχειες" value={String(item.followups.filter((task) => task.status === "open").length)} helper="ανοιχτές υπενθυμίσεις" />
-              </div>
-
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                <div className="rounded-xl border border-[hsl(var(--partner-line))] bg-white/75 p-4">
-                  <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Ιδιωτικές σημειώσεις</p>
-                  <div className="mt-3 space-y-2">
-                    {item.privateNotes.slice(0, 3).map((note) => (
-                      <p key={note.id} className="rounded-lg bg-[hsl(var(--partner-cream))] px-3 py-2 text-xs leading-5 text-muted-foreground">{note.note}</p>
-                    ))}
+            <article key={item.booking.id} className="partner-panel overflow-hidden">
+              <div className="grid lg:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="p-4">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusPill tone={getPipelineStatusTone(item.status)}>{pipelineStatusLabels[item.status]}</StatusPill>
+                        <StatusPill tone={isVerifiedBooking(item.booking) ? "sage" : "amber"}>
+                          {isVerifiedBooking(item.booking) ? "Επαληθευμένο" : "Σε έλεγχο"}
+                        </StatusPill>
+                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{item.booking.referenceId}</span>
+                      </div>
+                      <h4 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[hsl(var(--partner-ink))]">{item.booking.clientName}</h4>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                        {item.booking.issueSummary || "Δεν έχει καταγραφεί περιγραφή υπόθεσης."}
+                      </p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <CaseFact icon={CalendarCheck2} label="Συνεδρία" value={`${item.booking.dateLabel} · ${item.booking.time}`} />
+                        <CaseFact icon={PhoneCall} label="Τύπος" value={item.booking.consultationType} />
+                        <CaseFact icon={ReceiptText} label="Πληρωμή" value={paymentState ? partnerPaymentStateLabels[paymentState] : "Καμία"} />
+                      </div>
+                    </div>
+                    <select
+                      className="partner-input h-11 xl:w-[220px]"
+                      value={item.status}
+                      onChange={(event) => onChangeStatus(item.booking, event.target.value as Level4PipelineStatus)}
+                    >
+                      {level4PipelineStatuses.map((status) => (
+                        <option key={status} value={status}>{pipelineStatusLabels[status]}</option>
+                      ))}
+                    </select>
                   </div>
-                  <textarea
-                    className="mt-3 min-h-20 w-full rounded-xl border border-[hsl(var(--partner-line))] bg-white px-3 py-2 text-sm"
-                    value={noteDraft}
-                    onChange={(event) => setNoteDrafts((current) => ({ ...current, [item.booking.id]: event.target.value }))}
-                    placeholder="Προσθήκη ιδιωτικής σημείωσης"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-2 rounded-xl"
-                    onClick={() => {
-                      onAddNote(item.booking, noteDraft);
-                      setNoteDrafts((current) => ({ ...current, [item.booking.id]: "" }));
-                    }}
-                  >
-                    Αποθήκευση σημείωσης
-                  </Button>
+
+                  <div className="mt-3 grid gap-2 md:grid-cols-3">
+                    <Metric label="Κράτηση" value={partnerBookingStateLabels[bookingState]} helper="τρέχουσα κατάσταση" />
+                    <Metric label="Έγγραφα" value={String(item.documents.length)} helper="ορατά αρχεία" />
+                    <Metric label="Συνέχειες" value={String(openFollowups.length)} helper="ανοιχτές υπενθυμίσεις" />
+                  </div>
                 </div>
 
-                <div className="rounded-xl border border-[hsl(var(--partner-line))] bg-white/75 p-4">
-                  <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Υπενθύμιση συνέχειας</p>
-                  <div className="mt-3 space-y-2">
-                    {item.followups.slice(0, 3).map((task) => (
-                      <p key={task.id} className="rounded-lg bg-[hsl(var(--partner-cream))] px-3 py-2 text-xs leading-5 text-muted-foreground">{task.title} · {task.dueAt}</p>
+                <div className="border-t border-[hsl(var(--partner-line))] bg-white/48 p-4 lg:border-l lg:border-t-0">
+                  <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Εσωτερική συνέχεια</p>
+                  <div className="mt-3 grid gap-2">
+                    {item.privateNotes.slice(0, 2).map((note) => (
+                      <div key={note.id} className="rounded-2xl border border-[hsl(var(--partner-line))] bg-white/80 px-3 py-3">
+                        <p className="text-xs leading-5 text-muted-foreground">{note.note}</p>
+                        <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{formatShortDate(note.createdAt)}</p>
+                      </div>
                     ))}
+                    {openFollowups.slice(0, 2).map((task) => (
+                      <div key={task.id} className="rounded-2xl border border-amber-300/45 bg-amber-50 px-3 py-3 text-amber-900">
+                        <p className="text-xs font-bold leading-5">{task.title}</p>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em]">{formatShortDate(task.dueAt)}</p>
+                      </div>
+                    ))}
+                    {item.privateNotes.length === 0 && openFollowups.length === 0 ? (
+                      <p className="rounded-2xl border border-dashed border-[hsl(var(--partner-line))] bg-white/60 px-3 py-3 text-xs leading-5 text-muted-foreground">
+                        Καμία σημείωση ή υπενθύμιση ακόμα.
+                      </p>
+                    ) : null}
                   </div>
-                  <input
-                    className="mt-3 h-10 w-full rounded-xl border border-[hsl(var(--partner-line))] bg-white px-3 text-sm"
-                    value={followupTitle}
-                    onChange={(event) => setFollowupTitles((current) => ({ ...current, [item.booking.id]: event.target.value }))}
-                    placeholder="Τίτλος υπενθύμισης"
-                  />
-                  <input
-                    className="mt-2 h-10 w-full rounded-xl border border-[hsl(var(--partner-line))] bg-white px-3 text-sm"
-                    type="datetime-local"
-                    value={followupDate}
-                    onChange={(event) => setFollowupDates((current) => ({ ...current, [item.booking.id]: event.target.value }))}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-2 rounded-xl"
-                    onClick={() => {
-                      onAddFollowup(item.booking, followupTitle, followupDate);
-                      setFollowupTitles((current) => ({ ...current, [item.booking.id]: "" }));
-                      setFollowupDates((current) => ({ ...current, [item.booking.id]: "" }));
-                    }}
-                  >
-                    Προσθήκη υπενθύμισης
-                  </Button>
+
+                  <div className="mt-3 grid gap-2">
+                    <textarea
+                      className="partner-textarea min-h-20"
+                      value={noteDraft}
+                      onChange={(event) => setNoteDrafts((current) => ({ ...current, [item.booking.id]: event.target.value }))}
+                      placeholder="Ιδιωτική σημείωση για το γραφείο"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 rounded-2xl border-[hsl(var(--partner-line))] bg-white/80 font-bold"
+                      onClick={() => {
+                        onAddNote(item.booking, noteDraft);
+                        setNoteDrafts((current) => ({ ...current, [item.booking.id]: "" }));
+                      }}
+                    >
+                      Αποθήκευση σημείωσης
+                    </Button>
+                    <input
+                      className="partner-input h-11"
+                      value={followupTitle}
+                      onChange={(event) => setFollowupTitles((current) => ({ ...current, [item.booking.id]: event.target.value }))}
+                      placeholder="Τίτλος υπενθύμισης"
+                    />
+                    <input
+                      className="partner-input h-11"
+                      type="datetime-local"
+                      value={followupDate}
+                      onChange={(event) => setFollowupDates((current) => ({ ...current, [item.booking.id]: event.target.value }))}
+                    />
+                    <Button
+                      type="button"
+                      className="h-11 rounded-2xl font-bold"
+                      onClick={() => {
+                        onAddFollowup(item.booking, followupTitle, followupDate);
+                        setFollowupTitles((current) => ({ ...current, [item.booking.id]: "" }));
+                        setFollowupDates((current) => ({ ...current, [item.booking.id]: "" }));
+                      }}
+                    >
+                      Προσθήκη υπενθύμισης
+                    </Button>
+                  </div>
                 </div>
               </div>
             </article>
@@ -1142,127 +1527,134 @@ const AppointmentsView = ({
   actionState: Record<string, BookingActionState>;
   onComplete: (booking?: StoredBooking) => void;
   onCancel: (booking?: StoredBooking) => void;
-}) => (
-  <section className="partner-panel p-7 sm:p-8">
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="partner-kicker">Ραντεβού</p>
-        <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Σήμερα και μετά</h3>
-      </div>
-      <Button variant="outline" className="rounded-xl border-[hsl(var(--partner-line))] bg-white/70 text-[hsl(var(--partner-ink))] hover:bg-white">
-        Προβολή ημερολογίου
-      </Button>
-    </div>
+}) => {
+  const scheduledCount = bookings.filter((booking) => isBookingScheduled(booking)).length;
+  const completedCount = bookings.filter((booking) => booking.status === "completed").length;
+  const reviewCount = bookings.filter((booking) => !isVerifiedBooking(booking)).length;
 
-    <div className="mt-6 space-y-4">
-      {bookings.length > 0 ? bookings.map((booking) => {
-        const bookingDocuments = documents.filter((document) => document.bookingId === booking.id);
-        const currentAction = actionState[booking.id];
-        const verified = isVerifiedBooking(booking);
-        const bookingState = getCanonicalBookingState(booking);
-        const canMarkComplete = bookingState === "confirmed_paid";
-
-        return (
-        <div key={booking.referenceId} className="rounded-[1.4rem] border border-[hsl(var(--partner-line))] bg-white/65 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-base font-semibold text-[hsl(var(--partner-ink))]">{booking.clientName}</p>
-                <span className="rounded-full bg-[hsl(var(--partner-navy-soft))]/10 px-2.5 py-1 text-[11px] font-bold text-[hsl(var(--partner-navy-soft))]">
-                  {bookingStateLabels[bookingState]}
-                </span>
-                {!verified ? (
-                  <span className="rounded-full border border-destructive/20 bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive">
-                    Σε έλεγχο
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">{booking.issueSummary || booking.consultationType}</p>
-              {!verified ? (
-                <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-semibold leading-5 text-destructive">
-                  Το ραντεβού δεν έχει ολοκληρώσει τον έλεγχο συστήματος. Μην το σημάνετε ως ολοκληρωμένο και μην προχωρήσετε σε χρέωση πριν επιβεβαιωθεί.
-                </p>
-              ) : null}
-              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{booking.referenceId}</p>
-            </div>
-            <div className="flex flex-col gap-3 text-left lg:items-end lg:text-right">
-              <div>
-                <p className="text-sm font-semibold text-[hsl(var(--partner-navy-soft))]">{booking.dateLabel} | {booking.time}</p>
-                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{booking.consultationType} · €{booking.price}</p>
-              </div>
-              {isBookingScheduled(booking) && verified ? (
-                <div className="flex flex-col gap-2 sm:flex-row lg:justify-end">
-                  <Button type="button" onClick={() => onComplete(booking)} disabled={currentAction?.loading || !canMarkComplete} className="rounded-xl font-semibold">
-                    {canMarkComplete ? "Σήμανση ολοκληρωμένου" : "Αναμονή πληρωμής"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => onCancel(booking)}
-                    disabled={currentAction?.loading}
-                    className="rounded-xl border-destructive/25 font-semibold text-destructive hover:text-destructive"
-                  >
-                    Ακύρωση 
-                  </Button>
-                </div>
-              ) : isBookingScheduled(booking) && !verified ? (
-                <Button type="button" disabled className="rounded-xl font-semibold">
-                  Χρειάζεται επιβεβαίωση κράτησης
-                  <span className="hidden">
-                  Επιβεβαίωση ολοκλήρωσης κράτησης
-                  </span>
-                </Button>
-              ) : null}
-            </div>
+  return (
+    <section className="space-y-4">
+      <section className="partner-panel p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="partner-kicker">Ατζέντα</p>
+            <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Ραντεβού</h3>
           </div>
-          {currentAction?.message ? (
-            <p
-              className={`mt-4 rounded-xl border px-3 py-2 text-sm font-semibold ${
-                currentAction.tone === "success"
-                  ? "border-[hsl(var(--sage))]/25 bg-[hsl(var(--sage))]/10 text-[hsl(var(--sage-foreground))]"
-                  : currentAction.tone === "error"
-                    ? "border-destructive/20 bg-destructive/10 text-destructive"
-                    : "border-[hsl(var(--partner-navy-soft))]/20 bg-[hsl(var(--partner-navy-soft))]/10 text-[hsl(var(--partner-navy-soft))]"
-              }`}
-            >
-              {currentAction.message}
-            </p>
-          ) : null}
-          {bookingDocuments.length > 0 ? (
-            <div className="mt-4 rounded-[1rem] border border-[hsl(var(--partner-line))] bg-white/55 p-4">
-              <p className="flex items-center gap-2 text-sm font-semibold text-[hsl(var(--partner-ink))]">
-                <FileText className="h-4 w-4" />
-                Έγγραφα πελάτη
-              </p>
-              <div className="mt-3 grid gap-2">
-                {bookingDocuments.map((document) => (
-                  <a
-                    key={document.id}
-                    href={document.downloadUrl || undefined}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={`rounded-xl border border-[hsl(var(--partner-line))] bg-white/70 px-3 py-2 text-sm font-semibold ${
-                      document.downloadUrl ? "text-[hsl(var(--partner-ink))]" : "pointer-events-none text-muted-foreground"
-                    }`}
-                  >
-                    {document.name}
-                  </a>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          <div className="grid grid-cols-4 gap-2 lg:min-w-[460px]">
+            <Metric label="Πρόγραμμα" value={String(scheduledCount)} helper="ενεργά" />
+            <Metric label="Ολοκλ." value={String(completedCount)} helper="κλειστά" />
+            <Metric label="Έλεγχος" value={String(reviewCount)} helper="κρατήσεις" />
+            <Metric label="Έγγραφα" value={String(documents.length)} helper="αρχεία" />
+          </div>
         </div>
-        );
-      }) : (
-        <EmptyPartnerState
-          icon={CalendarDays}
-          title="Δεν υπάρχουν πραγματικές κρατήσεις"
-          description="Οι νέες κρατήσεις θα εμφανίζονται εδώ μόλις περάσουν τον έλεγχο κράτησης."
-        />
-      )}
-    </div>
-  </section>
-);
+
+        <div className="mt-4 grid gap-3">
+          {bookings.length > 0 ? bookings.map((booking) => {
+            const bookingDocuments = documents.filter((document) => document.bookingId === booking.id);
+            const currentAction = actionState[booking.id];
+            const verified = isVerifiedBooking(booking);
+            const bookingState = getCanonicalBookingState(booking);
+            const canMarkComplete = bookingState === "confirmed_paid";
+            const scheduled = isBookingScheduled(booking);
+
+            return (
+              <article key={booking.referenceId} className="rounded-2xl border border-[hsl(var(--partner-line))] bg-white/68 p-4">
+                <div className="grid gap-4 lg:grid-cols-[120px_minmax(0,1fr)_260px] lg:items-start">
+                  <div className="rounded-xl border border-[hsl(var(--partner-line))] bg-[hsl(var(--partner-ivory))]/80 p-3 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{booking.dateLabel}</p>
+                    <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">{booking.time}</p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{booking.consultationType}</p>
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusPill tone={verified ? "sage" : "danger"}>{verified ? "Επαληθευμένο" : "Σε έλεγχο"}</StatusPill>
+                      <StatusPill tone={bookingState === "confirmed_paid" ? "sage" : "amber"}>{partnerBookingStateLabels[bookingState]}</StatusPill>
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{booking.referenceId}</span>
+                    </div>
+                    <h4 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[hsl(var(--partner-ink))]">{booking.clientName}</h4>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{booking.issueSummary || "Δεν υπάρχει διαθέσιμη περιγραφή υπόθεσης."}</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <CaseFact icon={PhoneCall} label="Τηλέφωνο" value={booking.clientPhone || "Δεν δηλώθηκε"} />
+                      <CaseFact icon={MailCheck} label="Email" value={booking.clientEmail || "Δεν δηλώθηκε"} />
+                      <CaseFact icon={WalletCards} label="Αμοιβή" value={formatEuroCents(booking.price * 100)} />
+                    </div>
+                    {!verified ? (
+                      <p className="mt-4 rounded-2xl border border-destructive/20 bg-destructive/10 px-3 py-3 text-xs font-semibold leading-5 text-destructive">
+                        Περιμένετε επιβεβαίωση συστήματος πριν σημάνετε ολοκλήρωση ή πριν ανοίξετε οικονομική συνέχεια.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-3">
+                    {scheduled && verified ? (
+                      <>
+                        <Button type="button" onClick={() => onComplete(booking)} disabled={currentAction?.loading || !canMarkComplete} className="h-11 rounded-2xl font-bold">
+                          {canMarkComplete ? "Σήμανση ολοκληρωμένου" : "Αναμονή πληρωμής"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => onCancel(booking)}
+                          disabled={currentAction?.loading}
+                          className="h-11 rounded-2xl border-destructive/25 bg-white/75 font-bold text-destructive hover:text-destructive"
+                        >
+                          Ακύρωση ή αλλαγή ώρας
+                        </Button>
+                      </>
+                    ) : scheduled && !verified ? (
+                      <Button type="button" disabled className="h-11 rounded-2xl font-bold">
+                        Χρειάζεται επιβεβαίωση
+                      </Button>
+                    ) : (
+                      <StatusPill tone={booking.status === "completed" ? "sage" : "neutral"}>{partnerBookingStateLabels[bookingState]}</StatusPill>
+                    )}
+
+                    <div className="rounded-2xl border border-[hsl(var(--partner-line))] bg-white/72 p-3">
+                      <p className="flex items-center gap-2 text-sm font-semibold text-[hsl(var(--partner-ink))]">
+                        <FileText className="h-4 w-4" />
+                        Έγγραφα ({bookingDocuments.length})
+                      </p>
+                      <div className="mt-2 grid gap-2">
+                        {bookingDocuments.length > 0 ? bookingDocuments.slice(0, 3).map((document) => (
+                          <a
+                            key={document.id}
+                            href={document.downloadUrl || undefined}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`truncate rounded-xl border border-[hsl(var(--partner-line))] bg-white/80 px-3 py-2 text-xs font-semibold ${
+                              document.downloadUrl ? "text-[hsl(var(--partner-ink))]" : "pointer-events-none text-muted-foreground"
+                            }`}
+                          >
+                            {document.name}
+                          </a>
+                        )) : (
+                          <p className="text-xs leading-5 text-muted-foreground">Δεν υπάρχουν ορατά αρχεία για αυτό το ραντεβού.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {currentAction?.message ? (
+                  <div className="mt-4">
+                    <SaveMessage saveState={currentAction} />
+                  </div>
+                ) : null}
+              </article>
+            );
+          }) : (
+            <EmptyPartnerState
+              icon={CalendarDays}
+              title="Δεν υπάρχουν πραγματικές κρατήσεις"
+              description="Οι νέες κρατήσεις θα εμφανίζονται εδώ μόλις περάσουν τον έλεγχο κράτησης."
+            />
+          )}
+        </div>
+      </section>
+    </section>
+  );
+};
 
 const AvailabilityView = ({
   workspace,
@@ -1278,61 +1670,85 @@ const AvailabilityView = ({
   onSave: () => void;
   hasUnsavedChanges: boolean;
   saveState: SaveState;
-}) => (
-  <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-    <div className="partner-panel p-7 sm:p-8">
-      <div>
-        <p className="partner-kicker">Εβδομαδιαίο πρόγραμμα</p>
-        <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Διαθέσιμες ώρες</h3>
-      </div>
-      <div className="mt-6 space-y-3">
-        {workspace.availability.map((slot) => (
-          <div key={slot.day} className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-4">
-            <div className="grid gap-3 md:grid-cols-[1fr_0.75fr_0.75fr_1.2fr_auto] md:items-end">
-              <Field label={slot.day}>
-                <button
-                  type="button"
-                  onClick={() => updateAvailability(slot.day, { enabled: !slot.enabled })}
-                  className={`partner-chip ${slot.enabled ? "partner-chip-active" : ""}`}
-                >
-                  {slot.enabled ? "Ανοιχτό" : "Κλειστό"}
-                </button>
-              </Field>
-              <Field label="Από">
-                <input className="partner-input" value={slot.start} onChange={(event) => updateAvailability(slot.day, { start: event.target.value })} />
-              </Field>
-              <Field label="Έως">
-                <input className="partner-input" value={slot.end} onChange={(event) => updateAvailability(slot.day, { end: event.target.value })} />
-              </Field>
-              <Field label="Σημείωση">
-                <input className="partner-input" value={slot.note} onChange={(event) => updateAvailability(slot.day, { note: event.target.value })} />
-              </Field>
-              <CheckCircle2 className={`mb-3 h-5 w-5 ${slot.enabled ? "text-[hsl(var(--sage))]" : "text-muted-foreground/40"}`} />
+}) => {
+  const enabledSlots = workspace.availability.filter((slot) => slot.enabled);
+  const coverageTone: DashboardTone = enabledSlots.length >= 4 ? "sage" : enabledSlots.length >= 2 ? "amber" : "danger";
+
+  return (
+    <section className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="partner-panel p-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="partner-kicker">Εβδομαδιαίο πρόγραμμα</p>
+              <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Ώρες κράτησης</h3>
+            </div>
+            <StatusPill tone={coverageTone}>{enabledSlots.length}/5 ημέρες ενεργές</StatusPill>
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            {workspace.availability.map((slot) => (
+              <div key={slot.day} className={`rounded-2xl border px-3 py-3 transition ${slot.enabled ? "border-[hsl(var(--partner-line))] bg-white/72" : "border-dashed border-[hsl(var(--partner-line))] bg-white/38"}`}>
+                <div className="grid gap-3 lg:grid-cols-[150px_1fr_1fr_minmax(180px,1.2fr)] lg:items-end">
+                  <div>
+                    <p className="text-sm font-bold text-[hsl(var(--partner-ink))]">{slot.day}</p>
+                    <button
+                      type="button"
+                      onClick={() => updateAvailability(slot.day, { enabled: !slot.enabled })}
+                      className={`mt-2 inline-flex min-w-[96px] items-center justify-center rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+                        slot.enabled
+                          ? "border-[hsl(var(--sage))]/25 bg-[hsl(var(--sage))]/10 text-[hsl(var(--sage-foreground))]"
+                          : "border-[hsl(var(--partner-line))] bg-white/70 text-muted-foreground"
+                      }`}
+                    >
+                      {slot.enabled ? "Ανοιχτό" : "Κλειστό"}
+                    </button>
+                  </div>
+                  <Field label="Από">
+                    <input type="time" className="partner-input h-12" value={slot.start} onChange={(event) => updateAvailability(slot.day, { start: event.target.value })} />
+                  </Field>
+                  <Field label="Έως">
+                    <input type="time" className="partner-input h-12" value={slot.end} onChange={(event) => updateAvailability(slot.day, { end: event.target.value })} />
+                  </Field>
+                  <Field label="Σημείωση για το πρόγραμμα">
+                    <input className="partner-input h-12" value={slot.note} onChange={(event) => updateAvailability(slot.day, { note: event.target.value })} placeholder="π.χ. μόνο επείγοντα" />
+                  </Field>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <aside className="space-y-4">
+          <div className="partner-panel p-4">
+            <p className="partner-kicker">Υγεία marketplace</p>
+            <div className="mt-3 grid gap-2">
+              <SignalRow icon={Clock3} label="Κάλυψη" value={`${enabledSlots.length} ημέρες`} tone={coverageTone} />
+              <SignalRow icon={TimerReset} label="Κενό" value={`${workspace.profile.bufferMinutes} λεπτά`} tone={workspace.profile.bufferMinutes <= 30 ? "sage" : "amber"} />
+              <SignalRow icon={CalendarClock} label="Παράθυρο" value={`${workspace.profile.bookingWindowDays} ημέρες`} tone={workspace.profile.bookingWindowDays >= 14 ? "sage" : "amber"} />
             </div>
           </div>
-        ))}
-      </div>
-    </div>
 
-    <div className="partner-panel p-7">
-      <p className="partner-kicker">Κανόνες κράτησης</p>
-      <div className="mt-5 grid gap-4">
-        <NumberField label="Χρόνος κενού ανά ραντεβού" value={workspace.profile.bufferMinutes} suffix="λεπτά" onChange={(bufferMinutes) => updateProfile({ bufferMinutes })} />
-        <NumberField label="Παράθυρο κράτησης" value={workspace.profile.bookingWindowDays} suffix="ημέρες" onChange={(bookingWindowDays) => updateProfile({ bookingWindowDays })} />
-        <ToggleRow
-          title="Αυτόματη επιβεβαίωση"
-          description="Οι νέες κρατήσεις επιβεβαιώνονται χωρίς χειροκίνητο έλεγχο."
-          enabled={workspace.profile.autoConfirm}
-          onToggle={() => updateProfile({ autoConfirm: !workspace.profile.autoConfirm })}
-        />
+          <div className="partner-panel p-4">
+            <p className="partner-kicker">Κανόνες κράτησης</p>
+            <div className="mt-3 grid gap-3">
+              <NumberField label="Χρόνος κενού ανά ραντεβού" value={workspace.profile.bufferMinutes} suffix="λεπτά" onChange={(bufferMinutes) => updateProfile({ bufferMinutes })} />
+              <NumberField label="Παράθυρο κράτησης" value={workspace.profile.bookingWindowDays} suffix="ημέρες" onChange={(bookingWindowDays) => updateProfile({ bookingWindowDays })} />
+              <ToggleRow
+                title="Αυτόματη επιβεβαίωση"
+                description="Οι νέες κρατήσεις μπαίνουν στο πρόγραμμα χωρίς χειροκίνητη έγκριση."
+                enabled={workspace.profile.autoConfirm}
+                onToggle={() => updateProfile({ autoConfirm: !workspace.profile.autoConfirm })}
+              />
+            </div>
+          </div>
+        </aside>
       </div>
-    </div>
 
-    <div className="lg:col-span-2">
       <SectionSaveFooter onSave={onSave} saveState={saveState} hasUnsavedChanges={hasUnsavedChanges} />
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 const ProfileView = ({
   workspace,
@@ -1358,162 +1774,210 @@ const ProfileView = ({
   onProfilePhotoSubmit: (file: File) => Promise<void>;
   hasUnsavedChanges: boolean;
   saveState: SaveState;
-}) => (
-  <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-    <div className="partner-panel p-7 sm:p-8">
-      <div>
-        <p className="partner-kicker">Δημόσια παρουσία</p>
-        <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Στοιχεία προφίλ</h3>
-      </div>
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <Field label="Αναγνωριστικό επαληθευμένου προφίλ δικηγόρου">
-          <div className="rounded-xl border border-[hsl(var(--partner-line))] bg-white/55 px-3 py-3 text-sm font-semibold text-muted-foreground">
-            {workspace.profile.lawyerId}
+}) => {
+  const activeModes = workspace.profile.consultationModes;
+
+  return (
+    <section className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="partner-panel p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="partner-kicker">Δημόσια παρουσία</p>
+              <h3 className="mt-1 truncate text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">
+                {workspace.profile.displayName || "Προφίλ δικηγόρου"}
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">{workspace.profile.primarySpecialty} · {workspace.profile.city}</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 lg:w-[360px]">
+              <Metric label="Ειδικότητες" value={String(workspace.profile.specialties.length)} helper="κατηγορίες" />
+              <Metric label="Τρόποι" value={String(activeModes.length)} helper="συνεδρίες" />
+              <Metric label="Γλώσσες" value={String(workspace.profile.languages.length)} helper="δημόσια" />
+            </div>
           </div>
-        </Field>
-        <Field label="Εμφανιζόμενο όνομα">
-          <input className="partner-input" value={workspace.profile.displayName} onChange={(event) => updateProfile({ displayName: event.target.value })} />
-        </Field>
-        <Field label="Κύρια ειδικότητα">
-          <select className="partner-input" value={workspace.profile.primarySpecialty} onChange={(event) => updateProfile({ primarySpecialty: event.target.value, specialties: Array.from(new Set([event.target.value, ...workspace.profile.specialties])).filter(Boolean) })}>
-            {legalPracticeAreaLabels.map((area) => (
-              <option key={area} value={area}>{area}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Γραφείο">
-          <input className="partner-input" value={workspace.profile.officeName} onChange={(event) => updateProfile({ officeName: event.target.value })} />
-        </Field>
-        <Field label="Πόλη">
-          <select className="partner-input" value={workspace.profile.city} onChange={(event) => updateProfile({ city: event.target.value })}>
-            {allowedMarketplaceCityNames.map((city) => (
-              <option key={city} value={city}>{city}</option>
-            ))}
-          </select>
-        </Field>
-        <NumberField
-          label="Έτη εμπειρίας"
-          value={workspace.profile.experienceYears}
-          suffix="έτη"
-          onChange={(experienceYears) => updateProfile({ experienceYears })}
-        />
-        <Field label="Περιοχή εξυπηρέτησης">
-          <input className="partner-input" value={workspace.profile.serviceArea} onChange={(event) => updateProfile({ serviceArea: event.target.value })} />
-        </Field>
-        <Field label="Ειδικότητες">
-          <div className="flex flex-wrap gap-2 rounded-xl border border-[hsl(var(--partner-line))] bg-white/70 p-3">
-            {legalPracticeAreaLabels.map((area) => {
-              const active = workspace.profile.specialties.includes(area);
-              return (
-                <button
-                  key={area}
-                  type="button"
-                  onClick={() => {
-                    const specialties = active
-                      ? workspace.profile.specialties.filter((item) => item !== area)
-                      : [...workspace.profile.specialties, area];
-                    updateProfile({
-                      specialties,
-                      primarySpecialty: specialties.includes(workspace.profile.primarySpecialty)
-                        ? workspace.profile.primarySpecialty
-                        : specialties[0] || workspace.profile.primarySpecialty,
-                    });
-                  }}
-                  className={`partner-chip ${active ? "partner-chip-active" : ""}`}
-                >
-                  {area}
-                </button>
-              );
-            })}
-          </div>
-        </Field>
-        <Field label="Γλώσσες">
-          <input className="partner-input" value={formatListInput(workspace.profile.languages)} onChange={(event) => updateProfile({ languages: parseListInput(event.target.value) })} />
-        </Field>
-      </div>
-      <Field label="Ιδανικός/ή για">
-        <textarea
-          value={workspace.profile.bestFor}
-          onChange={(event) => updateProfile({ bestFor: event.target.value })}
-          className="partner-input min-h-24 py-3"
-        />
-      </Field>
-      <Field label="Σύντομη περιγραφή">
-        <textarea
-          value={workspace.profile.bio}
-          onChange={(event) => updateProfile({ bio: event.target.value })}
-          className="partner-input min-h-28 py-3"
-        />
-      </Field>
-    </div>
-
-    <div className="space-y-6">
-      <ProfilePhotoModerationCard
-        photoState={profilePhotoState}
-        uploadState={profilePhotoUploadState}
-        onSubmit={onProfilePhotoSubmit}
-      />
-
-      <SearchVisibilityCard searchVisibility={searchVisibility} hasUnsavedChanges={hasUnsavedChanges} />
-
-      <div className="partner-panel p-7">
-        <p className="partner-kicker">Τιμές</p>
-        <div className="mt-5 grid gap-4">
-          <NumberField label={consultationModeLabels.video} value={workspace.profile.videoPrice} suffix="€" onChange={(videoPrice) => updateProfile({ videoPrice })} />
-          <NumberField label={consultationModeLabels.phone} value={workspace.profile.phonePrice} suffix="€" onChange={(phonePrice) => updateProfile({ phonePrice })} />
-          <NumberField label={consultationModeLabels.inPerson} value={workspace.profile.inPersonPrice} suffix="€" onChange={(inPersonPrice) => updateProfile({ inPersonPrice })} />
         </div>
+
+        <SearchVisibilityCard searchVisibility={searchVisibility} hasUnsavedChanges={hasUnsavedChanges} />
       </div>
 
-      <div className="partner-panel p-7">
-        <p className="partner-kicker">Τρόποι συνεδρίας</p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {consultationModeOptions.map((mode) => {
-            const active = workspace.profile.consultationModes.includes(mode);
-            return (
-              <button
-                key={mode}
-                type="button"
-                onClick={() =>
-                  updateProfile({
-                    consultationModes: active
-                      ? workspace.profile.consultationModes.filter((item) => item !== mode)
-                      : [...workspace.profile.consultationModes, mode],
-                  })
-                }
-                className={`partner-chip ${active ? "partner-chip-active" : ""}`}
-              >
-                {consultationModeLabels[mode]}
-              </button>
-            );
-          })}
-        </div>
-        <div className="mt-5 grid gap-4">
-          {consultationModeOptions.map((mode) => (
-            <Field key={mode} label={`Περιγραφή ${consultationModeLabels[mode]}`}>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="space-y-4">
+          <section className="partner-panel p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="partner-kicker">Βασικά στοιχεία</p>
+                <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Ταυτότητα και τοποθέτηση</h3>
+              </div>
+              <BadgeCheck className="h-5 w-5 text-[hsl(var(--sage))]" />
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <Field label="Αναγνωριστικό επαληθευμένου προφίλ δικηγόρου">
+                <div className="rounded-xl border border-[hsl(var(--partner-line))] bg-white/65 px-3 py-2.5 text-sm font-semibold text-muted-foreground">
+                  {workspace.profile.lawyerId}
+                </div>
+              </Field>
+              <Field label="Εμφανιζόμενο όνομα">
+                <input className="partner-input" value={workspace.profile.displayName} onChange={(event) => updateProfile({ displayName: event.target.value })} />
+              </Field>
+              <Field label="Γραφείο">
+                <input className="partner-input" value={workspace.profile.officeName} onChange={(event) => updateProfile({ officeName: event.target.value })} />
+              </Field>
+              <Field label="Πόλη">
+                <select className="partner-input" value={workspace.profile.city} onChange={(event) => updateProfile({ city: event.target.value })}>
+                  {partnerCityOptions.map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Κύρια ειδικότητα">
+                <select className="partner-input" value={workspace.profile.primarySpecialty} onChange={(event) => updateProfile({ primarySpecialty: event.target.value, specialties: Array.from(new Set([event.target.value, ...workspace.profile.specialties])).filter(Boolean) })}>
+                  {partnerPracticeAreaOptions.map((area) => (
+                    <option key={area} value={area}>{area}</option>
+                  ))}
+                </select>
+              </Field>
+              <NumberField
+                label="Έτη εμπειρίας"
+                value={workspace.profile.experienceYears}
+                suffix="έτη"
+                onChange={(experienceYears) => updateProfile({ experienceYears })}
+              />
+              <Field label="Περιοχή εξυπηρέτησης">
+                <input className="partner-input" value={workspace.profile.serviceArea} onChange={(event) => updateProfile({ serviceArea: event.target.value })} />
+              </Field>
+              <Field label="Γλώσσες">
+                <input className="partner-input" value={formatListInput(workspace.profile.languages)} onChange={(event) => updateProfile({ languages: parseListInput(event.target.value) })} />
+              </Field>
+            </div>
+          </section>
+
+          <section className="partner-panel p-4">
+            <p className="partner-kicker">Ειδικότητες</p>
+            <div className="mt-3 flex flex-wrap gap-2 rounded-2xl border border-[hsl(var(--partner-line))] bg-white/60 p-3">
+              {partnerPracticeAreaOptions.map((area) => {
+                const active = workspace.profile.specialties.includes(area);
+                return (
+                  <button
+                    key={area}
+                    type="button"
+                    onClick={() => {
+                      const specialties = active
+                        ? workspace.profile.specialties.filter((item) => item !== area)
+                        : [...workspace.profile.specialties, area];
+                      updateProfile({
+                        specialties,
+                        primarySpecialty: specialties.includes(workspace.profile.primarySpecialty)
+                          ? workspace.profile.primarySpecialty
+                          : specialties[0] || workspace.profile.primarySpecialty,
+                      });
+                    }}
+                    className={`partner-chip ${active ? "partner-chip-active" : ""}`}
+                  >
+                    {area}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="partner-panel p-4">
+            <p className="partner-kicker">Κείμενα που βλέπει ο πελάτης</p>
+            <Field label="Ιδανικός/ή για">
               <textarea
-                value={getConsultationDescription(workspace.profile, mode)}
-                onChange={(event) => updateProfile(buildConsultationDescriptionUpdate(mode, event.target.value))}
-                className="partner-input min-h-24 py-3"
+                value={workspace.profile.bestFor}
+                onChange={(event) => updateProfile({ bestFor: event.target.value })}
+                className="partner-textarea min-h-28"
               />
             </Field>
-          ))}
-        </div>
-        <Field label="Πολιτική ακύρωσης">
-          <textarea
-            value={workspace.profile.cancellationPolicy}
-            onChange={(event) => updateProfile({ cancellationPolicy: event.target.value })}
-            className="partner-input min-h-24 py-3"
-          />
-        </Field>
-      </div>
-    </div>
+            <Field label="Σύντομη περιγραφή">
+              <textarea
+                value={workspace.profile.bio}
+                onChange={(event) => updateProfile({ bio: event.target.value })}
+                className="partner-textarea min-h-32"
+              />
+            </Field>
+          </section>
 
-    <div className="lg:col-span-2">
+          <section className="partner-panel p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="partner-kicker">Τρόποι συνεδρίας</p>
+                <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Προσφορά και περιγραφές</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {consultationModeOptions.map((mode) => {
+                  const active = activeModes.includes(mode);
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() =>
+                        updateProfile({
+                          consultationModes: active
+                            ? activeModes.filter((item) => item !== mode)
+                            : [...activeModes, mode],
+                        })
+                      }
+                      className={`partner-chip ${active ? "partner-chip-active" : ""}`}
+                    >
+                      {partnerConsultationModeLabels[mode]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="mt-3 grid gap-3">
+              {consultationModeOptions.map((mode) => (
+                <Field key={mode} label={`Περιγραφή ${partnerConsultationModeLabels[mode]}`}>
+                  <textarea
+                    value={getConsultationDescription(workspace.profile, mode)}
+                    onChange={(event) => updateProfile(buildConsultationDescriptionUpdate(mode, event.target.value))}
+                    className="partner-textarea min-h-24"
+                  />
+                </Field>
+              ))}
+            </div>
+            <Field label="Πολιτική ακύρωσης">
+              <textarea
+                value={workspace.profile.cancellationPolicy}
+                onChange={(event) => updateProfile({ cancellationPolicy: event.target.value })}
+                className="partner-textarea min-h-24"
+              />
+            </Field>
+          </section>
+        </div>
+
+        <aside className="space-y-4">
+          <ProfilePhotoModerationCard
+            photoState={profilePhotoState}
+            uploadState={profilePhotoUploadState}
+            onSubmit={onProfilePhotoSubmit}
+          />
+
+          <section className="partner-panel p-4">
+            <p className="partner-kicker">Τιμές</p>
+            <div className="mt-3 grid gap-3">
+              <NumberField label={partnerConsultationModeLabels.video} value={workspace.profile.videoPrice} suffix="€" onChange={(videoPrice) => updateProfile({ videoPrice })} />
+              <NumberField label={partnerConsultationModeLabels.phone} value={workspace.profile.phonePrice} suffix="€" onChange={(phonePrice) => updateProfile({ phonePrice })} />
+              <NumberField label={partnerConsultationModeLabels.inPerson} value={workspace.profile.inPersonPrice} suffix="€" onChange={(inPersonPrice) => updateProfile({ inPersonPrice })} />
+            </div>
+          </section>
+
+          <section className="partner-dark-panel p-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[hsl(var(--partner-gold))]">Ποιότητα προφίλ</p>
+            <div className="mt-3 grid gap-2">
+              <CompactDarkMetric label="Όνομα" value={workspace.profile.displayName ? "OK" : "Λείπει"} />
+              <CompactDarkMetric label="Bio" value={workspace.profile.bio.length >= 80 ? "Ισχυρό" : "Σύντομο"} />
+              <CompactDarkMetric label="Τιμές" value={workspace.profile.videoPrice || workspace.profile.phonePrice || workspace.profile.inPersonPrice ? "OK" : "Λείπουν"} />
+            </div>
+          </section>
+        </aside>
+      </div>
+
       <SectionSaveFooter onSave={onSave} saveState={saveState} hasUnsavedChanges={hasUnsavedChanges} />
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 const formatFileSize = (bytes: number) => {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -1576,31 +2040,29 @@ const ProfilePhotoModerationCard = ({
   };
 
   return (
-    <div className="partner-panel p-7">
+    <div className="partner-panel p-4">
       <p className="partner-kicker">Φωτογραφία προφίλ</p>
-      <div className="mt-5 grid gap-4">
-        <div className="flex items-start gap-4">
+      <div className="mt-3 grid gap-3">
+        <div className="flex items-start gap-3">
           {photoState?.approvedImageUrl ? (
             <img
               src={photoState.approvedImageUrl}
               alt="Εγκεκριμένη φωτογραφία προφίλ"
-              className="h-24 w-24 shrink-0 rounded-lg object-cover ring-1 ring-[hsl(var(--partner-line))]"
+              className="h-16 w-16 shrink-0 rounded-lg object-cover ring-1 ring-[hsl(var(--partner-line))]"
             />
           ) : (
-            <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-lg border border-dashed border-[hsl(var(--partner-line))] bg-white/60 text-xs font-bold text-muted-foreground">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-[hsl(var(--partner-line))] bg-white/60 px-2 text-center text-[10px] font-bold leading-4 text-muted-foreground">
               Χωρίς φωτογραφία
             </div>
           )}
           <div className="min-w-0">
             <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Δημόσια εγκεκριμένη φωτογραφία</p>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Η νέα φωτογραφία εμφανίζεται στην πλατφόρμα μόνο μετά από έλεγχο της ομάδας λειτουργίας.
-            </p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Οι νέες φωτογραφίες εμφανίζονται μετά από έλεγχο.</p>
           </div>
         </div>
 
         {pendingSubmission ? (
-          <div className="rounded-xl border border-amber-300/40 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+          <div className="rounded-xl border border-amber-300/40 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <p className="font-bold">Υπάρχει φωτογραφία σε αναμονή έγκρισης.</p>
             <p className="mt-1 leading-6">
               {pendingSubmission.fileName} · {formatFileSize(pendingSubmission.size)} · υποβλήθηκε{" "}
@@ -1610,7 +2072,7 @@ const ProfilePhotoModerationCard = ({
         ) : null}
 
         {!pendingSubmission && latestRejectedSubmission ? (
-          <div className="rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-3 text-sm text-destructive">
+          <div className="rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             <p className="font-bold">Η προηγούμενη φωτογραφία απορρίφθηκε.</p>
             <p className="mt-1 leading-6">{latestRejectedSubmission.reviewReason || "Υποβάλετε νέα φωτογραφία με καθαρό πρόσωπο και επαγγελματικό πλαίσιο."}</p>
           </div>
@@ -1624,13 +2086,13 @@ const ProfilePhotoModerationCard = ({
             type="file"
             accept={partnerProfilePhotoPolicy.accept}
             onChange={(event) => handleFileChange(event.target.files?.[0])}
-            className="mt-2 block w-full text-sm text-muted-foreground file:mr-4 file:rounded-lg file:border-0 file:bg-[hsl(var(--partner-navy))] file:px-4 file:py-2 file:text-sm file:font-bold file:text-white"
+            className="mt-2 block w-full text-xs text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-[hsl(var(--partner-navy))] file:px-3 file:py-2 file:text-xs file:font-bold file:text-white"
           />
         </label>
 
         {previewUrl && selectedFile ? (
-          <div className="flex items-center gap-4 rounded-xl border border-[hsl(var(--partner-line))] bg-white/65 p-3">
-            <img src={previewUrl} alt="Προεπισκόπηση νέας φωτογραφίας" className="h-20 w-20 rounded-lg object-cover" />
+          <div className="flex items-center gap-3 rounded-xl border border-[hsl(var(--partner-line))] bg-white/65 p-2.5">
+            <img src={previewUrl} alt="Προεπισκόπηση νέας φωτογραφίας" className="h-14 w-14 rounded-lg object-cover" />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-[hsl(var(--partner-ink))]">{selectedFile.name}</p>
               <p className="mt-1 text-xs text-muted-foreground">{formatFileSize(selectedFile.size)}</p>
@@ -1645,7 +2107,7 @@ const ProfilePhotoModerationCard = ({
           type="button"
           onClick={() => void submitSelectedFile()}
           disabled={!selectedFile || uploadState.loading}
-          className="h-11 rounded-xl px-5 font-bold"
+          className="h-10 rounded-xl px-4 text-sm font-bold"
         >
           {uploadState.loading ? "Υποβολή..." : "Υποβολή για έγκριση"}
         </Button>
@@ -1686,25 +2148,25 @@ const SearchVisibilityCard = ({
       : "Για να εμφανίζεστε στην αναζήτηση, συμπληρώστε τα παρακάτω και αποθηκεύστε τις αλλαγές.";
 
   return (
-    <div className="partner-panel p-7">
+    <div className="partner-panel p-4">
       <p className="partner-kicker">Ορατότητα στην αναζήτηση</p>
-      <div className={`mt-4 rounded-2xl border px-4 py-4 ${statusTone}`}>
+      <div className={`mt-3 rounded-xl border px-3 py-3 ${statusTone}`}>
         <div className="flex items-start gap-3">
-          <CheckCircle2 className={`mt-0.5 h-5 w-5 shrink-0 ${searchVisibility.ready ? "text-[hsl(var(--sage-foreground))]" : "text-amber-700"}`} />
+          <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${searchVisibility.ready ? "text-[hsl(var(--sage-foreground))]" : "text-amber-700"}`} />
           <div>
             <p className="text-sm font-bold">{statusLabel}</p>
-            <p className="mt-1 text-sm leading-6 opacity-80">{helperText}</p>
+            <p className="mt-1 text-xs leading-5 opacity-80">{helperText}</p>
           </div>
         </div>
       </div>
 
       {!searchVisibility.loading && searchVisibility.issues.length > 0 ? (
-        <div className="mt-4 rounded-2xl border border-[hsl(var(--partner-line))] bg-white/65 p-4">
+        <div className="mt-3 rounded-xl border border-[hsl(var(--partner-line))] bg-white/65 p-3">
           <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Τι χρειάζεται να διορθώσετε</p>
-          <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+          <ul className="mt-2 space-y-1.5 text-xs leading-5 text-muted-foreground">
             {searchVisibility.issues.map((issue) => (
               <li key={issue} className="flex items-start gap-2">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--partner-navy-soft))]" />
+                <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[hsl(var(--partner-navy-soft))]" />
                 <span>{issue}</span>
               </li>
             ))}
@@ -1731,46 +2193,90 @@ const EarningsView = ({
   payments: StoredPayment[];
 }) => {
   const visibleBookings = [...completedBookings, ...confirmedBookings];
+  const paidPayments = payments.filter((payment) => getCanonicalPaymentState(payment) === "paid");
+  const attentionPayments = payments.filter((payment) => {
+    const state = getCanonicalPaymentState(payment);
+    return state === "failed" || state === "refund_requested" || state === "checkout_opened";
+  });
 
   return (
-    <section className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="Καθαρό ποσό" value={formatEuroCents(completedRevenueCents)} helper={`${completedBookings.length} συνεδρίες`} />
-        <Metric label="Σε αναμονή" value={formatEuroCents(pendingRevenueCents)} helper={`${confirmedBookings.length} κρατήσεις`} />
-        <Metric label="Χρεώσεις πλάνου" value={formatEuroCents(completedPlatformFeeCents)} helper="€7 μόνο στο Βασικό" />
+    <section className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="partner-panel p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="partner-kicker">Οικονομική εικόνα</p>
+              <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Έσοδα και εκκαθάριση</h3>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            <Metric label="Καθαρό ποσό" value={formatEuroCents(completedRevenueCents)} helper={`${completedBookings.length} ολοκληρωμένες συνεδρίες`} />
+            <Metric label="Σε αναμονή" value={formatEuroCents(pendingRevenueCents)} helper={`${confirmedBookings.length} ενεργές κρατήσεις`} />
+            <Metric label="Χρεώσεις πλάνου" value={formatEuroCents(completedPlatformFeeCents)} helper="χρεώσεις πρώτης συνεδρίας" />
+          </div>
+        </div>
+
+        <aside className="partner-panel p-4">
+          <p className="partner-kicker">Εκκαθάριση</p>
+          <div className="mt-3 grid gap-2">
+            <SignalRow icon={WalletCards} label="Πληρωμένες" value={String(paidPayments.length)} tone="sage" />
+            <SignalRow icon={CircleAlert} label="Θέλουν έλεγχο" value={String(attentionPayments.length)} tone={attentionPayments.length ? "amber" : "neutral"} />
+            <SignalRow icon={Landmark} label="Προς εκκαθάριση" value={formatEuroCents(pendingRevenueCents)} tone={pendingRevenueCents ? "amber" : "sage"} />
+          </div>
+        </aside>
       </div>
 
-      <div className="partner-panel p-7 sm:p-8">
-        <p className="partner-kicker">Τιμολόγια και εκταμιεύσεις</p>
-        <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Οικονομικές κινήσεις</h3>
-        <div className="mt-6 space-y-3">
+      <div className="partner-panel p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="partner-kicker">Κινήσεις</p>
+            <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Ανά κράτηση</h3>
+          </div>
+          <StatusPill tone={attentionPayments.length ? "amber" : "sage"}>
+            {attentionPayments.length ? `${attentionPayments.length} εκκρεμότητες` : "Ταμειακή εικόνα καθαρή"}
+          </StatusPill>
+        </div>
+
+        <div className="mt-3 grid gap-2">
           {visibleBookings.length > 0 ? (
             visibleBookings.map((booking) => {
               const payment = payments.find((item) => item.bookingId === booking.id);
               const feeCents = getPartnerFeeCents(payment);
               const netCents = getPartnerNetCents(payment, booking);
+              const paymentState = payment ? getCanonicalPaymentState(payment) : "not_opened";
               return (
-            <div key={booking.id} className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="font-semibold text-[hsl(var(--partner-ink))]">{booking.referenceId}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{booking.clientName} · {booking.consultationType}</p>
-                  <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    {feeCents > 0
-                      ? `Χρέωση Βασικού: -${formatEuroCents(feeCents)}`
-                      : payment?.partnerFeeStatus === "waived_by_subscription"
-                        ? "Χρέωση πρώτης συμβουλευτικής: καλύπτεται από το πλάνο"
-                        : "Χρέωση πρώτης συμβουλευτικής: θα υπολογιστεί στην ολοκλήρωση"}
-                  </p>
+                <div key={booking.id} className="rounded-2xl border border-[hsl(var(--partner-line))] bg-white/70 p-3">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_130px_120px_150px] lg:items-center">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusPill tone={paymentState === "paid" ? "sage" : paymentState === "failed" || paymentState === "refund_requested" ? "danger" : "amber"}>
+                          {partnerPaymentStateLabels[paymentState]}
+                        </StatusPill>
+                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{booking.referenceId}</span>
+                      </div>
+                      <p className="mt-2 font-semibold text-[hsl(var(--partner-ink))]">{booking.clientName}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{booking.consultationType} · {booking.dateLabel} · {booking.time}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Καθαρό</p>
+                      <p className="mt-1 text-lg font-semibold text-[hsl(var(--partner-ink))]">{formatEuroCents(netCents)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Χρέωση</p>
+                      <p className="mt-1 text-sm font-semibold text-[hsl(var(--partner-ink))]">{feeCents > 0 ? `-${formatEuroCents(feeCents)}` : "€0"}</p>
+                    </div>
+                    <div className="text-left lg:text-right">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Επόμενο</p>
+                      <p className="mt-1 text-sm font-semibold text-[hsl(var(--partner-ink))]">
+                        {canSubmitReview(booking)
+                          ? "Έτοιμο για εκταμίευση"
+                          : paymentState === "paid"
+                            ? "Ολοκληρώστε συνεδρία"
+                            : "Αναμονή πληρωμής"}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-left md:text-right">
-                  <p className="text-lg font-semibold text-[hsl(var(--partner-ink))]">{formatEuroCents(netCents)}</p>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    {canSubmitReview(booking) ? "έτοιμο για εκταμίευση" : "σε αναμονή ολοκλήρωσης"}
-                  </p>
-                </div>
-              </div>
-            </div>
               );
             })
           ) : (
@@ -1781,66 +2287,6 @@ const EarningsView = ({
     </section>
   );
 };
-
-const ReviewsView = ({
-  reviews,
-  updateReview,
-}: {
-  reviews: StoredLawyerReview[];
-  updateReview: (reviewId: string, updates: Partial<StoredLawyerReview>) => void;
-}) => (
-  <section className="partner-panel p-7 sm:p-8">
-    <p className="partner-kicker">Κριτικές</p>
-    <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Απαντήσεις και διαχείριση</h3>
-    <div className="mt-6 space-y-4">
-      {reviews.length > 0 ? reviews.map((review) => (
-        <article key={review.id} className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="font-semibold text-[hsl(var(--partner-ink))]">{review.clientName}</p>
-                <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${review.status === "under_moderation" || review.status === "rejected" ? "bg-destructive/10 text-destructive" : "bg-[hsl(var(--sage))]/15 text-[hsl(var(--sage-foreground))]"}`}>
-                  {reviewPublicationStateLabels[review.status]}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center gap-1">
-                {Array.from({ length: review.rating }).map((_, index) => (
-                  <Star key={index} className="h-4 w-4 fill-[hsl(var(--gold))] text-[hsl(var(--gold))]" />
-                ))}
-              </div>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">{review.text}</p>
-              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                {review.consultationType} · {new Date(review.date).toLocaleDateString("el-GR")}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => updateReview(review.id, { status: review.status === "under_moderation" ? "published" : "under_moderation" })}
-              className="rounded-xl border-[hsl(var(--partner-line))] bg-white/70 text-[hsl(var(--partner-ink))] hover:bg-white"
-            >
-              {review.status === "under_moderation" ? "Δημοσίευση" : "Κράτηση για έλεγχο"}
-            </Button>
-          </div>
-          <Field label="Δημόσια απάντηση">
-            <textarea
-              value={review.reply}
-              onChange={(event) => updateReview(review.id, { reply: event.target.value })}
-              placeholder="Γράψτε σύντομη επαγγελματική απάντηση."
-              className="partner-input min-h-24 py-3"
-            />
-          </Field>
-        </article>
-      )) : (
-        <EmptyPartnerState
-          icon={MessageSquareQuote}
-          title="Δεν υπάρχουν ακόμη επαληθευμένες κριτικές"
-          description="Οι κριτικές θα εμφανίζονται μόνο μετά από ολοκληρωμένα ραντεβού πελατών."
-        />
-      )}
-    </div>
-  </section>
-);
 
 const SettingsView = ({
   workspace,
@@ -1857,48 +2303,88 @@ const SettingsView = ({
   hasUnsavedChanges: boolean;
   saveState: SaveState;
 }) => (
-  <section className="grid gap-6 lg:grid-cols-2">
-    <div className="partner-panel p-7 sm:p-8">
-      <p className="partner-kicker">Λειτουργία κράτησης</p>
-      <div className="mt-5 grid gap-4">
-        <ToggleRow
-          title="Αυτόματη επιβεβαίωση"
-          description="Οι νέες κρατήσεις μπαίνουν απευθείας στο ημερολόγιο."
-          enabled={workspace.profile.autoConfirm}
-          onToggle={() => updateProfile({ autoConfirm: !workspace.profile.autoConfirm })}
-        />
-        <NumberField label="Χρόνος κενού" value={workspace.profile.bufferMinutes} suffix="λεπτά" onChange={(bufferMinutes) => updateProfile({ bufferMinutes })} />
-        <NumberField label="Παράθυρο κράτησης" value={workspace.profile.bookingWindowDays} suffix="ημέρες" onChange={(bookingWindowDays) => updateProfile({ bookingWindowDays })} />
+  <section className="space-y-4">
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="partner-panel p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="partner-kicker">Λειτουργία κράτησης</p>
+            <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Κανόνες εισερχόμενων κρατήσεων</h3>
+          </div>
+          <SlidersHorizontal className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div className="mt-3 grid gap-3">
+          <ToggleRow
+            title="Αυτόματη επιβεβαίωση"
+            description="Οι νέες κρατήσεις μπαίνουν απευθείας στο ημερολόγιο μετά τον έλεγχο συστήματος."
+            enabled={workspace.profile.autoConfirm}
+            onToggle={() => updateProfile({ autoConfirm: !workspace.profile.autoConfirm })}
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <NumberField label="Χρόνος κενού" value={workspace.profile.bufferMinutes} suffix="λεπτά" onChange={(bufferMinutes) => updateProfile({ bufferMinutes })} />
+            <NumberField label="Παράθυρο κράτησης" value={workspace.profile.bookingWindowDays} suffix="ημέρες" onChange={(bookingWindowDays) => updateProfile({ bookingWindowDays })} />
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div className="partner-panel p-7 sm:p-8">
-      <p className="partner-kicker">Ειδοποιήσεις</p>
-      <div className="mt-5 grid gap-4">
-        <ToggleRow
-          title="Ηλεκτρονικό ταχυδρομείο νέων κρατήσεων"
-          description="Στείλτε μήνυμα ηλεκτρονικού ταχυδρομείου για κάθε επιβεβαιωμένη κράτηση."
-          enabled={workspace.notifications.bookingEmail}
-          onToggle={() => updateNotifications({ bookingEmail: !workspace.notifications.bookingEmail })}
-        />
-        <ToggleRow
-          title="SMS νέων κρατήσεων"
-          description="Στείλτε σύντομη ειδοποίηση για ραντεβού ίδιας ημέρας."
-          enabled={workspace.notifications.bookingSms}
-          onToggle={() => updateNotifications({ bookingSms: !workspace.notifications.bookingSms })}
-        />
-        <ToggleRow
-          title="Εβδομαδιαία σύνοψη"
-          description="Λάβετε συγκεντρωτικό μήνυμα ηλεκτρονικού ταχυδρομείου με προβολές, κρατήσεις και κριτικές."
-          enabled={workspace.notifications.weeklyDigest}
-          onToggle={() => updateNotifications({ weeklyDigest: !workspace.notifications.weeklyDigest })}
-        />
+      <aside className="partner-dark-panel p-4">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[hsl(var(--partner-gold))]">Λειτουργικοί κανόνες</p>
+        <div className="mt-3 grid gap-2">
+          <CompactDarkMetric label="Κράτηση" value={workspace.profile.autoConfirm ? "Γρήγορη" : "Με έλεγχο"} />
+          <CompactDarkMetric label="Buffer" value={`${workspace.profile.bufferMinutes} λεπτά`} />
+          <CompactDarkMetric label="Παράθυρο" value={`${workspace.profile.bookingWindowDays} ημέρες`} />
+        </div>
+      </aside>
+    </section>
+
+    <section className="grid gap-4 lg:grid-cols-2">
+      <div className="partner-panel p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="partner-kicker">Ειδοποιήσεις</p>
+            <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Κανάλια ενημέρωσης</h3>
+          </div>
+          <BellRing className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div className="mt-3 grid gap-3">
+          <ToggleRow
+            title="Email νέων κρατήσεων"
+            description="Email για κάθε επιβεβαιωμένη κράτηση."
+            enabled={workspace.notifications.bookingEmail}
+            onToggle={() => updateNotifications({ bookingEmail: !workspace.notifications.bookingEmail })}
+          />
+          <ToggleRow
+            title="SMS νέων κρατήσεων"
+            description="Σύντομη ειδοποίηση για άμεση μεταβολή."
+            enabled={workspace.notifications.bookingSms}
+            onToggle={() => updateNotifications({ bookingSms: !workspace.notifications.bookingSms })}
+          />
+          <ToggleRow
+            title="Εβδομαδιαία σύνοψη"
+            description="Συγκεντρωτικό email με κρατήσεις, πληρωμές και εκκρεμότητες."
+            enabled={workspace.notifications.weeklyDigest}
+            onToggle={() => updateNotifications({ weeklyDigest: !workspace.notifications.weeklyDigest })}
+          />
+        </div>
       </div>
-    </div>
 
-    <div className="lg:col-span-2">
-      <SectionSaveFooter onSave={onSave} saveState={saveState} hasUnsavedChanges={hasUnsavedChanges} />
-    </div>
+      <div className="partner-panel p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="partner-kicker">Ασφάλεια και δημοσίευση</p>
+            <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Κατάσταση αλλαγών</h3>
+          </div>
+          <ShieldCheck className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div className="mt-3 grid gap-2">
+          <SignalRow icon={BadgeCheck} label="Αλλαγές" value={hasUnsavedChanges ? "Πρόχειρες" : "Συγχρονισμένες"} tone={hasUnsavedChanges ? "amber" : "sage"} />
+          <SignalRow icon={SearchCheck} label="Προφίλ" value={workspace.profile.displayName ? "Ταυτοποιημένο" : "Λείπει όνομα"} tone={workspace.profile.displayName ? "sage" : "danger"} />
+          <SignalRow icon={MailCheck} label="Digest" value={workspace.notifications.weeklyDigest ? "Ενεργό" : "Ανενεργό"} tone={workspace.notifications.weeklyDigest ? "sage" : "neutral"} />
+        </div>
+      </div>
+    </section>
+
+    <SectionSaveFooter onSave={onSave} saveState={saveState} hasUnsavedChanges={hasUnsavedChanges} />
   </section>
 );
 
@@ -1956,17 +2442,17 @@ const SaveMessage = ({ saveState }: { saveState: SaveState }) => {
 };
 
 const Metric = ({ label, value, helper }: { label: string; value: string; helper: string }) => (
-  <div className="partner-soft-card p-4">
-    <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground">{label}</p>
-    <p className="mt-3 text-lg font-semibold text-[hsl(var(--partner-ink))]">{value}</p>
-    <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
+  <div className="partner-soft-card px-3 py-2.5">
+    <p className="truncate text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+    <p className="mt-1 text-base font-semibold text-[hsl(var(--partner-ink))]">{value}</p>
+    <p className="truncate text-xs text-muted-foreground">{helper}</p>
   </div>
 );
 
 const Field = ({ label, children }: { label: string; children: ReactNode }) => (
-  <label className="mt-4 block">
-    <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
-    <span className="mt-2 block">{children}</span>
+  <label className="mt-3 block">
+    <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
+    <span className="mt-1.5 block">{children}</span>
   </label>
 );
 
@@ -2009,11 +2495,11 @@ const ToggleRow = ({
   <button
     type="button"
     onClick={onToggle}
-    className="flex w-full items-start justify-between gap-4 rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-4 text-left"
+    className="flex w-full items-start justify-between gap-4 rounded-xl border border-[hsl(var(--partner-line))] bg-white/65 px-3 py-3 text-left"
   >
     <span>
       <span className="block text-sm font-semibold text-[hsl(var(--partner-ink))]">{title}</span>
-      <span className="mt-1 block text-sm leading-6 text-muted-foreground">{description}</span>
+      <span className="mt-1 block text-xs leading-5 text-muted-foreground">{description}</span>
     </span>
     <span className={`mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full p-1 transition ${enabled ? "bg-[hsl(var(--sage))]" : "bg-muted"}`}>
       <span className={`h-4 w-4 rounded-full bg-white transition ${enabled ? "translate-x-5" : "translate-x-0"}`} />
@@ -2040,11 +2526,8 @@ const PartnerPerformanceDashboard = ({
   completedFirstConsultations,
   responseSpeed,
   categoryPerformance,
-  reviewRate,
-  averageRating,
   availabilityHealth,
   missingProfileProof,
-  pendingModerationItems,
   pendingPaymentIssues,
 }: {
   profileViews: number | null;
@@ -2055,63 +2538,81 @@ const PartnerPerformanceDashboard = ({
   completedFirstConsultations: number;
   responseSpeed: string;
   categoryPerformance: string[];
-  reviewRate: number;
-  averageRating: string;
   availabilityHealth: number;
   missingProfileProof: string[];
-  pendingModerationItems: number;
   pendingPaymentIssues: number;
-}) => (
-  <section className="partner-panel p-7 sm:p-8">
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-      <div>
-        <p className="partner-kicker">Απόδοση συνεργασίας</p>
-        <h3 className="mt-2 font-serif text-3xl tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Αν η αγορά δουλεύει για εσάς</h3>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-          Μετρήσεις ζήτησης, πληρωμένων κρατήσεων, ολοκληρωμένων πρώτων συμβουλευτικών, κριτικών και λειτουργικών εκκρεμοτήτων.
-        </p>
-      </div>
-      <div className="rounded-2xl border border-[hsl(var(--partner-line))] bg-white/65 px-4 py-3 text-sm font-semibold text-[hsl(var(--partner-ink))]">
-        Μέσος όρος: {averageRating}/5 · Ποσοστό κριτικής {reviewRate}%
-      </div>
-    </div>
+}) => {
+  const paidRate = bookingStarts > 0 ? Math.round((paidBookings / bookingStarts) * 100) : 0;
+  const completionRate = paidBookings > 0 ? Math.round((completedFirstConsultations / paidBookings) * 100) : 0;
 
-    <div className="mt-6 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
-      <Metric label="Προβολές προφίλ" value={profileViews === null ? "—" : String(profileViews)} helper="μόνο από αναλυτικά στοιχεία συστήματος" />
-      <Metric label="Εμφανίσεις" value={searchAppearances === null ? "—" : String(searchAppearances)} helper="μόνο από αναλυτικά στοιχεία συστήματος" />
-      <Metric label="Προς κράτηση" value={profileBookingStarts === null ? "—" : String(profileBookingStarts)} helper="μόνο από αναλυτικά στοιχεία συστήματος" />
-      <Metric label="Κρατήσεις" value={String(bookingStarts)} helper={`${paidBookings} πληρωμένες`} />
-      <Metric label="Πρώτες συνεδρίες" value={String(completedFirstConsultations)} helper="ολοκληρωμένες" />
-    </div>
+  return (
+    <section className="space-y-4">
+      <div className="partner-panel p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="partner-kicker">Απόδοση συνεργασίας</p>
+            <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Μετρήσεις συνεργασίας</h3>
+          </div>
+          <StatusPill tone={pendingPaymentIssues || missingProfileProof.length ? "amber" : "sage"}>
+            {pendingPaymentIssues || missingProfileProof.length ? "Θέλει έλεγχο" : "Σε καλή κατάσταση"}
+          </StatusPill>
+        </div>
 
-    <div className="mt-5 grid gap-4 lg:grid-cols-3">
-      <div className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-4">
-        <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Υγεία διαθεσιμότητας</p>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          {availabilityHealth >= 3
-            ? `${availabilityHealth} ενεργές ημέρες. Η προσφορά φαίνεται κρατήσιμη.`
-            : "Προσθέστε περισσότερες ενεργές ημέρες για να μειωθεί η απώλεια ζήτησης."}
-        </p>
+        <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5">
+          <Metric label="Προβολές προφίλ" value={profileViews === null ? "—" : String(profileViews)} helper="μόνο από αναλυτικά στοιχεία συστήματος" />
+          <Metric label="Εμφανίσεις" value={searchAppearances === null ? "—" : String(searchAppearances)} helper="μόνο από αναλυτικά στοιχεία συστήματος" />
+          <Metric label="Προς κράτηση" value={profileBookingStarts === null ? "—" : String(profileBookingStarts)} helper="μόνο από αναλυτικά στοιχεία συστήματος" />
+          <Metric label="Κρατήσεις" value={String(bookingStarts)} helper={`${paidBookings} πληρωμένες`} />
+          <Metric label="Πρώτες συνεδρίες" value={String(completedFirstConsultations)} helper="ολοκληρωμένες" />
+        </div>
       </div>
-      <div className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-4">
-        <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Ποιότητα εισερχόμενων</p>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Κατηγορίες: {categoryPerformance.length ? categoryPerformance.join(", ") : "συμπληρώστε ειδικότητες"}. Απόκριση: {responseSpeed}.
-        </p>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <section className="partner-panel p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="partner-kicker">Μετατροπή</p>
+              <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Από κράτηση σε ολοκλήρωση</h3>
+            </div>
+            <Gauge className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <div className="mt-3 grid gap-3">
+            <PerformanceStep label="Κρατήσεις" value={bookingStarts} helper="όλες οι εισερχόμενες κρατήσεις" tone="navy" />
+            <PerformanceStep label="Πληρωμένες" value={paidBookings} helper={`${paidRate}% των κρατήσεων`} tone={paidRate >= 60 ? "sage" : "amber"} />
+            <PerformanceStep label="Ολοκληρωμένες" value={completedFirstConsultations} helper={`${completionRate}% των πληρωμένων`} tone={completionRate >= 70 ? "sage" : "amber"} />
+          </div>
+        </section>
+
+        <aside className="space-y-4">
+          <section className="partner-panel p-4">
+            <p className="partner-kicker">Λειτουργική υγεία</p>
+            <div className="mt-3 grid gap-2">
+              <SignalRow icon={Clock3} label="Διαθεσιμότητα" value={`${availabilityHealth} ημέρες`} tone={availabilityHealth >= 3 ? "sage" : "amber"} />
+              <SignalRow icon={WalletCards} label="Πληρωμές" value={String(pendingPaymentIssues)} tone={pendingPaymentIssues > 0 ? "danger" : "sage"} />
+              <SignalRow icon={SearchCheck} label="Προφίλ" value={missingProfileProof.length ? `${missingProfileProof.length} κενά` : "Έτοιμο"} tone={missingProfileProof.length ? "amber" : "sage"} />
+            </div>
+          </section>
+
+          <section className="partner-dark-panel p-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[hsl(var(--partner-gold))]">Πού να εστιάσετε</p>
+            <div className="mt-3 grid gap-2">
+              {missingProfileProof.length > 0 ? missingProfileProof.slice(0, 3).map((item) => (
+                <div key={item} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs leading-5 text-white/76">
+                  {item}
+                </div>
+              )) : (
+                <div className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs leading-5 text-white/76">
+                  Προφίλ και βασική λειτουργία σε καλή κατάσταση.
+                </div>
+              )}
+              <div className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs leading-5 text-white/76">
+                Κατηγορίες: {categoryPerformance.length ? categoryPerformance.join(", ") : "συμπληρώστε ειδικότητες"}. Απόκριση: {responseSpeed}.
+              </div>
+            </div>
+          </section>
+        </aside>
       </div>
-      <div className="rounded-[1.2rem] border border-[hsl(var(--partner-line))] bg-white/65 p-4">
-        <p className="text-sm font-semibold text-[hsl(var(--partner-ink))]">Εκκρεμότητες</p>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          {pendingModerationItems} κριτικές σε έλεγχο · {pendingPaymentIssues} πληρωμές/επιστροφές χρειάζονται προσοχή.
-        </p>
-        {missingProfileProof.length > 0 ? (
-          <ul className="mt-3 space-y-1.5 text-xs font-semibold leading-5 text-muted-foreground">
-            {missingProfileProof.slice(0, 3).map((item) => (
-              <li key={item}>• {item}</li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
+

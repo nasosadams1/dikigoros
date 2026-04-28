@@ -92,6 +92,22 @@ describe("public lawyer profile readiness", () => {
     expect(getPublicLawyerProfileReadiness(partnerLawyer).ready).toBe(true);
   });
 
+  it("uses the partner-configured appointment duration across published consultations", () => {
+    const partnerLawyer = applyPartnerWorkspaceToLawyer(buildPartnerReadyLawyer(), {
+      ...defaultPartnerWorkspace,
+      profile: {
+        ...defaultPartnerWorkspace.profile,
+        consultationModes: ["video", "phone"],
+        sessionDurationMinutes: 75,
+      },
+    });
+
+    expect(partnerLawyer.consultations.map((consultation) => consultation.duration)).toEqual([
+      "75 λεπτά",
+      "75 λεπτά",
+    ]);
+  });
+
   it("hides incomplete placeholder profiles from public listings", () => {
     expect(isPublicLawyerProfileReady(buildInvalidLawyer())).toBe(false);
   });

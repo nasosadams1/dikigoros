@@ -4,6 +4,7 @@ import {
   normalizeLegalPracticeArea,
   normalizeLegalPracticeAreas,
 } from "@/lib/marketplaceTaxonomy";
+import { localizeLawyerProfile, localizeProfileText } from "@/lib/lawyerDisplay";
 import { isPartnerSessionInvalidError, type PartnerSession } from "@/lib/platformRepository";
 import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
 import { publicSupabase } from "@/lib/supabase";
@@ -28,6 +29,7 @@ export interface PartnerProfileSettings {
   phoneDescription: string;
   inPersonDescription: string;
   cancellationPolicy: string;
+  sessionDurationMinutes?: number;
   autoConfirm: boolean;
   bookingWindowDays: number;
   bufferMinutes: number;
@@ -398,7 +400,7 @@ const getLawyerModeDuration = (
   lawyer: Lawyer,
   mode: ConsultationMode,
   fallbackDuration: string,
-) => lawyer.consultations.find((consultation) => consultation.mode === mode)?.duration || fallbackDuration;
+) => localizeProfileText(lawyer.consultations.find((consultation) => consultation.mode === mode)?.duration || fallbackDuration);
 
 const mergeLawyerProfileIntoWorkspace = (
   workspace: PartnerWorkspace,
@@ -674,6 +676,11 @@ const getModePrice = (profile: PartnerProfileSettings, mode: ConsultationMode) =
   return profile.videoPrice;
 };
 
+const getProfileSessionDuration = (profile: PartnerProfileSettings) => {
+  const duration = Number(profile.sessionDurationMinutes);
+  return Number.isFinite(duration) && duration > 0 ? `${duration} λεπτά` : "";
+};
+
 const getNextAvailabilityLabel = (availability: PartnerAvailabilitySlot[]) => {
   const nextSlot = availability.find((slot) => slot.enabled);
   if (!nextSlot) return "Διαθεσιμότητα με ραντεβού";
@@ -690,11 +697,12 @@ export const applyPartnerWorkspaceToLawyer = (lawyer: Lawyer, workspace: Partner
     normalizeLegalPracticeArea(lawyer.specialty) ||
     lawyer.specialty;
   const specialties = normalizeLegalPracticeAreas([primarySpecialty, ...workspace.profile.specialties]);
+  const configuredDuration = getProfileSessionDuration(workspace.profile);
   const consultations = consultationModes.map((mode) => ({
     mode,
     type: consultationModeLabels[mode],
     price: getModePrice(workspace.profile, mode),
-    duration: getLawyerModeDuration(lawyer, mode, mode === "inPerson" ? "45 λεπτά" : "30 λεπτά"),
+    duration: configuredDuration || getLawyerModeDuration(lawyer, mode, mode === "inPerson" ? "45 λεπτά" : "30 λεπτά"),
     desc: getProfileModeDescription(
       workspace.profile,
       mode,
@@ -703,7 +711,7 @@ export const applyPartnerWorkspaceToLawyer = (lawyer: Lawyer, workspace: Partner
   }));
   const prices = consultations.map((consultation) => consultation.price);
 
-  return {
+  return localizeLawyerProfile({
     ...lawyer,
     name: workspace.profile.displayName || lawyer.name,
     city: normalizeAllowedMarketplaceCity(workspace.profile.city) || normalizeAllowedMarketplaceCity(lawyer.city) || lawyer.city,
@@ -718,7 +726,7 @@ export const applyPartnerWorkspaceToLawyer = (lawyer: Lawyer, workspace: Partner
     consultations,
     price: prices.length ? Math.min(...prices) : lawyer.price,
     available: getNextAvailabilityLabel(workspace.availability),
-  };
+  });
 };
 
 export const parseListInput = (value: string) =>

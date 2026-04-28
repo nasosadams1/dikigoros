@@ -111,6 +111,8 @@
 @layer components {
   .partner-shell {
     background:
+      radial-gradient(circle at top left, rgba(32, 59, 105, 0.08) 0%, transparent 24%),
+      radial-gradient(circle at top right, rgba(214, 184, 124, 0.2) 0%, transparent 22%),
       linear-gradient(180deg, rgba(255, 251, 245, 0.98) 0%, rgba(244, 238, 228, 0.98) 100%);
   }
 
@@ -171,7 +173,7 @@
     background: rgba(255, 252, 247, 0.96);
     color: hsl(var(--partner-ink));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-    @apply h-[52px] w-full rounded-[14px] px-4 text-[15px] font-medium outline-none transition placeholder:text-muted-foreground/70;
+    @apply h-11 w-full rounded-[12px] px-3 text-[14px] font-medium outline-none transition placeholder:text-muted-foreground/70;
   }
 
   .partner-textarea {
@@ -179,7 +181,7 @@
     background: rgba(255, 252, 247, 0.96);
     color: hsl(var(--partner-ink));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-    @apply min-h-[160px] w-full rounded-[14px] px-4 py-3 text-[15px] font-medium outline-none transition placeholder:text-muted-foreground/70;
+    @apply min-h-[118px] w-full rounded-[12px] px-3 py-2.5 text-[14px] font-medium outline-none transition placeholder:text-muted-foreground/70;
   }
 
   .partner-input:focus,

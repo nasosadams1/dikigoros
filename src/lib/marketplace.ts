@@ -210,6 +210,7 @@ export const getNextAvailabilityOptions = (
   const maxOptions = options?.maxOptions || 4;
   const results: NextAvailabilityOption[] = [];
   const sessionMinutes = getDurationMinutes(consultation?.duration);
+  const now = new Date();
 
   for (let offset = 0; offset < Math.max(1, rules.bookingWindowDays); offset += 1) {
     const date = new Date();
@@ -231,6 +232,11 @@ export const getNextAvailabilityOptions = (
           : new Intl.DateTimeFormat("el-GR", { weekday: "short", day: "numeric", month: "short" }).format(date);
 
     times.forEach((time) => {
+      const [hours, minutes] = time.split(":").map((part) => Number(part));
+      const slotDate = new Date(date);
+      slotDate.setHours(hours, minutes, 0, 0);
+      if (slotDate <= now) return;
+
       const slotKey =
         options?.lawyerId && `${options.lawyerId}::${dateLabel}::${time}`;
       if (slotKey && options?.reservedSlots?.has(slotKey)) return;

@@ -11,7 +11,7 @@ const PartnerShell = ({ children, className }: PartnerShellProps) => {
   return (
     <div className="partner-shell min-h-screen">
       <PartnerTopBar />
-      <main className={cn("mx-auto max-w-[1280px] px-5 pb-10 pt-6 sm:px-8 lg:pt-8", className)}>{children}</main>
+      <main className={cn("mx-auto max-w-[1520px] px-4 pb-12 pt-6 sm:px-6 lg:px-8 lg:pt-8", className)}>{children}</main>
     </div>
   );
 };
