@@ -14,6 +14,7 @@ import {
   signUpWithEmail,
   supabase,
   updateEmail as supabaseUpdateEmail,
+  updatePassword as supabaseUpdatePassword,
   updateUserProfile as supabaseUpdateUserProfile,
   type UserProfile,
 } from "@/lib/supabase";
@@ -29,6 +30,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: AuthOperationError }>;
   updateEmail: (email: string) => Promise<{ error: AuthOperationError }>;
+  updatePassword: (password: string) => Promise<{ error: AuthOperationError }>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   applyAuthoritativeProfile: (profile: UserProfile) => Promise<void>;
   refetchProfile: () => Promise<void>;
@@ -281,6 +283,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return { error: null };
   };
 
+  const updatePassword = async (password: string) => {
+    if (!user) return { error: { message: "No authenticated user found." } };
+
+    const { error } = await supabaseUpdatePassword(password);
+    return { error };
+  };
+
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!user) return;
 
@@ -315,6 +324,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         signOut,
         resetPassword,
         updateEmail,
+        updatePassword,
         updateProfile,
         applyAuthoritativeProfile,
         refetchProfile,

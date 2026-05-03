@@ -8,6 +8,14 @@ import { localizeLawyerProfile, localizeProfileText } from "@/lib/lawyerDisplay"
 import { isPartnerSessionInvalidError, type PartnerSession } from "@/lib/platformRepository";
 import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
 import { publicSupabase } from "@/lib/supabase";
+import {
+  availabilityBusinessHours,
+  formatAvailabilityTime,
+  isValidAvailabilitySlot,
+  normalizeBufferMinutes,
+  normalizeSessionDurationMinutes,
+  parseAvailabilityTime,
+} from "@/lib/availabilityRules";
 
 export interface PartnerProfileSettings {
   lawyerId: string;
@@ -90,6 +98,20 @@ export const partnerProfilePhotoPolicy = {
   allowedTypes: ["image/jpeg", "image/png", "image/webp"],
 } as const;
 
+export const minimumPartnerConsultationPrices: Record<ConsultationMode, number> = {
+  video: 25,
+  phone: 20,
+  inPerson: 30,
+};
+
+const clampPartnerConsultationPrice = (value: unknown, mode: ConsultationMode) => {
+  const numericValue = Number(value);
+  return Math.max(
+    minimumPartnerConsultationPrices[mode],
+    Number.isFinite(numericValue) ? numericValue : minimumPartnerConsultationPrices[mode],
+  );
+};
+
 export const defaultPartnerWorkspace: PartnerWorkspace = {
   profile: {
     lawyerId: "maria-papadopoulou",
@@ -110,6 +132,7 @@ export const defaultPartnerWorkspace: PartnerWorkspace = {
     videoPrice: 60,
     phonePrice: 50,
     inPersonPrice: 80,
+    sessionDurationMinutes: 30,
     cancellationPolicy: "Δωρεάν ακύρωση ή αλλαγή έως 24 ώρες πριν από το ραντεβού.",
     autoConfirm: true,
     bookingWindowDays: 21,
@@ -181,6 +204,12 @@ const normalizePartnerWorkspace = (workspace?: Partial<PartnerWorkspace> | null)
       specialties: specialties.length ? specialties : [primarySpecialty],
       languages: unique(workspace?.profile?.languages || defaultPartnerWorkspace.profile.languages),
       consultationModes: workspace?.profile?.consultationModes || defaultPartnerWorkspace.profile.consultationModes,
+      videoPrice: clampPartnerConsultationPrice(workspace?.profile?.videoPrice ?? defaultPartnerWorkspace.profile.videoPrice, "video"),
+      phonePrice: clampPartnerConsultationPrice(workspace?.profile?.phonePrice ?? defaultPartnerWorkspace.profile.phonePrice, "phone"),
+      inPersonPrice: clampPartnerConsultationPrice(workspace?.profile?.inPersonPrice ?? defaultPartnerWorkspace.profile.inPersonPrice, "inPerson"),
+      sessionDurationMinutes: normalizeSessionDurationMinutes(
+        workspace?.profile?.sessionDurationMinutes ?? defaultPartnerWorkspace.profile.sessionDurationMinutes,
+      ),
     },
     availability: Array.isArray(workspace?.availability)
       ? workspace.availability
@@ -619,34 +648,26 @@ export const getAvailabilitySlotForDate = (availability: PartnerAvailabilitySlot
   return availability.find((slot) => normalizeLabel(slot.day) === normalizedWeekday) || null;
 };
 
-const parseTime = (value: string) => {
-  const [hours, minutes] = value.split(":").map((part) => Number(part));
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-  return hours * 60 + minutes;
-};
-
-const formatTime = (minutes: number) => {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-};
-
 export const buildAvailabilityTimeSlots = (
   slot: PartnerAvailabilitySlot | null | undefined,
   sessionMinutes = 30,
   bufferMinutes = 0,
 ) => {
   if (!slot?.enabled) return [];
-  const start = parseTime(slot.start);
-  const end = parseTime(slot.end);
+  const start = parseAvailabilityTime(slot.start);
+  const end = parseAvailabilityTime(slot.end);
   if (start === null || end === null || end <= start) return [];
 
-  const step = Math.max(15, sessionMinutes + Math.max(0, bufferMinutes));
-  const latestStart = end - Math.max(15, sessionMinutes) - Math.max(0, bufferMinutes);
+  const sessionDuration = normalizeSessionDurationMinutes(sessionMinutes);
+  const bufferDuration = normalizeBufferMinutes(bufferMinutes);
+  const safeStart = Math.max(start, availabilityBusinessHours.startMinutes);
+  const safeEnd = Math.min(end, availabilityBusinessHours.endMinutes);
+  const step = Math.max(sessionDuration, sessionDuration + bufferDuration);
+  const latestStart = safeEnd - sessionDuration;
   const slots: string[] = [];
 
-  for (let minutes = start; minutes <= latestStart; minutes += step) {
-    slots.push(formatTime(minutes));
+  for (let minutes = safeStart; minutes <= latestStart; minutes += step) {
+    slots.push(formatAvailabilityTime(minutes));
   }
 
   return slots;
@@ -677,12 +698,12 @@ const getModePrice = (profile: PartnerProfileSettings, mode: ConsultationMode) =
 };
 
 const getProfileSessionDuration = (profile: PartnerProfileSettings) => {
-  const duration = Number(profile.sessionDurationMinutes);
-  return Number.isFinite(duration) && duration > 0 ? `${duration} λεπτά` : "";
+  const duration = normalizeSessionDurationMinutes(profile.sessionDurationMinutes);
+  return `${duration} λεπτά`;
 };
 
 const getNextAvailabilityLabel = (availability: PartnerAvailabilitySlot[]) => {
-  const nextSlot = availability.find((slot) => slot.enabled);
+  const nextSlot = availability.find((slot) => slot.enabled && isValidAvailabilitySlot(slot));
   if (!nextSlot) return "Διαθεσιμότητα με ραντεβού";
   return `${nextSlot.day}, ${nextSlot.start}`;
 };

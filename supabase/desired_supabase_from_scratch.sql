@@ -224,6 +224,9 @@ create table if not exists public.partner_applications (
   specialties text[] not null default '{}',
   professional_bio text not null,
   preferred_plan_id text not null default 'basic' check (preferred_plan_id in ('basic','pro','premium','firms')),
+  public_profile jsonb not null default '{}'::jsonb,
+  availability jsonb not null default '[]'::jsonb,
+  payment_details jsonb not null default '{}'::jsonb,
   document_metadata jsonb not null default '[]'::jsonb,
   status text not null default 'under_review' check (status in ('under_review','needs_more_info','approved','rejected')),
   created_at timestamptz not null default now(),
@@ -507,6 +510,8 @@ set search_path = public
 as $$
 declare
   inserted_booking public.booking_requests;
+  booking_start_minutes integer;
+  booking_duration_minutes integer := greatest(20, coalesce(nullif(substring(coalesce(p_duration, '') from '([0-9]+)'), '')::integer, 30));
 begin
   if p_user_id is not null and auth.uid() is distinct from p_user_id then
     raise exception 'INVALID_BOOKING_USER' using errcode = '42501';
@@ -523,6 +528,15 @@ begin
       )
   ) then
     raise exception 'SELF_BOOKING_FORBIDDEN' using errcode = '42501';
+  end if;
+
+  if coalesce(p_time, '') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
+    raise exception 'BOOKING_TIME_OUTSIDE_AVAILABILITY_HOURS' using errcode = '22023';
+  end if;
+
+  booking_start_minutes := substring(p_time from 1 for 2)::integer * 60 + substring(p_time from 4 for 2)::integer;
+  if booking_start_minutes < 480 or booking_start_minutes + booking_duration_minutes > 1320 then
+    raise exception 'BOOKING_TIME_OUTSIDE_AVAILABILITY_HOURS' using errcode = '22023';
   end if;
 
   if exists (
@@ -2421,6 +2435,99 @@ begin
 end;
 $$;
 
+create or replace function public.nomos_is_valid_partner_availability(
+  p_availability jsonb,
+  p_session_minutes integer default 30
+)
+returns boolean
+language sql
+immutable
+as $$
+  with normalized as (
+    select greatest(20, coalesce(p_session_minutes, 30)) as session_minutes
+  ),
+  enabled_slots as (
+    select
+      slot ->> 'start' as start_text,
+      slot ->> 'end' as end_text
+    from jsonb_array_elements(
+      case
+        when jsonb_typeof(coalesce(p_availability, '[]'::jsonb)) = 'array'
+          then coalesce(p_availability, '[]'::jsonb)
+        else '[]'::jsonb
+      end
+    ) as slot
+    where slot ->> 'enabled' = 'true'
+  ),
+  parsed_slots as (
+    select
+      start_text,
+      end_text,
+      case
+        when start_text ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          then substring(start_text from 1 for 2)::integer * 60 + substring(start_text from 4 for 2)::integer
+        else null
+      end as start_minutes,
+      case
+        when end_text ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          then substring(end_text from 1 for 2)::integer * 60 + substring(end_text from 4 for 2)::integer
+        else null
+      end as end_minutes
+    from enabled_slots
+  )
+  select
+    jsonb_typeof(coalesce(p_availability, '[]'::jsonb)) = 'array'
+    and (select count(*) from enabled_slots) >= 3
+    and not exists (
+      select 1
+      from parsed_slots, normalized
+      where start_minutes is null
+        or end_minutes is null
+        or start_minutes < 480
+        or end_minutes > 1320
+        or end_minutes <= start_minutes
+        or end_minutes - start_minutes < session_minutes
+    );
+$$;
+
+create or replace function public.nomos_validate_partner_profile_settings_availability()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized_session_minutes integer := greatest(
+    20,
+    case
+      when coalesce(new.profile ->> 'sessionDurationMinutes', '') ~ '^[0-9]+$'
+        then (new.profile ->> 'sessionDurationMinutes')::integer
+      else 30
+    end
+  );
+begin
+  if jsonb_typeof(coalesce(new.availability, '[]'::jsonb)) <> 'array' then
+    raise exception 'INVALID_PARTNER_AVAILABILITY' using errcode = '22023';
+  end if;
+
+  if not public.nomos_is_valid_partner_availability(new.availability, normalized_session_minutes) then
+    raise exception 'INVALID_PARTNER_AVAILABILITY' using errcode = '22023';
+  end if;
+
+  if new.is_public and not public.nomos_is_valid_partner_availability(coalesce(new.published_availability, new.availability, '[]'::jsonb), normalized_session_minutes) then
+    raise exception 'INVALID_PARTNER_AVAILABILITY' using errcode = '22023';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists nomos_validate_partner_profile_settings_availability on public.partner_profile_settings;
+create trigger nomos_validate_partner_profile_settings_availability
+  before insert or update of profile, availability, published_availability, is_public
+  on public.partner_profile_settings
+  for each row execute function public.nomos_validate_partner_profile_settings_availability();
+
 create or replace function public.submit_partner_application(
   p_application_id uuid,
   p_reference_id text,
@@ -2436,6 +2543,9 @@ create or replace function public.submit_partner_application(
   p_specialties text[],
   p_professional_bio text,
   p_document_metadata jsonb,
+  p_public_profile jsonb default '{}'::jsonb,
+  p_availability jsonb default '[]'::jsonb,
+  p_payment_details jsonb default '{}'::jsonb,
   p_preferred_plan_id text default 'basic'
 )
 returns public.partner_applications
@@ -2447,14 +2557,39 @@ declare
   existing_application public.partner_applications;
   persisted_application public.partner_applications;
   normalized_email text := lower(trim(p_work_email));
-  normalized_preferred_plan_id text := case
-    when lower(trim(coalesce(p_preferred_plan_id, 'basic'))) in ('basic','pro','premium','firms')
-      then lower(trim(coalesce(p_preferred_plan_id, 'basic')))
-    else 'basic'
-  end;
+  normalized_preferred_plan_id text := 'basic';
+  normalized_public_profile jsonb := coalesce(p_public_profile, '{}'::jsonb);
+  normalized_availability jsonb := coalesce(p_availability, '[]'::jsonb);
+  normalized_payment_details jsonb := coalesce(p_payment_details, '{}'::jsonb);
+  normalized_session_minutes integer := 30;
 begin
   if normalized_email = '' or normalized_email !~* '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
     raise exception 'INVALID_PARTNER_APPLICATION_EMAIL' using errcode = '22023';
+  end if;
+
+  if jsonb_typeof(normalized_public_profile) <> 'object' then
+    raise exception 'INVALID_PARTNER_PUBLIC_PROFILE' using errcode = '22023';
+  end if;
+
+  normalized_session_minutes := greatest(
+    20,
+    case
+      when coalesce(normalized_public_profile ->> 'sessionDurationMinutes', '') ~ '^[0-9]+$'
+        then (normalized_public_profile ->> 'sessionDurationMinutes')::integer
+      else 30
+    end
+  );
+
+  if jsonb_typeof(normalized_availability) <> 'array' then
+    raise exception 'INVALID_PARTNER_AVAILABILITY' using errcode = '22023';
+  end if;
+
+  if not public.nomos_is_valid_partner_availability(normalized_availability, normalized_session_minutes) then
+    raise exception 'INVALID_PARTNER_AVAILABILITY' using errcode = '22023';
+  end if;
+
+  if jsonb_typeof(normalized_payment_details) <> 'object' then
+    raise exception 'INVALID_PARTNER_PAYMENT_DETAILS' using errcode = '22023';
   end if;
 
   select * into existing_application
@@ -2488,6 +2623,9 @@ begin
         specialties = coalesce(p_specialties, '{}'),
         professional_bio = trim(p_professional_bio),
         preferred_plan_id = normalized_preferred_plan_id,
+        public_profile = normalized_public_profile,
+        availability = normalized_availability,
+        payment_details = normalized_payment_details,
         document_metadata = coalesce(p_document_metadata, '[]'::jsonb),
         status = 'under_review',
         reviewed_at = null
@@ -2499,13 +2637,13 @@ begin
 
   insert into public.partner_applications (
     id,reference_id,full_name,work_email,phone,city,law_firm_name,website_or_linkedin,
-    bar_association,registration_number,years_of_experience,specialties,professional_bio,preferred_plan_id,document_metadata,status,created_at
+    bar_association,registration_number,years_of_experience,specialties,professional_bio,preferred_plan_id,public_profile,availability,payment_details,document_metadata,status,created_at
   )
   values (
     p_application_id,p_reference_id,trim(p_full_name),normalized_email,trim(p_phone),trim(p_city),
     nullif(trim(coalesce(p_law_firm_name,'')), ''),nullif(trim(coalesce(p_website_or_linkedin,'')), ''),
     trim(p_bar_association),trim(p_registration_number),trim(p_years_of_experience),
-    coalesce(p_specialties, '{}'),trim(p_professional_bio),normalized_preferred_plan_id,coalesce(p_document_metadata, '[]'::jsonb),'under_review',now()
+    coalesce(p_specialties, '{}'),trim(p_professional_bio),normalized_preferred_plan_id,normalized_public_profile,normalized_availability,normalized_payment_details,coalesce(p_document_metadata, '[]'::jsonb),'under_review',now()
   )
   returning * into persisted_application;
 
@@ -2615,7 +2753,7 @@ $$;
 
 grant execute on function public.reserve_booking_slot(uuid,uuid,text,text,text,text,text,integer,text,text,text,text,text,text,text) to anon, authenticated;
 grant execute on function public.cancel_booking_as_user(uuid) to authenticated;
-grant execute on function public.submit_partner_application(uuid,text,text,text,text,text,text,text,text,text,text,text[],text,jsonb,text) to anon, authenticated;
+grant execute on function public.submit_partner_application(uuid,text,text,text,text,text,text,text,text,text,text,text[],text,jsonb,jsonb,jsonb,jsonb,text) to anon, authenticated;
 grant execute on function public.create_operational_case(uuid,text,text,text,text,text,text,text,text,text,jsonb,jsonb,timestamptz) to anon, authenticated;
 
 notify pgrst, 'reload schema';

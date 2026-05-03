@@ -149,7 +149,7 @@ const Index = () => {
                     onChange={(event) => setLegalIssue(event.target.value)}
                     className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
                   >
-                    <option value="">{copy.hero.fields.legalTopicPlaceholder}</option>
+                    <option value="" disabled hidden>{copy.hero.fields.legalTopicPlaceholder}</option>
                     {legalPracticeAreas.map((area) => (
                       <option key={area.slug} value={area.query}>{area.label}</option>
                     ))}
@@ -161,7 +161,7 @@ const Index = () => {
                     onChange={(event) => setCity(event.target.value)}
                     className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none placeholder:text-muted-foreground/60"
                   >
-                    <option value="">{copy.hero.fields.cityPlaceholder}</option>
+                    <option value="" disabled hidden>{copy.hero.fields.cityPlaceholder}</option>
                     {allowedMarketplaceCityNames.map((cityOption) => (
                       <option key={cityOption} value={cityOption}>{cityOption}</option>
                     ))}

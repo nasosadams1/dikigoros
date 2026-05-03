@@ -49,6 +49,8 @@ declare
   current_user_id uuid := auth.uid();
   effective_user_id uuid := coalesce(p_user_id, auth.uid());
   inserted_booking public.booking_requests;
+  booking_start_minutes integer;
+  booking_duration_minutes integer := greatest(20, coalesce(nullif(substring(coalesce(p_duration, '') from '([0-9]+)'), '')::integer, 30));
 begin
   if current_user_id is null then
     raise exception 'AUTH_REQUIRED_FOR_BOOKING' using errcode = '42501';
@@ -69,6 +71,15 @@ begin
       )
   ) then
     raise exception 'SELF_BOOKING_FORBIDDEN' using errcode = '42501';
+  end if;
+
+  if coalesce(p_time, '') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
+    raise exception 'BOOKING_TIME_OUTSIDE_AVAILABILITY_HOURS' using errcode = '22023';
+  end if;
+
+  booking_start_minutes := substring(p_time from 1 for 2)::integer * 60 + substring(p_time from 4 for 2)::integer;
+  if booking_start_minutes < 480 or booking_start_minutes + booking_duration_minutes > 1320 then
+    raise exception 'BOOKING_TIME_OUTSIDE_AVAILABILITY_HOURS' using errcode = '22023';
   end if;
 
   if exists (

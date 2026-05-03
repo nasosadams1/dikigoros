@@ -38,11 +38,16 @@ const ForLawyersPlans = () => {
   const [partnerSession, setPartnerSession] = useState(() => getPartnerSession());
   const [billingInterval, setBillingInterval] = useState<PartnerBillingInterval>("monthly");
   const [loadingPlan, setLoadingPlan] = useState<PartnerPlanId | null>(null);
-  const [message, setMessage] = useState(() =>
-    searchParams.get("subscription") === "cancelled"
-      ? "Η πληρωμή ακυρώθηκε. Μπορείτε να επιλέξετε ξανά πλάνο όταν είστε έτοιμοι."
-      : "",
-  );
+  const [message, setMessage] = useState(() => {
+    const subscriptionState = searchParams.get("subscription");
+    if (subscriptionState === "success") {
+      return "Η συνδρομή καταγράφηκε. Το πλάνο ενεργοποιείται στον πίνακα συνεργάτη.";
+    }
+    if (subscriptionState === "cancelled") {
+      return "Η πληρωμή ακυρώθηκε. Μπορείτε να επιλέξετε ξανά πλάνο όταν είστε έτοιμοι.";
+    }
+    return "";
+  });
 
   const startCheckout = async (plan: PartnerPlan) => {
     setMessage("");
@@ -56,8 +61,8 @@ const ForLawyersPlans = () => {
     try {
       const returnUrl =
         typeof window !== "undefined"
-          ? `${window.location.origin}/for-lawyers/portal?view=pipeline`
-          : "/for-lawyers/portal?view=pipeline";
+          ? `${window.location.origin}/for-lawyers/portal?view=appointments`
+          : "/for-lawyers/portal?view=appointments";
       const cancelUrl =
         typeof window !== "undefined"
           ? `${window.location.origin}/for-lawyers/plans`
@@ -103,6 +108,7 @@ const ForLawyersPlans = () => {
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground">
               Το Βασικό μένει χωρίς πάγιο. Το Επαγγελματικό γίνεται η απλή αναβάθμιση προβολής και το Πλήρες δίνει οργανωμένη ροή υποθέσεων, σημειώσεις, υπενθυμίσεις και αιτήματα εγγράφων.
+              Κάθε νέος συνεργάτης ξεκινά στο Βασικό πλάνο μετά την έγκριση και μπορεί να αναβαθμίσει από τον πίνακα συνεργάτη.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -133,6 +139,10 @@ const ForLawyersPlans = () => {
           </div>
         </section>
 
+        <section className="mt-4 rounded-lg border border-sage/25 bg-sage/10 p-4 text-sm leading-6 text-muted-foreground">
+          <span className="font-bold text-foreground">Ροή ένταξης:</span> η αίτηση δεν ζητά επιλογή συνδρομής. Μετά την έγκριση ενεργοποιείται το Βασικό πλάνο και τυχόν αναβάθμιση γίνεται από τον πίνακα συνεργάτη.
+        </section>
+
         <section className="mt-6 grid gap-5 lg:grid-cols-2 xl:grid-cols-4">
           {partnerPlans.map((plan) => (
             <PlanCard
@@ -158,7 +168,7 @@ const ForLawyersPlans = () => {
             Καθαρή εικόνα απόδοσης
           </h2>
           <p className="mt-2 text-sm leading-7 text-muted-foreground">
-            Στον πίνακα συνεργάτη βλέπετε προβολές προφίλ, εμφανίσεις στην αναζήτηση, εκκινήσεις κράτησης, πληρωμένες συμβουλευτικές, ολοκληρώσεις, αξιολογήσεις και απόδοση ανά πόλη και κατηγορία.
+            Στον πίνακα συνεργάτη βλέπετε προβολές καταχώρισης, εμφανίσεις στην αναζήτηση, εκκινήσεις κράτησης, πληρωμένες συμβουλευτικές, ολοκληρώσεις, αξιολογήσεις και απόδοση ανά πόλη και κατηγορία.
           </p>
         </section>
       </div>
@@ -210,11 +220,11 @@ const PlanCard = ({
       {plan.salesOnly ? (
         <PlanEntitlement enabled label="Επικοινωνήστε για πολλές πόλεις ή προσαρμοσμένη εγκατάσταση." />
       ) : null}
-      <PlanEntitlement enabled={plan.entitlements.verifiedListing} label="Ελεγμένο δημόσιο προφίλ" />
+      <PlanEntitlement enabled={plan.entitlements.verifiedListing} label="Ελεγμένη δημόσια καταχώριση" />
       <PlanEntitlement enabled={plan.entitlements.bookings} label="Κρατήσεις, πληρωμές και αξιολογήσεις μετά την ολοκλήρωση" />
       <PlanEntitlement enabled={plan.entitlements.labeledVisibilityBoost} label="Ενισχυμένη προβολή με καθαρή σήμανση" />
-      <PlanEntitlement enabled={plan.entitlements.enhancedAnalytics} label="Στατιστικά προφίλ, εμφανίσεις αναζήτησης και εκκινήσεις κράτησης" />
-      <PlanEntitlement enabled={plan.entitlements.profileTools} label="Πιο πλήρη εργαλεία δημόσιου προφίλ" />
+      <PlanEntitlement enabled={plan.entitlements.enhancedAnalytics} label="Στατιστικά καταχώρισης, εμφανίσεις αναζήτησης και εκκινήσεις κράτησης" />
+      <PlanEntitlement enabled={plan.entitlements.profileTools} label="Πιο πλήρη εργαλεία δημόσιας καταχώρισης" />
       <PlanEntitlement enabled={plan.entitlements.crmPipeline} label="Ροή υποθέσεων για κρατημένους, πληρωμένους και ολοκληρωμένους πελάτες" />
       <PlanEntitlement enabled={plan.entitlements.followUpTasks} label="Ιδιωτικές σημειώσεις και υπενθυμίσεις συνέχειας" />
       <PlanEntitlement enabled={plan.entitlements.documentRequests} label="Αιτήματα εγγράφων και διαχείριση υλικού" />
@@ -238,8 +248,8 @@ const PlanCard = ({
         )
       ) : (
         <Button asChild className="w-full rounded-lg font-bold">
-          <Link to={plan.salesOnly ? "/for-lawyers/apply" : "/for-lawyers/login"}>
-            {plan.salesOnly ? "Εκδήλωση ενδιαφέροντος" : "Σύνδεση για επιλογή πλάνου"}
+          <Link to="/for-lawyers/apply">
+            {plan.salesOnly ? "Εκδήλωση ενδιαφέροντος" : "Αίτηση συνεργάτη"}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
         </Button>
@@ -264,7 +274,7 @@ const PlanPriceDetail = ({
   billingInterval: PartnerBillingInterval;
 }) => {
   if (plan.salesOnly) {
-    return <p className="mt-2 text-sm font-semibold text-muted-foreground">Δεν ανοίγει άμεση πληρωμή στην πρώτη έκδοση.</p>;
+    return <p className="mt-2 text-sm font-semibold text-muted-foreground">Δεν ανοίγει άμεση πληρωμή στην αίτηση.</p>;
   }
 
   if (plan.completedConsultationFee > 0) {

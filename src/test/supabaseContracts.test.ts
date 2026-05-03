@@ -50,6 +50,10 @@ const reconciliationFunction = readFileSync(
   join(process.cwd(), "supabase", "functions", "reconcile-stripe-payments", "index.ts"),
   "utf8",
 );
+const partnerSignupReadinessMigration = readFileSync(
+  join(process.cwd(), "supabase", "migrations", "20260501120000_partner_signup_public_readiness.sql"),
+  "utf8",
+);
 
 describe("Supabase production contracts", () => {
   it("ships the verified review RPC used by the account profile", () => {
@@ -88,6 +92,41 @@ describe("Supabase production contracts", () => {
     expect(productionSchema).not.toContain('create policy "Partners can update own review replies"');
   });
 
+  it("stores public search and payment readiness during partner signup", () => {
+    [
+      "public_profile jsonb not null default '{}'::jsonb",
+      "availability jsonb not null default '[]'::jsonb",
+      "payment_details jsonb not null default '{}'::jsonb",
+      "p_public_profile jsonb default '{}'::jsonb",
+      "p_availability jsonb default '[]'::jsonb",
+      "p_payment_details jsonb default '{}'::jsonb",
+      "INVALID_PARTNER_PUBLIC_PROFILE",
+      "INVALID_PARTNER_AVAILABILITY",
+      "INVALID_PARTNER_PAYMENT_DETAILS",
+      "nomos_is_valid_partner_availability",
+      "nomos_validate_partner_profile_settings_availability",
+      "before insert or update of profile, availability, published_availability, is_public",
+      "start_minutes < 480",
+      "end_minutes > 1320",
+      "normalized_preferred_plan_id text := 'basic'",
+      "normalized_public_profile jsonb := coalesce(p_public_profile, '{}'::jsonb)",
+      "normalized_availability jsonb := coalesce(p_availability, '[]'::jsonb)",
+      "normalized_payment_details jsonb := coalesce(p_payment_details, '{}'::jsonb)",
+      "public_profile = normalized_public_profile",
+      "availability = normalized_availability",
+      "payment_details = normalized_payment_details",
+    ].forEach((contract) => expect(productionSchema).toContain(contract));
+
+    expect(partnerSignupReadinessMigration).toContain("add column if not exists public_profile jsonb not null default '{}'::jsonb");
+    expect(partnerSignupReadinessMigration).toContain("add column if not exists availability jsonb not null default '[]'::jsonb");
+    expect(partnerSignupReadinessMigration).toContain("add column if not exists payment_details jsonb not null default '{}'::jsonb");
+    expect(partnerSignupReadinessMigration).toContain("nomos_is_valid_partner_availability");
+    expect(partnerSignupReadinessMigration).toContain("nomos_validate_partner_profile_settings_availability");
+    expect(partnerSignupReadinessMigration).toContain("normalized_preferred_plan_id text := 'basic'");
+    expect(partnerSignupReadinessMigration).toContain("drop function if exists public.submit_partner_application");
+    expect(partnerSignupReadinessMigration).toContain("notify pgrst, 'reload schema'");
+  });
+
   it("removes client-side payment mutation policies", () => {
     expect(productionSchema).toContain('drop policy if exists "Users can create own pending payments"');
     expect(productionSchema).toContain('drop policy if exists "Users can update own pending payments"');
@@ -95,8 +134,19 @@ describe("Supabase production contracts", () => {
   });
 
   it("restricts browser-callable Edge Functions to configured app origins", () => {
-    [checkoutFunction, setupFunction, partnerCodeFunction, partnerDocumentUrlFunction, partnerProfilePhotoFunction].forEach((source) => {
+    [
+      checkoutFunction,
+      setupFunction,
+      refundFunction,
+      partnerCodeFunction,
+      partnerDocumentUrlFunction,
+      partnerProfilePhotoFunction,
+      partnerSubscriptionCheckoutFunction,
+    ].forEach((source) => {
       expect(source).toContain("ALLOWED_APP_ORIGINS");
+      expect(source).toContain("https://dikigoros-oud1.vercel.app");
+      expect(source).toContain("http://127.0.0.1:5173");
+      expect(source).toContain(".concat(defaultAllowedOrigins)");
       expect(source).toContain("http://localhost:8080");
       expect(source).not.toContain('"Access-Control-Allow-Origin": "*"');
     });
@@ -195,6 +245,12 @@ describe("Supabase production contracts", () => {
       "create or replace function public.update_partner_pipeline_status",
       "create or replace function public.get_partner_subscription_checkout_context",
     ].forEach((contract) => expect(productionSchema).toContain(contract));
+
+    const checkoutContextStart = productionSchema.indexOf("create or replace function public.get_partner_subscription_checkout_context");
+    const checkoutContextEnd = productionSchema.indexOf("grant execute on function public.get_partner_subscription_checkout_context", checkoutContextStart);
+    const checkoutContext = productionSchema.slice(checkoutContextStart, checkoutContextEnd);
+    expect(checkoutContext).toContain("public.get_partner_session_lawyer_id(p_partner_email, p_session_token)");
+    expect(checkoutContext).toContain("PARTNER_SESSION_INVALID");
 
     expect(supabaseConfig).toContain("[functions.create-partner-subscription-checkout-session]");
     expect(partnerSubscriptionCheckoutFunction).toContain("ALLOWED_APP_ORIGINS");

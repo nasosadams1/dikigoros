@@ -1,13 +1,12 @@
 export const userProfileTabs = [
-  "overview",
-  "profile",
+  "settings",
   "bookings",
   "saved",
   "payments",
-  "privacy",
 ] as const;
 
 export type UserProfileTab = (typeof userProfileTabs)[number];
+export const defaultUserProfileTab: UserProfileTab = "settings";
 
 export type ProfileActionNotice = {
   message: string;
@@ -17,7 +16,11 @@ export type ProfileActionNotice = {
 const tabSet = new Set<string>(userProfileTabs);
 
 export const parseUserProfileTab = (value: string | null | undefined): UserProfileTab =>
-  value && tabSet.has(value) ? (value as UserProfileTab) : "overview";
+  value === "profile" || value === "privacy"
+    ? defaultUserProfileTab
+    : value && tabSet.has(value)
+      ? (value as UserProfileTab)
+      : defaultUserProfileTab;
 
 export const getPaymentReturnNotice = (params: URLSearchParams): ProfileActionNotice | null => {
   const checkout = params.get("checkout");
@@ -26,7 +29,7 @@ export const getPaymentReturnNotice = (params: URLSearchParams): ProfileActionNo
   if (checkout === "success") {
     return {
       tone: "info",
-      message: "Επιστρέψατε από το Stripe. Η κατάσταση πληρωμής και η απόδειξη εμφανίζονται μόνο αφού επιβεβαιωθούν από το backend σύστημα.",
+      message: "Επιστρέψατε από το Stripe. Η κατάσταση πληρωμής θα ενημερωθεί μόλις ολοκληρωθεί η επιβεβαίωση.",
     };
   }
 
@@ -40,7 +43,7 @@ export const getPaymentReturnNotice = (params: URLSearchParams): ProfileActionNo
   if (setup === "success") {
     return {
       tone: "info",
-      message: "Επιστρέψατε από το Stripe. Η μέθοδος πληρωμής θα εμφανιστεί όταν επιβεβαιωθεί από το backend σύστημα.",
+      message: "Επιστρέψατε από το Stripe. Η μέθοδος πληρωμής θα ενημερωθεί μόλις ολοκληρωθεί η επιβεβαίωση.",
     };
   }
 

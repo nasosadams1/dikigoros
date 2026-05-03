@@ -72,6 +72,7 @@ const App = () => (
               <Route path="/for-lawyers/verify" element={<PartnerVerification />} />
               <Route path="/for-lawyers/apply" element={<PartnerApply />} />
               <Route element={<PartnerPortalGuard />}>
+                <Route path="/for-lawyers/profile" element={<PartnerPortal chrome="profile" />} />
                 <Route path="/for-lawyers/portal" element={<PartnerPortal />} />
               </Route>
               <Route path="/auth/confirm" element={<AuthConfirm />} />

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   completeStoredBooking,
+  createBooking,
   createPartnerSession,
   createReferenceId,
   getBookingSlotKey,
@@ -53,7 +54,63 @@ describe("platform repository contracts", () => {
         30,
         15,
       ),
-    ).toEqual(["09:00", "09:45"]);
+    ).toEqual(["09:00", "09:45", "10:30"]);
+  });
+
+  it("never exposes booking slots during the closed night window", () => {
+    expect(
+      buildAvailabilityTimeSlots(
+        { day: "Δευτέρα", enabled: true, start: "07:00", end: "23:00", note: "" },
+        30,
+        15,
+      ),
+    ).toEqual([
+      "08:00",
+      "08:45",
+      "09:30",
+      "10:15",
+      "11:00",
+      "11:45",
+      "12:30",
+      "13:15",
+      "14:00",
+      "14:45",
+      "15:30",
+      "16:15",
+      "17:00",
+      "17:45",
+      "18:30",
+      "19:15",
+      "20:00",
+      "20:45",
+      "21:30",
+    ]);
+    expect(
+      buildAvailabilityTimeSlots(
+        { day: "Δευτέρα", enabled: true, start: "22:00", end: "23:00", note: "" },
+        30,
+        0,
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects booking payloads that start during closed night hours", async () => {
+    await expect(
+      createBooking({
+        userId: "11111111-1111-4111-8111-111111111111",
+        lawyerId: "maria-papadopoulou",
+        lawyerName: "Maria",
+        consultationType: "Video",
+        consultationMode: "video",
+        price: 60,
+        duration: "30 minutes",
+        dateLabel: "Monday",
+        time: "22:00",
+        clientName: "Client",
+        clientEmail: "client@example.com",
+        clientPhone: "6900000000",
+      }),
+    ).rejects.toThrow("BOOKING_TIME_OUTSIDE_AVAILABILITY_HOURS");
   });
 
   it("does not mark a booking payment paid just because the appointment was completed", () => {

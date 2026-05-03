@@ -18,6 +18,12 @@ import {
   normalizeLegalPracticeAreas,
 } from "@/lib/marketplaceTaxonomy";
 import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
+import {
+  availabilityBusinessHours,
+  hasMinimumBookableAvailability,
+  normalizeSessionDurationMinutes,
+  parseAvailabilityTime,
+} from "@/lib/availabilityRules";
 
 export type PersistenceSource = "supabase" | "local";
 
@@ -121,6 +127,46 @@ export interface BookingRefundResult {
 }
 
 export type PartnerApplicationPlanId = "basic" | "pro" | "premium" | "firms";
+export type PartnerApplicationConsultationMode = "video" | "phone" | "inPerson";
+
+export interface PartnerApplicationPublicProfile {
+  displayName: string;
+  officeName?: string;
+  city: string;
+  primarySpecialty: string;
+  serviceArea: string;
+  bestFor: string;
+  bio: string;
+  experienceYears: number;
+  specialties: string[];
+  languages: string[];
+  consultationModes: PartnerApplicationConsultationMode[];
+  videoPrice: number;
+  phonePrice: number;
+  inPersonPrice: number;
+  sessionDurationMinutes: number;
+  cancellationPolicy: string;
+  autoConfirm: boolean;
+  bookingWindowDays: number;
+  bufferMinutes: number;
+}
+
+export interface PartnerApplicationAvailabilitySlot {
+  day: string;
+  enabled: boolean;
+  start: string;
+  end: string;
+  note: string;
+}
+
+export interface PartnerApplicationPaymentDetails {
+  invoiceName: string;
+  taxId: string;
+  taxOffice: string;
+  billingAddress: string;
+  settlementIban: string;
+  settlementBeneficiary: string;
+}
 
 export interface PartnerApplicationPayload {
   fullName: string;
@@ -135,6 +181,9 @@ export interface PartnerApplicationPayload {
   specialties: string[];
   professionalBio: string;
   preferredPlanId: PartnerApplicationPlanId;
+  publicProfile: PartnerApplicationPublicProfile;
+  availability: PartnerApplicationAvailabilitySlot[];
+  paymentDetails: PartnerApplicationPaymentDetails;
   documents: Array<{
     name: string;
     size: number;
@@ -487,6 +536,9 @@ interface PartnerApplicationRow {
   specialties: unknown;
   professional_bio: string;
   preferred_plan_id?: string | null;
+  public_profile?: unknown;
+  availability?: unknown;
+  payment_details?: unknown;
   document_metadata: unknown;
   status: string;
   created_at: string;
@@ -631,6 +683,99 @@ const normalizeDocumentMetadata = (value: unknown): PartnerApplicationPayload["d
     .filter((item): item is PartnerApplicationPayload["documents"][number] => Boolean(item));
 };
 
+const applicationConsultationModes = new Set<PartnerApplicationConsultationMode>(["video", "phone", "inPerson"]);
+
+const normalizeApplicationText = (value: unknown, fallback = "") =>
+  typeof value === "string" ? value.trim() : fallback;
+
+const normalizeApplicationNumber = (value: unknown, fallback = 0) => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+};
+
+const normalizeApplicationStringList = (value: unknown, fallback: string[] = []) => {
+  if (!Array.isArray(value)) return fallback;
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
+};
+
+const normalizeApplicationConsultationModes = (value: unknown) => {
+  const modes = normalizeApplicationStringList(value).filter((mode): mode is PartnerApplicationConsultationMode =>
+    applicationConsultationModes.has(mode as PartnerApplicationConsultationMode),
+  );
+  return modes.length ? modes : (["video"] as PartnerApplicationConsultationMode[]);
+};
+
+const normalizePartnerApplicationPublicProfile = (
+  value: unknown,
+  fallback: Pick<PartnerApplicationPayload, "fullName" | "city" | "lawFirmName" | "yearsOfExperience" | "specialties" | "professionalBio">,
+): PartnerApplicationPublicProfile => {
+  const profile = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const specialties = normalizeLegalPracticeAreas(normalizeApplicationStringList(profile.specialties, fallback.specialties));
+  const primarySpecialty =
+    normalizeApplicationText(profile.primarySpecialty) ||
+    specialties[0] ||
+    fallback.specialties[0] ||
+    "";
+
+  return {
+    displayName: normalizeApplicationText(profile.displayName, fallback.fullName),
+    officeName: normalizeApplicationText(profile.officeName, fallback.lawFirmName || ""),
+    city: normalizeAllowedMarketplaceCity(normalizeApplicationText(profile.city, fallback.city)) || fallback.city,
+    primarySpecialty,
+    serviceArea: normalizeApplicationText(profile.serviceArea, fallback.city),
+    bestFor: normalizeApplicationText(profile.bestFor, fallback.professionalBio),
+    bio: normalizeApplicationText(profile.bio, fallback.professionalBio),
+    experienceYears: Math.max(0, normalizeApplicationNumber(profile.experienceYears, Number(fallback.yearsOfExperience) || 0)),
+    specialties: specialties.length ? specialties : normalizeLegalPracticeAreas(fallback.specialties),
+    languages: normalizeApplicationStringList(profile.languages, ["Ελληνικά"]),
+    consultationModes: normalizeApplicationConsultationModes(profile.consultationModes),
+    videoPrice: Math.max(25, normalizeApplicationNumber(profile.videoPrice, 25)),
+    phonePrice: Math.max(20, normalizeApplicationNumber(profile.phonePrice, 20)),
+    inPersonPrice: Math.max(30, normalizeApplicationNumber(profile.inPersonPrice, 30)),
+    sessionDurationMinutes: Math.max(20, normalizeApplicationNumber(profile.sessionDurationMinutes, 30)),
+    cancellationPolicy: normalizeApplicationText(profile.cancellationPolicy),
+    autoConfirm: typeof profile.autoConfirm === "boolean" ? profile.autoConfirm : true,
+    bookingWindowDays: Math.max(1, normalizeApplicationNumber(profile.bookingWindowDays, 21)),
+    bufferMinutes: Math.max(0, normalizeApplicationNumber(profile.bufferMinutes, 15)),
+  };
+};
+
+const normalizePartnerApplicationAvailability = (value: unknown): PartnerApplicationAvailabilitySlot[] => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const slot = item as Partial<PartnerApplicationAvailabilitySlot>;
+      const day = normalizeApplicationText(slot.day);
+      if (!day) return null;
+
+      return {
+        day,
+        enabled: Boolean(slot.enabled),
+        start: normalizeApplicationText(slot.start, "09:00"),
+        end: normalizeApplicationText(slot.end, "17:00"),
+        note: normalizeApplicationText(slot.note),
+      };
+    })
+    .filter((item): item is PartnerApplicationAvailabilitySlot => Boolean(item));
+};
+
+const normalizePartnerApplicationPaymentDetails = (value: unknown): PartnerApplicationPaymentDetails => {
+  const details = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    invoiceName: normalizeApplicationText(details.invoiceName),
+    taxId: normalizeApplicationText(details.taxId).replace(/\s/g, ""),
+    taxOffice: normalizeApplicationText(details.taxOffice),
+    billingAddress: normalizeApplicationText(details.billingAddress),
+    settlementIban: normalizeApplicationText(details.settlementIban).replace(/\s/g, "").toUpperCase(),
+    settlementBeneficiary: normalizeApplicationText(details.settlementBeneficiary),
+  };
+};
+
 const partnerApplicationPlanIds = new Set<PartnerApplicationPlanId>(["basic", "pro", "premium", "firms"]);
 
 const normalizePartnerApplicationPlan = (value: unknown): PartnerApplicationPlanId =>
@@ -653,6 +798,16 @@ const partnerApplicationFromRow = (row: PartnerApplicationRow): StoredPartnerApp
   specialties: Array.isArray(row.specialties) ? row.specialties.filter((item): item is string => typeof item === "string") : [],
   professionalBio: row.professional_bio,
   preferredPlanId: normalizePartnerApplicationPlan(row.preferred_plan_id),
+  publicProfile: normalizePartnerApplicationPublicProfile(row.public_profile, {
+    fullName: row.full_name,
+    city: row.city,
+    lawFirmName: row.law_firm_name || undefined,
+    yearsOfExperience: row.years_of_experience,
+    specialties: Array.isArray(row.specialties) ? row.specialties.filter((item): item is string => typeof item === "string") : [],
+    professionalBio: row.professional_bio,
+  }),
+  availability: normalizePartnerApplicationAvailability(row.availability),
+  paymentDetails: normalizePartnerApplicationPaymentDetails(row.payment_details),
   documents: normalizeDocumentMetadata(row.document_metadata),
   status:
     row.status === "needs_more_info" || row.status === "approved" || row.status === "rejected"
@@ -1162,6 +1317,17 @@ export const createBooking = async (payload: BookingPayload): Promise<Submission
     throw new Error("AUTH_REQUIRED_FOR_BOOKING");
   }
 
+  const bookingStartMinutes = parseAvailabilityTime(payload.time);
+  const durationMatch = payload.duration.match(/\d+/);
+  const bookingDurationMinutes = normalizeSessionDurationMinutes(durationMatch ? Number(durationMatch[0]) : 30);
+  if (
+    bookingStartMinutes === null ||
+    bookingStartMinutes < availabilityBusinessHours.startMinutes ||
+    bookingStartMinutes + bookingDurationMinutes > availabilityBusinessHours.endMinutes
+  ) {
+    throw new Error("BOOKING_TIME_OUTSIDE_AVAILABILITY_HOURS");
+  }
+
   const createdAt = new Date().toISOString();
   const booking: StoredBooking = {
     ...payload,
@@ -1391,11 +1557,40 @@ export const createPartnerApplication = async (
   if (!normalizeAllowedMarketplaceCity(normalizedCity) || normalizedSpecialties.length === 0) {
     throw new Error("INVALID_MARKETPLACE_TAXONOMY");
   }
+  const publicProfile = normalizePartnerApplicationPublicProfile(payload.publicProfile, {
+    fullName: payload.fullName,
+    city: normalizedCity,
+    lawFirmName: payload.lawFirmName,
+    yearsOfExperience: payload.yearsOfExperience,
+    specialties: normalizedSpecialties,
+    professionalBio: payload.professionalBio,
+  });
+  const availability = normalizePartnerApplicationAvailability(payload.availability);
+  const paymentDetails = normalizePartnerApplicationPaymentDetails(payload.paymentDetails);
+  if (!publicProfile.displayName || !publicProfile.bio || !publicProfile.bestFor || publicProfile.consultationModes.length === 0) {
+    throw new Error("INVALID_PARTNER_PUBLIC_PROFILE");
+  }
+  if (!hasMinimumBookableAvailability(availability, normalizeSessionDurationMinutes(publicProfile.sessionDurationMinutes), 3)) {
+    throw new Error("INVALID_PARTNER_AVAILABILITY");
+  }
+  if (
+    !paymentDetails.invoiceName ||
+    !paymentDetails.taxId ||
+    !paymentDetails.taxOffice ||
+    !paymentDetails.billingAddress ||
+    !paymentDetails.settlementIban ||
+    !paymentDetails.settlementBeneficiary
+  ) {
+    throw new Error("INVALID_PARTNER_PAYMENT_DETAILS");
+  }
   const application: StoredPartnerApplication = {
     ...payload,
     city: normalizedCity,
     specialties: normalizedSpecialties,
-    preferredPlanId: normalizePartnerApplicationPlan(payload.preferredPlanId),
+    preferredPlanId: "basic",
+    publicProfile,
+    availability,
+    paymentDetails,
     id: createRecordId(),
     referenceId: createReferenceId("PA"),
     status: "under_review",
@@ -1418,7 +1613,10 @@ export const createPartnerApplication = async (
       p_years_of_experience: application.yearsOfExperience,
       p_specialties: application.specialties,
       p_professional_bio: application.professionalBio,
-      p_preferred_plan_id: application.preferredPlanId,
+      p_preferred_plan_id: "basic",
+      p_public_profile: application.publicProfile,
+      p_availability: application.availability,
+      p_payment_details: application.paymentDetails,
       p_document_metadata: application.documents,
     });
 

@@ -387,4 +387,12 @@ export const updateEmail = async (email: string) => {
   return { data, error };
 };
 
+export const updatePassword = async (password: string) => {
+  const { data, error } = await supabase.auth.updateUser({
+    password,
+  });
+
+  return { data, error };
+};
+
 export type AuthSession = Session;

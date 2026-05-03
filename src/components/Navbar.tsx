@@ -23,8 +23,8 @@ const Navbar = () => {
 
   const currentPath = useMemo(() => `${location.pathname}${location.hash}`, [location.hash, location.pathname]);
   const isPartnerSignedIn = Boolean(partnerSession);
-  const profilePath = "/account";
-  const partnerPortalPath = "/for-lawyers/portal?view=profile";
+  const partnerProfilePath = "/for-lawyers/profile";
+  const profilePath = isPartnerSignedIn ? partnerProfilePath : "/account";
   const profileLabel = homepageCopy.nav.profile;
 
   useEffect(() => {
@@ -80,15 +80,20 @@ const Navbar = () => {
               <>
                 {isPartnerSignedIn ? (
                   <Button asChild variant="ghost" size="sm" className="text-sm font-medium text-muted-foreground">
-                    <Link to={partnerPortalPath}>Πίνακας</Link>
+                    <Link to={profilePath}>
+                      <UserRound className="h-4 w-4" />
+                      {profileLabel}
+                    </Link>
                   </Button>
                 ) : null}
-                <Button asChild variant="ghost" size="sm" className="text-sm font-medium text-muted-foreground">
-                  <Link to={profilePath}>
-                    <UserRound className="h-4 w-4" />
-                    {profileLabel}
-                  </Link>
-                </Button>
+                {!isPartnerSignedIn ? (
+                  <Button asChild variant="ghost" size="sm" className="text-sm font-medium text-muted-foreground">
+                    <Link to={profilePath}>
+                      <UserRound className="h-4 w-4" />
+                      {profileLabel}
+                    </Link>
+                  </Button>
+                ) : null}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -142,16 +147,19 @@ const Navbar = () => {
                   <>
                     {isPartnerSignedIn ? (
                       <Button asChild variant="outline" className="w-full">
-                        <Link to={partnerPortalPath} onClick={() => setMobileOpen(false)}>
-                          Πίνακας
+                        <Link to={profilePath} onClick={() => setMobileOpen(false)}>
+                          <UserRound className="h-4 w-4" />
+                          {profileLabel}
                         </Link>
                       </Button>
                     ) : null}
-                    <Button asChild variant="outline" className="w-full">
-                      <Link to={profilePath} onClick={() => setMobileOpen(false)}>
-                        {profileLabel}
-                      </Link>
-                    </Button>
+                    {!isPartnerSignedIn ? (
+                      <Button asChild variant="outline" className="w-full">
+                        <Link to={profilePath} onClick={() => setMobileOpen(false)}>
+                          {profileLabel}
+                        </Link>
+                      </Button>
+                    ) : null}
                     <Button
                       variant="outline"
                       className="w-full"

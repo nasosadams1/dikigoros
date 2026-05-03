@@ -1,0 +1,6 @@
+`optimizeDeps.rollupOptions` / `ssr.optimizeDeps.rollupOptions` is deprecated. Use `optimizeDeps.rolldownOptions` instead. Note that this option may be set by a plugin. Set VITE_DEPRECATION_TRACE=1 to see where it is called.
+[vite:react-swc] We recommend switching to `@vitejs/plugin-react-oxc` for improved performance as no swc plugins are used. More information at https://vite.dev/rolldown
+[33mWarning: Invalid input options (1 issue found)
+- For the "jsx". Invalid key: Expected never but received "jsx". [0m
+[33mWarning: Invalid input options (1 issue found)
+- For the "jsx". Invalid key: Expected never but received "jsx". [0m

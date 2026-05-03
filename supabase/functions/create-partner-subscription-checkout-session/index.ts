@@ -1,6 +1,11 @@
 const stripeApiVersion = "2026-02-25.clover";
 
 const defaultAllowedOrigins = [
+  "https://dikigoros.gr",
+  "https://www.dikigoros.gr",
+  "https://dikigoros-oud1.vercel.app",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
   "http://localhost:4173",
   "http://127.0.0.1:4173",
   "http://localhost:8080",
@@ -8,13 +13,16 @@ const defaultAllowedOrigins = [
 ];
 
 const getAllowedOrigins = () => {
-  const configuredOrigins = Deno.env.get("ALLOWED_APP_ORIGINS") || Deno.env.get("APP_ORIGIN") || "";
+  const configuredOrigins = Deno.env.get("ALLOWED_APP_ORIGINS") || "";
+  const appOrigin = Deno.env.get("APP_ORIGIN") || "";
   const origins = configuredOrigins
     .split(",")
+    .concat(appOrigin)
+    .concat(defaultAllowedOrigins)
     .map((origin) => origin.trim().replace(/\/+$/, ""))
     .filter(Boolean);
 
-  return origins.length > 0 ? origins : defaultAllowedOrigins;
+  return Array.from(new Set(origins));
 };
 
 const getCorsHeaders = (request: Request) => {
