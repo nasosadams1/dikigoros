@@ -36,6 +36,7 @@ export interface BookingPayload {
   price: number;
   duration: string;
   dateLabel: string;
+  dateIso?: string;
   time: string;
   clientName: string;
   clientEmail: string;
@@ -683,6 +684,27 @@ const normalizeDocumentMetadata = (value: unknown): PartnerApplicationPayload["d
     .filter((item): item is PartnerApplicationPayload["documents"][number] => Boolean(item));
 };
 
+const invokePublicEdgeFunction = async <T>(
+  functionName: string,
+  body: Record<string, unknown>,
+): Promise<T> => {
+  const response = await fetch(getSupabaseFunctionUrl(functionName), {
+    method: "POST",
+    headers: {
+      apikey: getSupabaseAnonKey(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await parseEdgeFunctionPayload(response);
+
+  if (!response.ok) {
+    throw new Error(getEdgeFunctionErrorMessage(payload, response.status));
+  }
+
+  return (payload || {}) as T;
+};
+
 const applicationConsultationModes = new Set<PartnerApplicationConsultationMode>(["video", "phone", "inPerson"]);
 
 const normalizeApplicationText = (value: unknown, fallback = "") =>
@@ -984,7 +1006,7 @@ export const fetchReviewsForLawyer = async (
     if (partnerSession?.sessionToken && isPartnerSessionInvalidError(error)) {
       throw new Error("PARTNER_SESSION_INVALID");
     }
-    if (!enableLocalBookingFallback) throw failClosedCriticalPath("Partner documents");
+    if (!enableLocalBookingFallback) throw failClosedCriticalPath("Partner reviews");
     return [];
   }
 };
@@ -1308,6 +1330,69 @@ export const cancelPartnerBooking = async (
   }
 };
 
+export const acceptPartnerBooking = async (
+  booking: StoredBooking,
+  partnerSession?: PartnerSession | null,
+): Promise<BookingMutationResult> => {
+  if (!partnerSession?.sessionToken) {
+    return {
+      booking,
+      synced: false,
+      error: "Λείπει το token συνεδρίας συνεργάτη. Κάντε αποσύνδεση και ξανά είσοδο στον πίνακα συνεργάτη.",
+    };
+  }
+
+  try {
+    const { data, error } = await publicSupabase.rpc("accept_booking_as_partner", {
+      p_partner_email: normalizeEmail(partnerSession.email),
+      p_session_token: partnerSession.sessionToken,
+      p_booking_id: booking.id,
+    });
+
+    if (error) throw error;
+
+    const acceptedBooking = data ? bookingFromRow(data as BookingRequestRow) : { ...booking, status: "confirmed_unpaid" as const };
+    return { booking: acceptedBooking, synced: true };
+  } catch (error) {
+    return {
+      booking,
+      synced: false,
+      error: isPartnerSessionInvalidError(error) ? "PARTNER_SESSION_INVALID" : getErrorMessage(error),
+    };
+  }
+};
+
+export const markPartnerBookingNoShow = async (
+  booking: StoredBooking,
+  partnerSession?: PartnerSession | null,
+): Promise<BookingMutationResult> => {
+  if (!partnerSession?.sessionToken) {
+    return {
+      booking,
+      synced: false,
+      error: "Λείπει το token συνεδρίας συνεργάτη. Κάντε αποσύνδεση και ξανά είσοδο στον πίνακα συνεργάτη.",
+    };
+  }
+
+  try {
+    const { error } = await publicSupabase.rpc("mark_booking_no_show_as_partner", {
+      p_partner_email: normalizeEmail(partnerSession.email),
+      p_session_token: partnerSession.sessionToken,
+      p_booking_id: booking.id,
+    });
+
+    if (error) throw error;
+
+    return { booking: { ...booking, status: "no_show" as const }, synced: true };
+  } catch (error) {
+    return {
+      booking,
+      synced: false,
+      error: isPartnerSessionInvalidError(error) ? "PARTNER_SESSION_INVALID" : getErrorMessage(error),
+    };
+  }
+};
+
 const persistLocalApplication = (application: StoredPartnerApplication) => {
   writeStoredList(applicationStorageKey, [application, ...getStoredPartnerApplications()]);
 };
@@ -1339,7 +1424,23 @@ export const createBooking = async (payload: BookingPayload): Promise<Submission
   };
 
   try {
-    const { error } = await supabase.rpc("reserve_booking_slot", {
+    if (payload.dateIso) {
+      const calendarCheck = await invokePublicEdgeFunction<{ ok?: boolean; reason?: string }>(
+        "check-partner-calendar-availability",
+        {
+          lawyerId: payload.lawyerId,
+          dateIso: payload.dateIso,
+          time: payload.time,
+          durationMinutes: bookingDurationMinutes,
+        },
+      );
+
+      if (calendarCheck.ok === false) {
+        throw new Error(calendarCheck.reason || "BOOKING_SLOT_UNAVAILABLE");
+      }
+    }
+
+    const { data, error } = await supabase.rpc("reserve_booking_slot", {
       p_booking_id: booking.id,
       p_user_id: booking.userId,
       p_reference_id: booking.referenceId,
@@ -1359,7 +1460,10 @@ export const createBooking = async (payload: BookingPayload): Promise<Submission
 
     if (error) throw error;
 
-    const syncedBooking = { ...booking, status: "confirmed_unpaid" as const, persistenceSource: "supabase" as const };
+    const remoteBooking = Array.isArray(data) ? data[0] : data;
+    const syncedBooking = remoteBooking
+      ? bookingFromRow(remoteBooking as BookingRequestRow)
+      : { ...booking, status: "pending_confirmation" as const, persistenceSource: "supabase" as const };
     persistLocalBooking(syncedBooking);
     await persistBookingPayment(syncedBooking);
     return { record: syncedBooking, source: "supabase" };
@@ -1675,12 +1779,22 @@ export const verifyApprovedPartner = async (email: string) => {
 export const requestPartnerAccessCode = async (email: string) => {
   const normalizedEmail = normalizeEmail(email);
 
-  const { data, error } = await publicSupabase.functions.invoke("partner-access-code", {
-    body: { email: normalizedEmail },
+  const response = await fetch(getSupabaseFunctionUrl("partner-access-code"), {
+    method: "POST",
+    headers: {
+      apikey: getSupabaseAnonKey(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email: normalizedEmail }),
   });
 
-  if (error) throw error;
-  if (!data?.ok) throw new Error("Failed to send partner access code");
+  const payload = await parseEdgeFunctionPayload(response);
+
+  if (!response.ok) {
+    throw new Error(getEdgeFunctionErrorMessage(payload, response.status));
+  }
+
+  if (!(payload as { ok?: boolean } | null)?.ok) throw new Error("Failed to send partner access code");
 
   return true;
 };

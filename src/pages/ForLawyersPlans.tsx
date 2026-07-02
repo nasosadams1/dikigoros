@@ -8,7 +8,6 @@ import {
   LineChart,
   Mail,
   ShieldCheck,
-  UsersRound,
   Workflow,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -26,6 +25,8 @@ const billingOptions: { id: PartnerBillingInterval; label: string }[] = [
   { id: "monthly", label: "Μηνιαία" },
   { id: "annual", label: "Ετήσια" },
 ];
+
+const displayedPartnerPlans = partnerPlans.filter((plan) => plan.id !== "firms");
 
 const formatEuro = (amount: number) =>
   `€${amount.toLocaleString("en-US", {
@@ -61,8 +62,8 @@ const ForLawyersPlans = () => {
     try {
       const returnUrl =
         typeof window !== "undefined"
-          ? `${window.location.origin}/for-lawyers/portal?view=appointments`
-          : "/for-lawyers/portal?view=appointments";
+          ? `${window.location.origin}/for-lawyers/portal?view=payments`
+          : "/for-lawyers/portal?view=payments";
       const cancelUrl =
         typeof window !== "undefined"
           ? `${window.location.origin}/for-lawyers/plans`
@@ -111,11 +112,10 @@ const ForLawyersPlans = () => {
               Κάθε νέος συνεργάτης ξεκινά στο Βασικό πλάνο μετά την έγκριση και μπορεί να αναβαθμίσει από τον πίνακα συνεργάτη.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <PlanSignal icon={ShieldCheck} label="Βασικό" value="€0 / μήνα" />
             <PlanSignal icon={LineChart} label="Επαγγελματικό" value="Από €23 / μήνα ετησίως" />
             <PlanSignal icon={Workflow} label="Πλήρες" value="Ροή υποθέσεων" />
-            <PlanSignal icon={UsersRound} label="Γραφεία" value="Έως 3 δικηγόροι" />
           </div>
         </section>
 
@@ -144,10 +144,11 @@ const ForLawyersPlans = () => {
         </section>
 
         <section className="mt-6 grid gap-5 lg:grid-cols-2 xl:grid-cols-4">
-          {partnerPlans.map((plan) => (
+          {displayedPartnerPlans.map((plan) => (
             <PlanCard
               key={plan.id}
               plan={plan}
+              expanded={plan.id === "premium"}
               billingInterval={billingInterval}
               signedIn={Boolean(partnerSession)}
               loading={loadingPlan === plan.id}
@@ -178,12 +179,14 @@ const ForLawyersPlans = () => {
 
 const PlanCard = ({
   plan,
+  expanded,
   billingInterval,
   signedIn,
   loading,
   onCheckout,
 }: {
   plan: PartnerPlan;
+  expanded?: boolean;
   billingInterval: PartnerBillingInterval;
   signedIn: boolean;
   loading: boolean;
@@ -192,8 +195,8 @@ const PlanCard = ({
   <article
     className={
       plan.recommended
-        ? "flex min-h-[520px] flex-col rounded-lg border-2 border-primary bg-card p-5 shadow-sm"
-        : "flex min-h-[520px] flex-col rounded-lg border border-border bg-card p-5"
+        ? `flex min-h-[520px] flex-col rounded-lg border-2 border-primary bg-card p-5 shadow-sm ${expanded ? "lg:col-span-2 xl:col-span-2" : ""}`
+        : `flex min-h-[520px] flex-col rounded-lg border border-border bg-card p-5 ${expanded ? "lg:col-span-2 xl:col-span-2" : ""}`
     }
   >
     <div className="flex items-start justify-between gap-4">
@@ -207,7 +210,7 @@ const PlanCard = ({
       <PlanBadge plan={plan} />
     </div>
 
-    <ul className="mt-6 space-y-3 text-sm leading-6 text-muted-foreground">
+    <ul className={expanded ? "mt-6 grid gap-x-8 gap-y-3 text-sm leading-6 text-muted-foreground sm:grid-cols-2" : "mt-6 space-y-3 text-sm leading-6 text-muted-foreground"}>
       {plan.completedConsultationFee > 0 ? (
         <PlanEntitlement enabled label={`${formatEuro(plan.completedConsultationFee)} ανά ολοκληρωμένη πρώτη συμβουλευτική`} />
       ) : null}

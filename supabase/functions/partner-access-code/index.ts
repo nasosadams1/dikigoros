@@ -11,6 +11,8 @@ const defaultAllowedOrigins = [
   "http://127.0.0.1:4173",
   "http://localhost:8080",
   "http://127.0.0.1:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
 ];
 
 const getAllowedOrigins = () => {
@@ -41,36 +43,33 @@ const getCorsHeaders = (request: Request) => {
 
 const createCode = () => String(Math.floor(100000 + Math.random() * 900000));
 
+const json = (request: Request, body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...getCorsHeaders(request), "Content-Type": "application/json" },
+  });
+
 serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: getCorsHeaders(request) });
   }
 
   if (request.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...getCorsHeaders(request), "Content-Type": "application/json" },
-    });
+    return json(request, { error: "Method not allowed" }, 405);
   }
 
   const { email } = await request.json().catch(() => ({ email: "" }));
   const normalizedEmail = String(email || "").trim().toLowerCase();
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-    return new Response(JSON.stringify({ error: "Invalid email" }), {
-      status: 400,
-      headers: { ...getCorsHeaders(request), "Content-Type": "application/json" },
-    });
+    return json(request, { error: "Invalid email" }, 400);
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!supabaseUrl || !serviceRoleKey) {
-    return new Response(JSON.stringify({ error: "Server is not configured" }), {
-      status: 500,
-      headers: { ...getCorsHeaders(request), "Content-Type": "application/json" },
-    });
+    return json(request, { error: "Server is not configured" }, 500);
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
@@ -81,33 +80,38 @@ serve(async (request) => {
   });
 
   if (error || !created) {
-    return new Response(JSON.stringify({ error: "Partner account is not approved" }), {
-      status: 403,
-      headers: { ...getCorsHeaders(request), "Content-Type": "application/json" },
-    });
+    return json(request, { error: "Partner account is not approved" }, 403);
   }
 
   const resendApiKey = Deno.env.get("RESEND_API_KEY");
   const fromEmail = Deno.env.get("PARTNER_AUTH_FROM_EMAIL");
 
-  if (resendApiKey && fromEmail) {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: normalizedEmail,
-        subject: "Κωδικός πρόσβασης στο partner portal",
-        text: `Ο κωδικός πρόσβασης στο partner portal είναι ${code}. Ισχύει για 10 λεπτά.`,
-      }),
-    });
+  if (!resendApiKey || !fromEmail) {
+    return json(request, { error: "Resend email delivery is not configured" }, 500);
   }
 
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 202,
-    headers: { ...getCorsHeaders(request), "Content-Type": "application/json" },
+  const resendResponse = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: fromEmail,
+      to: normalizedEmail,
+      subject: "Κωδικός πρόσβασης στο Dikigoros partner portal",
+      text: `Ο κωδικός πρόσβασης στο Dikigoros partner portal είναι ${code}. Ισχύει για 10 λεπτά. Χρησιμοποιήστε μόνο τον πιο πρόσφατο κωδικό.`,
+      html: `<p>Ο κωδικός πρόσβασης στο Dikigoros partner portal είναι:</p><p style="font-size:24px;font-weight:700;letter-spacing:4px">${code}</p><p>Ισχύει για 10 λεπτά. Χρησιμοποιήστε μόνο τον πιο πρόσφατο κωδικό.</p>`,
+    }),
   });
+
+  const resendPayload = await resendResponse.json().catch(() => null);
+
+  if (!resendResponse.ok) {
+    const providerMessage = resendPayload?.message || resendPayload?.error || "Resend rejected the message";
+    console.error("Partner access code email failed", providerMessage);
+    return json(request, { error: providerMessage }, 502);
+  }
+
+  return json(request, { ok: true, id: resendPayload?.id || null }, 202);
 });

@@ -26,7 +26,8 @@ describe("lawyer search", () => {
       appointmentTypes: ["inPerson"],
     });
 
-    expect(results.map((lawyer) => lawyer.id)).toEqual(["nikos-antoniou"]);
+    expect(results.map((lawyer) => lawyer.id)).toEqual(["petros-lamprou", "nikos-antoniou"]);
+    expect(results.every((lawyer) => lawyer.city === "Θεσσαλονίκη" && lawyer.consultationModes.includes("inPerson"))).toBe(true);
   });
 
   it("filters by price range and sorts by lowest price", () => {

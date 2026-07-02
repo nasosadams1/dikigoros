@@ -10,6 +10,7 @@ const supabaseConfig = readFileSync(
   join(process.cwd(), "supabase", "config.toml"),
   "utf8",
 );
+const packageJson = readFileSync(join(process.cwd(), "package.json"), "utf8");
 const simpleContractMigration = readFileSync(
   join(process.cwd(), "supabase", "migrations", "20260414170000_simple_production_contract.sql"),
   "utf8",
@@ -44,6 +45,26 @@ const partnerProfilePhotoFunction = readFileSync(
 );
 const partnerSubscriptionCheckoutFunction = readFileSync(
   join(process.cwd(), "supabase", "functions", "create-partner-subscription-checkout-session", "index.ts"),
+  "utf8",
+);
+const calendarOAuthLinkFunction = readFileSync(
+  join(process.cwd(), "supabase", "functions", "create-calendar-oauth-link", "index.ts"),
+  "utf8",
+);
+const calendarOAuthCallbackFunction = readFileSync(
+  join(process.cwd(), "supabase", "functions", "calendar-oauth-callback", "index.ts"),
+  "utf8",
+);
+const partnerCalendarBusyFunction = readFileSync(
+  join(process.cwd(), "supabase", "functions", "get-partner-calendar-busy", "index.ts"),
+  "utf8",
+);
+const partnerCalendarAvailabilityFunction = readFileSync(
+  join(process.cwd(), "supabase", "functions", "check-partner-calendar-availability", "index.ts"),
+  "utf8",
+);
+const calendarSyncShared = readFileSync(
+  join(process.cwd(), "supabase", "functions", "_shared", "calendar-sync.ts"),
   "utf8",
 );
 const reconciliationFunction = readFileSync(
@@ -220,6 +241,53 @@ describe("Supabase production contracts", () => {
     expect(productionSchema).toContain("BOOKING_NOT_FOUND_OR_NOT_PAID");
   });
 
+  it("ships real partner cases and calendar sync contracts", () => {
+    [
+      "create table if not exists public.partner_cases",
+      "create table if not exists public.partner_case_booking_links",
+      "create table if not exists public.partner_case_private_notes",
+      "create table if not exists public.partner_calendar_connections",
+      "status text not null default 'new'",
+      "access_token_ciphertext text",
+      "refresh_token_ciphertext text",
+      "time_off jsonb not null default '[]'::jsonb",
+      "grant execute on function public.accept_booking_as_partner",
+      "grant execute on function public.mark_booking_no_show_as_partner",
+      "grant execute on function public.create_partner_case_from_booking",
+      "grant execute on function public.list_partner_calendar_connections",
+      "grant execute on function public.disconnect_partner_calendar_connection",
+    ].forEach((contract) => expect(productionSchema).toContain(contract));
+
+    [
+      "[functions.create-calendar-oauth-link]",
+      "[functions.calendar-oauth-callback]",
+      "[functions.get-partner-calendar-busy]",
+      "[functions.check-partner-calendar-availability]",
+    ].forEach((contract) => expect(supabaseConfig).toContain(contract));
+
+    [
+      "create-calendar-oauth-link",
+      "calendar-oauth-callback",
+      "get-partner-calendar-busy",
+      "check-partner-calendar-availability",
+    ].forEach((functionName) => expect(packageJson).toContain(functionName));
+
+    expect(calendarOAuthLinkFunction).toContain("calendar.freebusy");
+    expect(calendarOAuthLinkFunction).not.toContain("MICROSOFT_CALENDAR");
+    expect(calendarOAuthCallbackFunction).not.toContain("MICROSOFT_CALENDAR");
+    expect(calendarOAuthCallbackFunction).toContain("partner_calendar_connections");
+    expect(calendarOAuthCallbackFunction).toContain("CALENDAR_TOKEN_SECRET");
+    expect(partnerCalendarBusyFunction).toContain("https://www.googleapis.com/calendar/v3/freeBusy");
+    expect(partnerCalendarBusyFunction).not.toContain("/me/calendar/calendarView");
+    expect(partnerCalendarAvailabilityFunction).toContain("BOOKING_SLOT_UNAVAILABLE");
+    expect(partnerCalendarAvailabilityFunction).toContain("Europe/Athens");
+    expect(partnerCalendarAvailabilityFunction).not.toContain("MICROSOFT_CALENDAR");
+    expect(calendarSyncShared).toContain("refresh_token");
+    expect(calendarSyncShared).toContain("crypto.subtle.encrypt");
+    expect(calendarSyncShared).toContain("crypto.subtle.decrypt");
+    expect(calendarSyncShared).not.toContain("refreshMicrosoftAccessToken");
+  });
+
   it("ships Level 4 marketplace engine contracts", () => {
     [
       "create table if not exists public.partner_subscriptions",
@@ -244,6 +312,7 @@ describe("Supabase production contracts", () => {
       "create or replace function public.upsert_partner_followup_task",
       "create or replace function public.update_partner_pipeline_status",
       "create or replace function public.get_partner_subscription_checkout_context",
+      "create or replace function public.get_partner_workspace_as_partner",
     ].forEach((contract) => expect(productionSchema).toContain(contract));
 
     const checkoutContextStart = productionSchema.indexOf("create or replace function public.get_partner_subscription_checkout_context");

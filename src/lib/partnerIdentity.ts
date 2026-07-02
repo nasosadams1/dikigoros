@@ -1,3 +1,4 @@
+import { type PartnerSession } from "@/lib/platformRepository";
 import { fetchPartnerWorkspace, getPartnerWorkspace } from "@/lib/partnerWorkspace";
 
 const normalizeLawyerId = (value?: string | null) => value?.trim().toLowerCase() || "";
@@ -10,10 +11,13 @@ export const getStoredPartnerLawyerId = (email?: string | null) => {
   return getPartnerWorkspace(email).profile.lawyerId || null;
 };
 
-export const fetchPartnerLawyerId = async (email?: string | null) => {
+export const fetchPartnerLawyerId = async (
+  email?: string | null,
+  partnerSession?: Pick<PartnerSession, "sessionToken"> | null,
+) => {
   if (!email) return null;
   try {
-    const workspace = await fetchPartnerWorkspace(email);
+    const workspace = await fetchPartnerWorkspace(email, partnerSession);
     return workspace.profile.lawyerId || null;
   } catch {
     return null;

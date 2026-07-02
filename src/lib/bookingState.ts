@@ -5,6 +5,7 @@ export type BookingState =
   | "confirmed_unpaid"
   | "confirmed_paid"
   | "completed"
+  | "no_show"
   | "cancelled";
 
 export type PaymentState =
@@ -32,6 +33,7 @@ export const bookingStateLabels: Record<BookingState, string> = {
   confirmed_unpaid: "Χρειάζεται πληρωμή",
   confirmed_paid: "Πληρωμένο",
   completed: "Ολοκληρωμένο",
+  no_show: "Δεν εμφανίστηκε",
   cancelled: "Ακυρωμένο",
 };
 
@@ -66,6 +68,7 @@ export const normalizeBookingState = (
   if (status === "confirmed_unpaid") return paymentStatus === "paid" ? "confirmed_paid" : "confirmed_unpaid";
   if (status === "confirmed_paid") return "confirmed_paid";
   if (status === "completed") return "completed";
+  if (status === "no_show") return "no_show";
   if (status === "cancelled") return "cancelled";
   if (status === "confirmed") return paymentStatus === "paid" ? "confirmed_paid" : "confirmed_unpaid";
   return "pending_confirmation";
@@ -136,8 +139,14 @@ export const canOpenCheckout = (
 ) => {
   const bookingState = getCanonicalBookingState(booking, payment);
   const paymentState = getCanonicalPaymentState(payment);
+  if (bookingState === "cancelled" || bookingState === "completed" || paymentState === "paid") return false;
   return booking.persistenceSource === "supabase" &&
-    (bookingState === "confirmed_unpaid" || paymentState === "failed" || paymentState === "checkout_opened");
+    (
+      bookingState === "pending_confirmation" ||
+      bookingState === "confirmed_unpaid" ||
+      paymentState === "failed" ||
+      paymentState === "checkout_opened"
+    );
 };
 
 export const canCancelBooking = (
@@ -167,6 +176,9 @@ export const getPaymentSituationCopy = (
   }
   if (bookingState === "cancelled") {
     return "Το ραντεβού ακυρώθηκε. Δεν υπάρχει ολοκληρωμένη χρέωση.";
+  }
+  if (bookingState === "no_show") {
+    return "Το ραντεβού σημειώθηκε ως μη εμφάνιση και χρειάζεται έλεγχος από την υποστήριξη αν υπάρχει οικονομική εκκρεμότητα.";
   }
   if (paymentState === "paid") {
     return payment?.receiptUrl
@@ -199,6 +211,7 @@ export const getBookingNextStepCopy = (
     return "Παρακολουθήστε την υπόθεση επιστροφής ή ανοίξτε υποστήριξη.";
   }
   if (bookingState === "cancelled") return "Δεν χρειάζεται άλλη ενέργεια.";
+  if (bookingState === "no_show") return "Ανοίξτε υποστήριξη αν διαφωνείτε με τη σήμανση μη εμφάνισης.";
   if (paymentState === "failed") return "Δοκιμάστε ξανά την πληρωμή ή ανοίξτε υποστήριξη.";
   if (paymentState !== "paid") return "Ολοκληρώστε την πληρωμή για να εμφανιστεί απόδειξη.";
   if (bookingState === "completed") return "Η κριτική ανοίγει όταν επιβεβαιωθεί η ολοκλήρωση της συμβουλευτικής.";

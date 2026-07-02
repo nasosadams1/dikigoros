@@ -3,6 +3,7 @@ import {
   buildAvailabilityTimeSlots,
   getAvailabilitySlotForDate,
   type PartnerAvailabilitySlot,
+  type PartnerTimeOff,
 } from "@/lib/partnerWorkspace";
 import { allowedMarketplaceCities, legalPracticeAreas } from "@/lib/marketplaceTaxonomy";
 
@@ -12,6 +13,7 @@ export type LanguageIntent = "Greek" | "English";
 
 export interface AvailabilityRules {
   availability: PartnerAvailabilitySlot[];
+  timeOff?: PartnerTimeOff[];
   bookingWindowDays: number;
   bufferMinutes: number;
 }

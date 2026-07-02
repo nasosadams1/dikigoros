@@ -12,6 +12,8 @@ const defaultAllowedOrigins = [
   "http://127.0.0.1:4173",
   "http://localhost:8080",
   "http://127.0.0.1:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
 ];
 
 const getAllowedOrigins = () => {
@@ -258,8 +260,8 @@ Deno.serve(async (request) => {
       booking.user_id = user.id;
     }
 
-    if (!["confirmed_unpaid", "confirmed"].includes(booking.status)) {
-      return json(request, { error: "Only confirmed unpaid bookings can be paid" }, 400);
+    if (!["pending_confirmation", "confirmed_unpaid", "confirmed"].includes(booking.status)) {
+      return json(request, { error: "Only pending unpaid bookings can be paid" }, 400);
     }
 
     const existingPayment = await fetchPayment(supabaseUrl, serviceRoleKey, booking.id);
@@ -317,8 +319,9 @@ Deno.serve(async (request) => {
 
     const payload = await stripeResponse.json();
     if (!stripeResponse.ok) {
-      console.error("Stripe checkout failed", payload.error?.message || payload);
-      return json(request, { error: "Payment could not be started. Try again or contact support." }, 400);
+      const stripeMessage = payload.error?.message || "Payment could not be started. Try again or contact support.";
+      console.error("Stripe checkout failed", stripeMessage);
+      return json(request, { error: stripeMessage }, 400);
     }
 
     await patchPaymentRecord(supabaseUrl, serviceRoleKey, booking, {

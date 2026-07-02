@@ -74,7 +74,7 @@ const assertStripeMode = (secretKey: string) => {
   }
 };
 
-const normalizeReturnUrl = (returnUrl: unknown, request: Request, fallbackPath = "/for-lawyers/portal?view=pipeline") => {
+const normalizeReturnUrl = (returnUrl: unknown, request: Request, fallbackPath = "/for-lawyers/portal?view=payments") => {
   const allowedOrigins = getAllowedOrigins();
   const requestOrigin = request.headers.get("Origin")?.replace(/\/+$/, "") || "";
   const fallbackOrigin = requestOrigin && allowedOrigins.includes(requestOrigin) ? requestOrigin : allowedOrigins[0];

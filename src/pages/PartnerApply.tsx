@@ -301,7 +301,7 @@ const PartnerApply = () => {
           : "Ορίστε τουλάχιστον τρεις διαθέσιμες ημέρες.",
       documents: documents.length > 0 ? "" : "Ανεβάστε τουλάχιστον ένα έγγραφο επαλήθευσης.",
     };
-  }, [availability, activeAvailabilityDays, documents.length, form]);
+  }, [availability, documents.length, form]);
 
   const stepFields: ValidationField[][] = [
     ["fullName", "workEmail", "phone", "city", "barAssociation", "registrationNumber", "yearsOfExperience"],

@@ -651,10 +651,13 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
         });
         window.location.assign(session.url);
       }
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "";
       setPaymentSetupState({
         loading: false,
-        message: "Η σελίδα πληρωμής δεν άνοιξε. Δεν έγινε χρέωση.",
+        message: message
+          ? `Η σελίδα πληρωμής δεν άνοιξε: ${message}`
+          : "Η σελίδα πληρωμής δεν άνοιξε. Δεν έγινε χρέωση.",
         tone: "error",
       });
     }

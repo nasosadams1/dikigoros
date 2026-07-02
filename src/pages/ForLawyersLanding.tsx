@@ -72,12 +72,6 @@ const plans = [
     bestFor: "Για γραφεία που χρειάζονται οργανωμένη ροή υποθέσεων, υπενθυμίσεις, έγγραφα και πιο αναλυτική παρακολούθηση.",
     includes: ["Όλα του Επαγγελματικού", "Ροή υποθέσεων και υπενθυμίσεις", "Αιτήματα εγγράφων και αναλυτικά"],
   },
-  {
-    name: "Γραφεία / Ομάδες",
-    commercial: "Από €127.99 / μήνα",
-    bestFor: "Για ομάδες έως 3 δικηγόρων, με επιπλέον θέσεις +€25 / μήνα ανά δικηγόρο.",
-    includes: ["Έως 3 δικηγόροι", "Ροή υποθέσεων και αναλυτικά", "Προσαρμοσμένη εγκατάσταση"],
-  },
 ];
 
 const addOns = ["Ελεγμένη καταχώριση", "Ενισχυμένη προβολή", "Στατιστικά απόδοσης", "Ροή υποθέσεων"];
@@ -219,7 +213,10 @@ const ForLawyersLanding = () => {
 
           <div className="grid gap-4 md:grid-cols-2">
             {plans.map((plan) => (
-              <article key={plan.name} className="partner-panel flex min-h-[20rem] flex-col p-5 lg:p-6">
+              <article
+                key={plan.name}
+                className={`partner-panel flex min-h-[20rem] flex-col p-5 lg:p-6 ${plan.name === "Πλήρες" ? "md:col-span-2" : ""}`}
+              >
                 <p className="text-[12px] font-semibold uppercase leading-5 tracking-[0.18em] text-[hsl(var(--partner-navy-soft))]">{plan.name}</p>
                 <h3 className="mt-3 text-[22px] font-semibold leading-tight tracking-[-0.02em] text-[hsl(var(--partner-ink))]">{plan.commercial}</h3>
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">{plan.bestFor}</p>

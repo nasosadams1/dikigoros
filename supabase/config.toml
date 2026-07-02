@@ -26,3 +26,15 @@ verify_jwt = false
 
 [functions.reconcile-stripe-payments]
 verify_jwt = false
+
+[functions.create-calendar-oauth-link]
+verify_jwt = false
+
+[functions.calendar-oauth-callback]
+verify_jwt = false
+
+[functions.get-partner-calendar-busy]
+verify_jwt = false
+
+[functions.check-partner-calendar-availability]
+verify_jwt = false

@@ -39,6 +39,11 @@ import {
   requestBookingCheckoutSession,
   type StoredBooking,
 } from "@/lib/platformRepository";
+import {
+  fetchPartnerCalendarBusyIntervals,
+  isSlotBlockedByBusyIntervals,
+  type PartnerCalendarBusyInterval,
+} from "@/lib/partnerCalendarRepository";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { allowLocalCriticalFallback } from "@/lib/runtimeGuards";
 import { cn } from "@/lib/utils";
@@ -105,6 +110,7 @@ const Booking = () => {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [attemptedDetails, setAttemptedDetails] = useState(false);
   const [reservedSlots, setReservedSlots] = useState<Set<string>>(() => new Set());
+  const [calendarBusyIntervals, setCalendarBusyIntervals] = useState<PartnerCalendarBusyInterval[]>([]);
   const [confirmedBooking, setConfirmedBooking] = useState<StoredBooking | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -138,13 +144,25 @@ const Booking = () => {
   const selectedConsultation = selectedType !== null && lawyer ? lawyer.consultations[selectedType] : null;
   const selectedDateLabel = selectedDate !== null ? dates[selectedDate].full : "";
   const selectedAvailabilitySlot =
-    selectedDate !== null ? getAvailabilitySlotForDate(availabilityRules.availability, dates[selectedDate].dateObject) : null;
-  const availableTimeSlots =
+    selectedDate !== null ? getAvailabilitySlotForDate(availabilityRules.availability, dates[selectedDate].dateObject, availabilityRules.timeOff) : null;
+  const availableTimeSlotsBeforeCalendar =
     selectedDate !== null
       ? buildAvailabilityTimeSlots(
           selectedAvailabilitySlot,
           getDurationMinutes(selectedConsultation?.duration),
           availabilityRules.bufferMinutes,
+        )
+      : [];
+  const availableTimeSlots =
+    selectedDate !== null
+      ? availableTimeSlotsBeforeCalendar.filter(
+          (time) =>
+            !isSlotBlockedByBusyIntervals(
+              dates[selectedDate].dateObject,
+              time,
+              getDurationMinutes(selectedConsultation?.duration),
+              calendarBusyIntervals,
+            ),
         )
       : [];
   const selectedSlotKey =
@@ -158,19 +176,33 @@ const Booking = () => {
   const profilePhone = profile?.phone;
   const userEmail = user?.email;
   const userDisplayName = user?.user_metadata?.display_name;
+  const partnerSessionEmail = partnerSession?.email;
+  const partnerSessionToken = partnerSession?.sessionToken;
 
   useEffect(() => {
     if (!id) return;
 
     let active = true;
-    void fetchReservedBookingSlots(id).then((slots) => {
-      if (active) setReservedSlots(slots);
+    const start = dates[0]?.dateObject;
+    const end = dates[dates.length - 1]?.dateObject;
+    const rangeEnd = end ? new Date(end.getTime()) : null;
+    rangeEnd?.setDate(rangeEnd.getDate() + 1);
+
+    void Promise.all([
+      fetchReservedBookingSlots(id),
+      start && rangeEnd
+        ? fetchPartnerCalendarBusyIntervals(id, start.toISOString(), rangeEnd.toISOString())
+        : Promise.resolve([]),
+    ]).then(([slots, busy]) => {
+      if (!active) return;
+      setReservedSlots(slots);
+      setCalendarBusyIntervals(busy);
     });
 
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [dates, id]);
 
   useEffect(() => {
     if (!user?.id && !profileName && !profileEmail && !profilePhone) return;
@@ -184,22 +216,22 @@ const Booking = () => {
   }, [profileEmail, profileName, profilePhone, user?.id, userDisplayName, userEmail]);
 
   useEffect(() => {
-    if (!partnerSession?.email) {
+    if (!partnerSessionEmail) {
       setCurrentPartnerLawyerId(null);
       return;
     }
 
     let active = true;
-    setCurrentPartnerLawyerId(getStoredPartnerLawyerId(partnerSession.email));
+    setCurrentPartnerLawyerId(getStoredPartnerLawyerId(partnerSessionEmail));
 
-    void fetchPartnerLawyerId(partnerSession.email).then((lawyerId) => {
+    void fetchPartnerLawyerId(partnerSessionEmail, { sessionToken: partnerSessionToken }).then((lawyerId) => {
       if (active) setCurrentPartnerLawyerId(lawyerId);
     });
 
     return () => {
       active = false;
     };
-  }, [partnerSession?.email]);
+  }, [partnerSessionEmail, partnerSessionToken]);
 
   useEffect(() => {
     const checkout = searchParams.get("checkout");
@@ -317,7 +349,7 @@ const Booking = () => {
             </p>
             <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
               <Button asChild className="rounded-xl font-bold">
-                <Link to="/for-lawyers/portal?view=appointments">Μετάβαση στον πίνακα συνεργάτη</Link>
+                <Link to="/for-lawyers/portal?view=bookings">Μετάβαση στον πίνακα συνεργάτη</Link>
               </Button>
               <Button asChild variant="outline" className="rounded-xl font-bold">
                 <Link to={`/lawyer/${lawyer.id}`}>Επιστροφή στο προφίλ</Link>
@@ -364,6 +396,7 @@ const Booking = () => {
           price: selectedConsultation.price,
           duration: selectedConsultation.duration,
           dateLabel: selectedDateLabel,
+          dateIso: selectedDate !== null ? dates[selectedDate].dateObject.toISOString().slice(0, 10) : undefined,
           time: selectedTime,
           clientName: details.fullName.trim(),
           clientEmail: details.email.trim().toLowerCase(),
@@ -431,6 +464,19 @@ const Booking = () => {
             amount: confirmedBooking.price,
           });
           window.location.assign(session.url);
+          return;
+        }
+
+        if (session.persistenceSource === "local" && allowLocalCheckoutReturnRecording) {
+          recordLocalCheckoutReturn(confirmedBooking.id, "paid");
+          trackFunnelEvent("payment_completed_local_demo", {
+            bookingId: confirmedBooking.id,
+            lawyerId: confirmedBooking.lawyerId,
+            userId: user?.id,
+            amount: confirmedBooking.price,
+          });
+          setPaymentState({ loading: false, error: "", action: "" });
+          setCurrentStep(4);
           return;
         }
 

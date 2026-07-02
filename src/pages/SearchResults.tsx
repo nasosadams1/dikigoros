@@ -48,7 +48,6 @@ import {
   formatCurrency,
   getLawyerMarketplaceSignals,
   getPriceFrom,
-  type AvailabilityIntent,
   type LanguageIntent,
 } from "@/lib/marketplace";
 import {
@@ -96,7 +95,6 @@ const languageOptions: Array<{ value: LanguageIntent; label: string }> = [
 const validAppointmentTypes = new Set<ConsultationMode>(appointmentTypeOptions.map((option) => option.value));
 const validPriceRanges = new Set<PriceRange>(["all", ...priceOptions.map((option) => option.value)]);
 const validSorts = new Set<LawyerSort>(sortOptions.map((option) => option.value));
-const validAvailability = new Set<AvailabilityIntent>(["any", "today", "tomorrow"]);
 const validLanguages = new Set<LanguageIntent>(languageOptions.map((option) => option.value));
 
 const readListParam = <T extends string>(value: string | null, validValues: Set<T>) =>
@@ -119,7 +117,6 @@ const readNumberParam = (value: string | null) => {
 const getFiltersFromParams = (params: URLSearchParams): LawyerSearchFilters => {
   const price = params.get("price") as PriceRange | null;
   const sort = params.get("sort") as LawyerSort | null;
-  const availability = params.get("availability") as AvailabilityIntent | null;
 
   return {
     query: params.get("q") || "",
@@ -128,10 +125,10 @@ const getFiltersFromParams = (params: URLSearchParams): LawyerSearchFilters => {
     appointmentTypes: readListParam(params.get("type"), validAppointmentTypes),
     priceRange: price && validPriceRanges.has(price) ? price : defaultLawyerSearchFilters.priceRange,
     sort: sort && validSorts.has(sort) ? sort : defaultLawyerSearchFilters.sort,
-    availability: availability && validAvailability.has(availability) ? availability : "any",
-    responseUnderMinutes: readNumberParam(params.get("responseUnder")),
+    availability: defaultLawyerSearchFilters.availability,
+    responseUnderMinutes: defaultLawyerSearchFilters.responseUnderMinutes,
     minRating: readNumberParam(params.get("minRating")),
-    minReviews: readNumberParam(params.get("minReviews")),
+    minReviews: defaultLawyerSearchFilters.minReviews,
     languages: readListParam(params.get("language"), validLanguages),
   };
 };
@@ -144,10 +141,7 @@ const writeFiltersToParams = (filters: LawyerSearchFilters) => {
   if (filters.appointmentTypes.length > 0) params.set("type", filters.appointmentTypes.join(","));
   if (filters.priceRange !== "all") params.set("price", filters.priceRange);
   if (filters.sort !== "recommended") params.set("sort", filters.sort);
-  if (filters.availability && filters.availability !== "any") params.set("availability", filters.availability);
-  if (filters.responseUnderMinutes) params.set("responseUnder", String(filters.responseUnderMinutes));
   if (filters.minRating) params.set("minRating", String(filters.minRating));
-  if (filters.minReviews) params.set("minReviews", String(filters.minReviews));
   if (filters.languages?.length) params.set("language", filters.languages.join(","));
   return params;
 };
@@ -158,17 +152,8 @@ const getActiveFilterCount = (filters: LawyerSearchFilters) =>
   filters.specialties.length +
   filters.appointmentTypes.length +
   (filters.priceRange !== "all" ? 1 : 0) +
-  (filters.availability && filters.availability !== "any" ? 1 : 0) +
-  (filters.responseUnderMinutes ? 1 : 0) +
   (filters.minRating ? 1 : 0) +
-  (filters.minReviews ? 1 : 0) +
   (filters.languages?.length || 0);
-
-const availabilityFilterLabels: Record<AvailabilityIntent, string> = {
-  any: "Οποιαδήποτε διαθεσιμότητα",
-  today: "Διαθέσιμο σήμερα",
-  tomorrow: "Διαθέσιμο αύριο",
-};
 
 const getLanguageLabel = (language: LanguageIntent) =>
   languageOptions.find((option) => option.value === language)?.label || language;
@@ -194,13 +179,15 @@ const SearchResults = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const partnerSession = getPartnerSession();
-  const workspaceKey = user?.id || partnerSession?.email;
+  const partnerSessionEmail = partnerSession?.email;
+  const partnerSessionToken = partnerSession?.sessionToken;
+  const workspaceKey = user?.id || partnerSessionEmail;
   const filters = useMemo(() => getFiltersFromParams(searchParams), [searchParams]);
   const [showFilters, setShowFilters] = useState(false);
   const [queryDraft, setQueryDraft] = useState(filters.query);
   const [cityDraft, setCityDraft] = useState(filters.city);
   const [workspace, setWorkspace] = useState(() => getUserWorkspace(workspaceKey));
-  const [currentPartnerLawyerId, setCurrentPartnerLawyerId] = useState<string | null>(() => getStoredPartnerLawyerId(partnerSession?.email));
+  const [currentPartnerLawyerId, setCurrentPartnerLawyerId] = useState<string | null>(() => getStoredPartnerLawyerId(partnerSessionEmail));
   const { data: lawyerDataset = [], isFetching } = useQuery({
     queryKey: ["lawyers"],
     queryFn: getLawyers,
@@ -216,21 +203,21 @@ const SearchResults = () => {
   }, [workspaceKey]);
 
   useEffect(() => {
-    if (!partnerSession?.email) {
+    if (!partnerSessionEmail) {
       setCurrentPartnerLawyerId(null);
       return;
     }
 
     let active = true;
-    setCurrentPartnerLawyerId(getStoredPartnerLawyerId(partnerSession.email));
-    void fetchPartnerLawyerId(partnerSession.email).then((lawyerId) => {
+    setCurrentPartnerLawyerId(getStoredPartnerLawyerId(partnerSessionEmail));
+    void fetchPartnerLawyerId(partnerSessionEmail, { sessionToken: partnerSessionToken }).then((lawyerId) => {
       if (active) setCurrentPartnerLawyerId(lawyerId);
     });
 
     return () => {
       active = false;
     };
-  }, [partnerSession?.email]);
+  }, [partnerSessionEmail, partnerSessionToken]);
 
   const availableSpecialtyOptions = useMemo(() => [...legalPracticeAreaLabels], []);
   const availableCityOptions = useMemo(() => [...allowedMarketplaceCityNames], []);
@@ -321,7 +308,7 @@ const SearchResults = () => {
               onChange={(event) => setCityDraft(event.target.value)}
               className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm font-medium text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
-              <option value="">Όλες οι πόλεις</option>
+              <option value="" disabled hidden>Όλες οι πόλεις</option>
               {availableCityOptions.map((city) => (
                 <option key={city} value={city}>{city}</option>
               ))}
@@ -399,7 +386,7 @@ const SearchResults = () => {
                     }}
                     className="mt-2 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground"
                   >
-                    <option value="">Όλες οι πόλεις</option>
+                    <option value="" disabled hidden>Όλες οι πόλεις</option>
                     {availableCityOptions.map((city) => (
                       <option key={city} value={city}>{city}</option>
                     ))}
@@ -407,12 +394,6 @@ const SearchResults = () => {
                 </div>
 
                 <div className="rounded-lg border border-border/70 bg-secondary/25 px-3">
-                  <FilterGroup label="Διαθεσιμότητα και εμπιστοσύνη">
-                    <RadioFilter name="availability" label="Διαθέσιμο αύριο" checked={filters.availability === "tomorrow"} onChange={() => updateFilters({ ...filters, availability: filters.availability === "tomorrow" ? "any" : "tomorrow" })} />
-                    <CheckboxFilter label="Απαντά σε έως 2 ώρες" checked={filters.responseUnderMinutes === 120} onChange={() => updateFilters({ ...filters, responseUnderMinutes: filters.responseUnderMinutes === 120 ? null : 120 })} />
-                    <CheckboxFilter label="10+ επιβεβαιωμένες αξιολογήσεις" checked={filters.minReviews === 10} onChange={() => updateFilters({ ...filters, minReviews: filters.minReviews === 10 ? null : 10 })} />
-                  </FilterGroup>
-
                   <FilterGroup label="Τρόποι ραντεβού">
                     {appointmentTypeOptions.map((option) => (
                       <CheckboxFilter key={option.value} label={option.label} checked={filters.appointmentTypes.includes(option.value)} onChange={() => toggleAppointmentType(option.value)} />
@@ -503,7 +484,7 @@ const SearchResults = () => {
                   aria-label="Επιπλέον ταξινόμηση"
                 >
                   {sortOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
+                    <option key={option.value} value={option.value} disabled={option.value === "recommended"} hidden={option.value === "recommended"}>
                       {option.label}
                     </option>
                   ))}
@@ -857,10 +838,7 @@ const ActiveFilterSummary = ({ filters, onClear }: { filters: LawyerSearchFilter
     <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-muted-foreground">Ενεργά φίλτρα</span>
     {filters.query ? <FilterPill>{filters.query}</FilterPill> : null}
     {filters.city ? <FilterPill>{filters.city}</FilterPill> : null}
-    {filters.availability && filters.availability !== "any" ? <FilterPill>{availabilityFilterLabels[filters.availability]}</FilterPill> : null}
-    {filters.responseUnderMinutes ? <FilterPill>{`Απαντά σε έως ${filters.responseUnderMinutes / 60} ώ.`}</FilterPill> : null}
     {filters.minRating ? <FilterPill>{`Βαθμολογία ${filters.minRating}+`}</FilterPill> : null}
-    {filters.minReviews ? <FilterPill>{`${filters.minReviews}+ επιβεβαιωμένες αξιολογήσεις`}</FilterPill> : null}
     {filters.languages?.map((language) => <FilterPill key={language}>{getLanguageLabel(language)}</FilterPill>)}
     <button type="button" onClick={onClear} className="text-xs font-bold text-primary">Καθαρισμός όλων</button>
   </div>

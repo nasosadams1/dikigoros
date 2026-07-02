@@ -75,7 +75,9 @@ const LawyerProfile = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const partnerSession = getPartnerSession();
-  const workspaceKey = user?.id || partnerSession?.email;
+  const partnerSessionEmail = partnerSession?.email;
+  const partnerSessionToken = partnerSession?.sessionToken;
+  const workspaceKey = user?.id || partnerSessionEmail;
   const [workspace, setWorkspace] = useState(() => getUserWorkspace(workspaceKey));
   const [lawyer, setLawyer] = useState<Lawyer | null | undefined>(undefined);
   const [reviews, setReviews] = useState<PublicLawyerReview[]>([]);
@@ -89,7 +91,7 @@ const LawyerProfile = () => {
   });
   const [availabilityRules, setAvailabilityRules] = useState<AvailabilityRules | null>(null);
   const [reservedSlots, setReservedSlots] = useState<Set<string>>(() => new Set());
-  const [currentPartnerLawyerId, setCurrentPartnerLawyerId] = useState<string | null>(() => getStoredPartnerLawyerId(partnerSession?.email));
+  const [currentPartnerLawyerId, setCurrentPartnerLawyerId] = useState<string | null>(() => getStoredPartnerLawyerId(partnerSessionEmail));
 
   useEffect(() => {
     setWorkspace(getUserWorkspace(workspaceKey));
@@ -121,22 +123,22 @@ const LawyerProfile = () => {
   }, [user?.email, user?.id]);
 
   useEffect(() => {
-    if (!partnerSession?.email) {
+    if (!partnerSessionEmail) {
       setCurrentPartnerLawyerId(null);
       return;
     }
 
     let active = true;
-    setCurrentPartnerLawyerId(getStoredPartnerLawyerId(partnerSession.email));
+    setCurrentPartnerLawyerId(getStoredPartnerLawyerId(partnerSessionEmail));
 
-    void fetchPartnerLawyerId(partnerSession.email).then((lawyerId) => {
+    void fetchPartnerLawyerId(partnerSessionEmail, { sessionToken: partnerSessionToken }).then((lawyerId) => {
       if (active) setCurrentPartnerLawyerId(lawyerId);
     });
 
     return () => {
       active = false;
     };
-  }, [partnerSession?.email]);
+  }, [partnerSessionEmail, partnerSessionToken]);
 
   useEffect(() => {
     let active = true;
@@ -377,8 +379,8 @@ const LawyerProfile = () => {
       />
       <Navbar />
 
-      <main className="mx-auto max-w-6xl px-5 py-6 lg:px-8 lg:py-8">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <main className="mx-auto max-w-7xl px-5 py-6 lg:px-8 lg:py-8">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0 space-y-6">
             <section className="rounded-2xl border border-border bg-card p-5 md:p-6">
               <div className="flex flex-col gap-5 md:flex-row md:items-start">
@@ -401,7 +403,7 @@ const LawyerProfile = () => {
                       <p className="mt-2 max-w-2xl text-sm leading-6 text-foreground/65">{lawyer.bestFor}</p>
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-2 lg:w-[22rem]">
+                    <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:w-[22rem]">
                       <CompactFact icon={MapPin} label="Πόλη">{lawyer.city}</CompactFact>
                       <CompactFact icon={Briefcase} label="Εμπειρία">{lawyer.experience} χρόνια</CompactFact>
                       <CompactFact icon={Clock} label="Απόκριση">{lawyer.response}</CompactFact>
@@ -682,10 +684,10 @@ const LawyerProfile = () => {
             </section>
           </div>
 
-          <aside className="shrink-0 xl:sticky xl:top-24 xl:self-start">
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-xl shadow-foreground/[0.06]">
+          <aside className="min-w-0 shrink-0 xl:sticky xl:top-24 xl:self-start">
+            <div className="rounded-2xl border border-border bg-card p-5 shadow-xl shadow-foreground/[0.06] sm:p-6 xl:p-5">
               <p className="text-[11px] font-bold uppercase tracking-widest text-foreground/40">Κλείστε ραντεβού</p>
-              <div className="mt-2.5 flex items-baseline gap-1.5">
+              <div className="mt-2.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                 <span className="text-[1.75rem] font-bold text-foreground">από {formatCurrency(lowestPrice)}</span>
                 <span className="text-[13px] font-semibold text-foreground/40">/ συμβουλευτική</span>
               </div>
@@ -716,7 +718,11 @@ const LawyerProfile = () => {
               ) : null}
 
               {isOwnLawyerProfile ? (
-                <Button type="button" disabled className="mt-4 h-12 w-full rounded-xl text-[15px] font-bold">
+                <Button
+                  type="button"
+                  disabled
+                  className="mt-4 h-auto min-h-12 w-full whitespace-normal rounded-xl px-3 py-3 text-center text-sm font-bold leading-5 disabled:opacity-100"
+                >
                   Δεν μπορείτε να κλείσετε ραντεβού στον εαυτό σας
                 </Button>
               ) : (
@@ -791,19 +797,19 @@ const CompactFact = ({
   label: string;
   children: ReactNode;
 }) => (
-  <div className="rounded-xl border border-border bg-background px-3 py-2.5">
-    <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+  <div className="min-w-0 rounded-xl border border-border bg-background px-3 py-2.5">
+    <p className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
       <Icon className="h-3.5 w-3.5" />
-      {label}
+      <span className="min-w-0 break-words">{label}</span>
     </p>
-    <p className="mt-1 text-sm font-bold text-foreground">{children}</p>
+    <p className="mt-1 break-words text-sm font-bold leading-5 text-foreground">{children}</p>
   </div>
 );
 
 const Signal = ({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) => (
-  <div className="flex items-center gap-2.5 text-[13px] font-semibold text-foreground">
+  <div className="flex min-w-0 items-center gap-2.5 text-[13px] font-semibold text-foreground">
     <Icon className="h-4 w-4 text-sage" />
-    {children}
+    <span className="min-w-0 break-words">{children}</span>
   </div>
 );
 

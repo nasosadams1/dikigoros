@@ -83,8 +83,11 @@ const PartnerLogin = () => {
         destination: "/for-lawyers/portal",
       },
     });
-    } catch {
-      setLoginError("Παρουσιάστηκε πρόβλημα κατά τον έλεγχο πρόσβασης. Προσπαθήστε ξανά.");
+    } catch (error) {
+      const message = error instanceof Error && error.message
+        ? error.message
+        : "Δεν ήταν δυνατή η αποστολή κωδικού επαλήθευσης. Προσπαθήστε ξανά.";
+      setLoginError(message);
     } finally {
       setIsSubmitting(false);
     }

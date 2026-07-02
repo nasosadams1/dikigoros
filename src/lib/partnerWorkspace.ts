@@ -51,6 +51,13 @@ export interface PartnerAvailabilitySlot {
   note: string;
 }
 
+export interface PartnerTimeOff {
+  id: string;
+  startDate: string;
+  endDate: string;
+  label: string;
+}
+
 export interface PartnerReview {
   id: string;
   clientName: string;
@@ -65,6 +72,7 @@ export interface PartnerReview {
 export interface PartnerWorkspace {
   profile: PartnerProfileSettings;
   availability: PartnerAvailabilitySlot[];
+  timeOff: PartnerTimeOff[];
   reviews: PartnerReview[];
   notifications: {
     bookingEmail: boolean;
@@ -112,6 +120,16 @@ const clampPartnerConsultationPrice = (value: unknown, mode: ConsultationMode) =
   );
 };
 
+const partnerWeekdaySlots: PartnerAvailabilitySlot[] = [
+  { day: "Δευτέρα", enabled: true, start: "09:00", end: "17:00", note: "" },
+  { day: "Τρίτη", enabled: true, start: "10:00", end: "18:00", note: "" },
+  { day: "Τετάρτη", enabled: true, start: "12:00", end: "16:00", note: "Δικαστήριο το πρωί" },
+  { day: "Πέμπτη", enabled: true, start: "09:30", end: "16:30", note: "" },
+  { day: "Παρασκευή", enabled: false, start: "09:00", end: "15:00", note: "Μόνο επείγοντα" },
+  { day: "Σάββατο", enabled: false, start: "10:00", end: "14:00", note: "" },
+  { day: "Κυριακή", enabled: false, start: "10:00", end: "14:00", note: "" },
+];
+
 export const defaultPartnerWorkspace: PartnerWorkspace = {
   profile: {
     lawyerId: "maria-papadopoulou",
@@ -138,13 +156,8 @@ export const defaultPartnerWorkspace: PartnerWorkspace = {
     bookingWindowDays: 21,
     bufferMinutes: 15,
   },
-  availability: [
-    { day: "Δευτέρα", enabled: true, start: "09:00", end: "17:00", note: "" },
-    { day: "Τρίτη", enabled: true, start: "10:00", end: "18:00", note: "" },
-    { day: "Τετάρτη", enabled: true, start: "12:00", end: "16:00", note: "Δικαστήριο το πρωί" },
-    { day: "Πέμπτη", enabled: true, start: "09:30", end: "16:30", note: "" },
-    { day: "Παρασκευή", enabled: false, start: "09:00", end: "15:00", note: "Μόνο επείγοντα" },
-  ],
+  availability: partnerWeekdaySlots,
+  timeOff: [],
   reviews: [
     {
       id: "review-1",
@@ -184,6 +197,39 @@ const getPartnerWorkspaceKey = (email?: string | null) =>
 
 const unique = (items: string[]) => Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
 
+const normalizeTimeOff = (items?: PartnerTimeOff[] | null): PartnerTimeOff[] =>
+  Array.isArray(items)
+    ? items
+        .map((item) => ({
+          id: item.id || `time-off-${item.startDate}-${item.endDate}`,
+          startDate: String(item.startDate || "").slice(0, 10),
+          endDate: String(item.endDate || item.startDate || "").slice(0, 10),
+          label: String(item.label || "Μη διαθέσιμη ημέρα").trim(),
+        }))
+        .filter((item) => item.startDate && item.endDate)
+    : [];
+
+const normalizeAvailability = (availability?: PartnerAvailabilitySlot[] | null) => {
+  const byDay = new Map(
+    (Array.isArray(availability) ? availability : [])
+      .filter((slot) => slot?.day)
+      .map((slot) => [normalizeLabel(slot.day), slot]),
+  );
+
+  return partnerWeekdaySlots.map((defaultSlot) => {
+    const candidate = byDay.get(normalizeLabel(defaultSlot.day));
+    return {
+      ...defaultSlot,
+      ...(candidate || {}),
+      day: defaultSlot.day,
+      enabled: Boolean(candidate?.enabled ?? defaultSlot.enabled),
+      start: candidate?.start || defaultSlot.start,
+      end: candidate?.end || defaultSlot.end,
+      note: candidate?.note || defaultSlot.note,
+    };
+  });
+};
+
 const normalizePartnerWorkspace = (workspace?: Partial<PartnerWorkspace> | null): PartnerWorkspace => {
   const primarySpecialty =
     normalizeLegalPracticeArea(workspace?.profile?.primarySpecialty) ||
@@ -211,9 +257,8 @@ const normalizePartnerWorkspace = (workspace?: Partial<PartnerWorkspace> | null)
         workspace?.profile?.sessionDurationMinutes ?? defaultPartnerWorkspace.profile.sessionDurationMinutes,
       ),
     },
-    availability: Array.isArray(workspace?.availability)
-      ? workspace.availability
-      : defaultPartnerWorkspace.availability,
+    availability: normalizeAvailability(workspace?.availability),
+    timeOff: normalizeTimeOff(workspace?.timeOff),
     reviews: Array.isArray(workspace?.reviews) ? workspace.reviews : defaultPartnerWorkspace.reviews,
     notifications: {
       ...defaultPartnerWorkspace.notifications,
@@ -361,6 +406,7 @@ interface PartnerProfileSettingsRow {
   lawyer_id?: string | null;
   profile?: Partial<PartnerProfileSettings> | null;
   availability?: PartnerAvailabilitySlot[] | null;
+  time_off?: PartnerTimeOff[] | null;
   reviews?: PartnerReview[] | null;
   notifications?: PartnerWorkspace["notifications"] | null;
   published_profile?: Partial<PartnerProfileSettings> | null;
@@ -484,28 +530,30 @@ const fetchLawyerProfileForWorkspace = async (lawyerId?: string | null) => {
   return (data as LawyerProfileWorkspaceRow | null) || null;
 };
 
-export const fetchPartnerWorkspace = async (email?: string | null) => {
+export const fetchPartnerWorkspace = async (
+  email?: string | null,
+  partnerSession?: Pick<PartnerSession, "sessionToken"> | null,
+) => {
   const localWorkspace = getPartnerWorkspace(email);
   const normalizedEmail = email?.trim().toLowerCase();
-  if (!normalizedEmail) {
+  if (!normalizedEmail || !partnerSession?.sessionToken) {
     if (allowLocalCriticalFallback) return localWorkspace;
     throw failClosedCriticalPath("Partner workspace");
   }
 
   try {
-    const { data, error } = await publicSupabase
-      .from("partner_profile_settings")
-      .select("*")
-      .eq("partner_email", normalizedEmail)
-      .maybeSingle();
+    const { data, error } = await publicSupabase.rpc("get_partner_workspace_as_partner", {
+      p_partner_email: normalizedEmail,
+      p_session_token: partnerSession.sessionToken,
+    });
 
     if (error) throw error;
-    if (!data) {
+    const row = Array.isArray(data) ? data[0] as PartnerProfileSettingsRow | undefined : data as PartnerProfileSettingsRow | null;
+    if (!row) {
       if (allowLocalCriticalFallback) return localWorkspace;
       throw failClosedCriticalPath("Partner workspace");
     }
 
-    const row = data as PartnerProfileSettingsRow;
     let remoteWorkspace = normalizePartnerWorkspace({
       ...localWorkspace,
       profile: {
@@ -514,6 +562,7 @@ export const fetchPartnerWorkspace = async (email?: string | null) => {
         lawyerId: row.lawyer_id || localWorkspace.profile.lawyerId,
       },
       availability: row.availability || localWorkspace.availability,
+      timeOff: row.time_off || localWorkspace.timeOff,
       reviews: row.reviews || localWorkspace.reviews,
       notifications: {
         ...localWorkspace.notifications,
@@ -528,7 +577,8 @@ export const fetchPartnerWorkspace = async (email?: string | null) => {
     }
 
     return savePartnerWorkspace(normalizedEmail, remoteWorkspace);
-  } catch {
+  } catch (error) {
+    if (isPartnerSessionInvalidError(error)) throw new Error("PARTNER_SESSION_INVALID");
     if (!allowLocalCriticalFallback) {
       throw failClosedCriticalPath("Partner workspace");
     }
@@ -560,6 +610,7 @@ export const syncPartnerWorkspace = async (
       p_availability: normalized.availability,
       p_notifications: normalized.notifications,
       p_reviews: normalized.reviews,
+      p_time_off: normalized.timeOff,
     });
 
     if (error) throw error;
@@ -599,7 +650,7 @@ export const fetchPublishedPartnerWorkspaceForLawyer = async (lawyerId: string) 
   try {
     const { data, error } = await publicSupabase
       .from("partner_profile_settings")
-      .select("lawyer_id,profile,availability,reviews,notifications,published_profile,published_availability,is_public")
+      .select("lawyer_id,profile,availability,time_off,reviews,notifications,published_profile,published_availability,is_public")
       .eq("lawyer_id", lawyerId)
       .eq("is_public", true)
       .maybeSingle();
@@ -621,6 +672,7 @@ export const fetchPublishedPartnerWorkspaceForLawyer = async (lawyerId: string) 
         row.availability ||
         localWorkspace?.availability ||
         defaultPartnerWorkspace.availability,
+      timeOff: row.time_off || localWorkspace?.timeOff || defaultPartnerWorkspace.timeOff,
       reviews: row.reviews || localWorkspace?.reviews || [],
       notifications: {
         ...(localWorkspace || defaultPartnerWorkspace).notifications,
@@ -642,7 +694,26 @@ const normalizeLabel = (value: string) =>
     .trim()
     .toLowerCase();
 
-export const getAvailabilitySlotForDate = (availability: PartnerAvailabilitySlot[], date: Date) => {
+export const isDateInPartnerTimeOff = (date: Date, timeOff: PartnerTimeOff[] = []) => {
+  const dateKey = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  return timeOff.some((item) => {
+    const start = item.startDate <= item.endDate ? item.startDate : item.endDate;
+    const end = item.endDate >= item.startDate ? item.endDate : item.startDate;
+    return dateKey >= start && dateKey <= end;
+  });
+};
+
+export const getAvailabilitySlotForDate = (
+  availability: PartnerAvailabilitySlot[],
+  date: Date,
+  timeOff: PartnerTimeOff[] = [],
+) => {
+  if (isDateInPartnerTimeOff(date, timeOff)) return null;
   const weekday = new Intl.DateTimeFormat("el-GR", { weekday: "long" }).format(date);
   const normalizedWeekday = normalizeLabel(weekday);
   return availability.find((slot) => normalizeLabel(slot.day) === normalizedWeekday) || null;
@@ -675,19 +746,23 @@ export const buildAvailabilityTimeSlots = (
 
 export const getPartnerAvailabilityRulesForLawyer = (lawyerId: string) => {
   const workspace = getPublishedPartnerWorkspaceForLawyer(lawyerId);
+  const fallbackWorkspace = defaultPartnerWorkspace;
   return {
-    availability: workspace?.availability || [],
-    bookingWindowDays: workspace?.profile.bookingWindowDays || 0,
-    bufferMinutes: workspace?.profile.bufferMinutes || 0,
+    availability: workspace?.availability?.length ? workspace.availability : fallbackWorkspace.availability,
+    timeOff: workspace?.timeOff || fallbackWorkspace.timeOff,
+    bookingWindowDays: workspace?.profile.bookingWindowDays || fallbackWorkspace.profile.bookingWindowDays,
+    bufferMinutes: workspace?.profile.bufferMinutes ?? fallbackWorkspace.profile.bufferMinutes,
   };
 };
 
 export const fetchPartnerAvailabilityRulesForLawyer = async (lawyerId: string) => {
   const workspace = await fetchPublishedPartnerWorkspaceForLawyer(lawyerId);
+  const fallbackWorkspace = defaultPartnerWorkspace;
   return {
-    availability: workspace?.availability || [],
-    bookingWindowDays: workspace?.profile.bookingWindowDays || 0,
-    bufferMinutes: workspace?.profile.bufferMinutes || 0,
+    availability: workspace?.availability?.length ? workspace.availability : fallbackWorkspace.availability,
+    timeOff: workspace?.timeOff || fallbackWorkspace.timeOff,
+    bookingWindowDays: workspace?.profile.bookingWindowDays || fallbackWorkspace.profile.bookingWindowDays,
+    bufferMinutes: workspace?.profile.bufferMinutes ?? fallbackWorkspace.profile.bufferMinutes,
   };
 };
 

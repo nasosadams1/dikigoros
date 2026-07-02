@@ -174,7 +174,7 @@ const Index = () => {
                     className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none"
                   >
                     {modeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
+                      <option key={option.value} value={option.value} disabled={option.value === "any"} hidden={option.value === "any"}>
                         {option.label}
                       </option>
                     ))}
@@ -187,7 +187,7 @@ const Index = () => {
                     className="h-11 w-full bg-transparent text-sm font-semibold text-foreground outline-none"
                   >
                     {languageOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
+                      <option key={option.value} value={option.value} disabled={option.value === "any"} hidden={option.value === "any"}>
                         {option.label}
                       </option>
                     ))}

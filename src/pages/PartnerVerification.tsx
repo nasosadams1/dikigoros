@@ -17,6 +17,7 @@ const PartnerVerification = () => {
   const routeState = (location.state || {}) as VerificationState;
   const [code, setCode] = useState("");
   const [resent, setResent] = useState(false);
+  const [resendError, setResendError] = useState("");
   const [verificationError, setVerificationError] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
 
@@ -131,8 +132,18 @@ const PartnerVerification = () => {
             <button
               type="button"
               onClick={async () => {
-                await requestPartnerAccessCode(email);
-                setResent(true);
+                setResendError("");
+                setResent(false);
+
+                try {
+                  await requestPartnerAccessCode(email);
+                  setResent(true);
+                } catch (error) {
+                  const message = error instanceof Error && error.message
+                    ? error.message
+                    : "Δεν ήταν δυνατή η αποστολή νέου κωδικού.";
+                  setResendError(message);
+                }
               }}
               className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[hsl(var(--partner-navy-soft))] transition hover:text-[hsl(var(--partner-ink))]"
             >
@@ -140,6 +151,7 @@ const PartnerVerification = () => {
               Αποστολή ξανά
             </button>
             {resent && <p className="mt-3 text-sm text-muted-foreground">Στάλθηκε νέος κωδικός.</p>}
+            {resendError ? <p className="mt-3 text-sm font-semibold text-destructive">{resendError}</p> : null}
           </div>
         </div>
       </section>

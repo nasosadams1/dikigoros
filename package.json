@@ -4,15 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 8080 --open",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "deploy:supabase:functions": "npm run deploy:supabase:payments && npm run deploy:supabase:partner && npm run deploy:supabase:ops",
+    "deploy:supabase:functions": "npm run deploy:supabase:payments && npm run deploy:supabase:partner && npm run deploy:supabase:ops && npm run deploy:supabase:calendar",
     "deploy:supabase:payments": "npx supabase functions deploy create-booking-checkout-session --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy create-payment-setup-session --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy create-booking-refund --project-ref jpslttdfysggswkkdvlq --no-verify-jwt",
     "deploy:supabase:partner": "npx supabase functions deploy partner-access-code --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy create-partner-document-url --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy submit-partner-profile-photo --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy create-partner-subscription-checkout-session --project-ref jpslttdfysggswkkdvlq --no-verify-jwt",
     "deploy:supabase:ops": "npx supabase functions deploy stripe-webhook --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy reconcile-stripe-payments --project-ref jpslttdfysggswkkdvlq --no-verify-jwt",
+    "deploy:supabase:calendar": "npx supabase functions deploy create-calendar-oauth-link --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy calendar-oauth-callback --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy get-partner-calendar-busy --project-ref jpslttdfysggswkkdvlq --no-verify-jwt && npx supabase functions deploy check-partner-calendar-availability --project-ref jpslttdfysggswkkdvlq --no-verify-jwt",
     "launch:audit": "node scripts/launch-readiness.mjs",
     "launch:audit:strict": "node scripts/launch-readiness.mjs --strict",
     "release:gate": "npm run test && npm run test:e2e && npm run build && npm run launch:audit:strict",
@@ -93,7 +94,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
-    "vite": "^8.0.8",
+    "vite": "^7.3.6",
     "vitest": "^3.2.4"
   }
 }

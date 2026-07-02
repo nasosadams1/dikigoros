@@ -32,7 +32,7 @@ describe("partner plans page copy", () => {
   it("keeps Basic and team plans out of subscription checkout", () => {
     expect(plansPageSource).toContain("plan.salesOnly");
     expect(plansPageSource).toContain("Το Βασικό πλάνο δεν έχει συνδρομή");
-    expect(plansPageSource).toContain("Δεν ανοίγει άμεση πληρωμή στην πρώτη έκδοση.");
+    expect(plansPageSource).toContain("Δεν ανοίγει άμεση πληρωμή στην αίτηση.");
     expect(plansPageSource).not.toContain("Ετήσιο σύνολο");
   });
 });

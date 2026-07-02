@@ -37,7 +37,7 @@ const getFunctionErrorMessage = async (error: unknown) => {
 export const createPartnerSubscriptionCheckoutSession = async (
   planId: PartnerPlanId,
   partnerSession: PartnerSession | null,
-  returnUrl = "/for-lawyers/portal?view=appointments",
+  returnUrl = "/for-lawyers/portal?view=payments",
   billingInterval: PartnerBillingInterval = "monthly",
   cancelUrl = "/for-lawyers/plans",
 ): Promise<PartnerSubscriptionCheckoutResult> => {

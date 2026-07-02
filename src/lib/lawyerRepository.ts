@@ -110,6 +110,11 @@ const mapLawyerRow = (row: LawyerProfileRow): Lawyer =>
     image: row.image,
   });
 
+const mergeLawyersById = (primary: Lawyer[], secondary: Lawyer[]) => {
+  const seen = new Set(primary.map((lawyer) => lawyer.id));
+  return [...primary, ...secondary.filter((lawyer) => !seen.has(lawyer.id))];
+};
+
 export const applyPublishedPartnerProfile = (lawyer: Lawyer): Lawyer => {
   const publishedWorkspace = getPublishedPartnerWorkspaceForLawyer(lawyer.id);
   return publishedWorkspace ? applyPartnerWorkspaceToLawyer(lawyer, publishedWorkspace) : localizeLawyerProfile(lawyer);
@@ -216,7 +221,11 @@ export const getLawyers = async () => {
     }
 
     const remoteLawyers = await Promise.all((data as LawyerProfileRow[]).map(mapLawyerRow).map(applyPublishedPartnerProfileRemote));
-    return remoteLawyers.filter(isPublicLawyerProfileReady);
+    const readyRemoteLawyers = remoteLawyers.filter(isPublicLawyerProfileReady);
+    if (!allowLocalCriticalFallback) return readyRemoteLawyers;
+
+    const fallbackMarketplaceLawyers = await Promise.all(fallbackLawyers.map(applyPublishedPartnerProfileRemote));
+    return mergeLawyersById(readyRemoteLawyers, fallbackMarketplaceLawyers.filter(isPublicLawyerProfileReady));
   } catch {
     return allowLocalCriticalFallback ? Promise.all(fallbackLawyers.map(applyPublishedPartnerProfileRemote)) : [];
   }
