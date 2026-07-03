@@ -127,6 +127,17 @@ export interface BookingRefundResult {
   persistenceSource: PersistenceSource;
 }
 
+export interface BookingReviewPayload {
+  bookingId: string;
+  lawyerId: string;
+  rating: number;
+  clarityRating: number;
+  responsivenessRating: number;
+  text: string;
+  clientName?: string;
+  consultationType?: string;
+}
+
 export type PartnerApplicationPlanId = "basic" | "pro" | "premium" | "firms";
 export type PartnerApplicationConsultationMode = "video" | "phone" | "inPerson";
 
@@ -1035,6 +1046,31 @@ export const updateLawyerReview = async (
     if (!enableLocalBookingFallback) throw error;
     // The partner view remains optimistic when the backend is offline.
   }
+};
+
+export const submitBookingReview = async (payload: BookingReviewPayload) => {
+  const reviewText = payload.text.trim();
+  if (reviewText.length < 12) {
+    throw new Error("Η αξιολόγηση χρειάζεται λίγες περισσότερες λεπτομέρειες.");
+  }
+
+  const normalizeRating = (value: number) => Math.min(5, Math.max(1, Math.round(value || 0)));
+  const { data, error } = await supabase.rpc("submit_booking_review", {
+    p_booking_id: payload.bookingId,
+    p_lawyer_id: payload.lawyerId,
+    p_rating: normalizeRating(payload.rating),
+    p_clarity_rating: normalizeRating(payload.clarityRating),
+    p_responsiveness_rating: normalizeRating(payload.responsivenessRating),
+    p_review_text: reviewText,
+  });
+
+  if (error || !data) throw error || new Error("Η αξιολόγηση δεν αποθηκεύτηκε.");
+
+  return reviewFromRow({
+    ...(data as ReviewRow),
+    client_name: payload.clientName,
+    consultation_type: payload.consultationType,
+  });
 };
 
 export const fetchDocumentsForLawyer = async (

@@ -30,7 +30,9 @@ import {
   getLowestConsultation,
   getNextAvailabilityOptions,
   type AvailabilityRules,
+  type NextAvailabilityOption,
 } from "@/lib/marketplace";
+import { formatLocalDateIso } from "@/lib/bookingDates";
 import { fetchUserWorkspace, getUserWorkspace, syncUserWorkspace, toggleSavedLawyer, upsertUserReviewPersisted, type UserReview } from "@/lib/userWorkspace";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { cn } from "@/lib/utils";
@@ -69,7 +71,22 @@ const getReviewTone = (status: UserReview["status"]) =>
       ? "danger"
       : status === "draft"
         ? "muted"
-        : "attention";
+      : "attention";
+
+const buildBookingLink = (
+  lawyerId: string,
+  source: string,
+  slot?: NextAvailabilityOption,
+  consultationMode?: string,
+) => {
+  const params = new URLSearchParams({ source });
+  if (slot) {
+    params.set("date", formatLocalDateIso(slot.date));
+    params.set("time", slot.time);
+  }
+  if (consultationMode) params.set("mode", consultationMode);
+  return `/booking/${lawyerId}?${params.toString()}`;
+};
 
 const LawyerProfile = () => {
   const { id } = useParams();
@@ -337,6 +354,13 @@ const LawyerProfile = () => {
     });
 
     if (result.persisted) {
+      trackFunnelEvent("review_submitted", {
+        bookingId: booking.id,
+        lawyerId: booking.lawyerId,
+        userId: user?.id,
+        rating,
+        source: "lawyer_profile",
+      });
       setReviewSaveState({
         loading: false,
         message: "Η αξιολόγηση αποθηκεύτηκε.",
@@ -456,7 +480,7 @@ const LawyerProfile = () => {
                     nextSlots.map((slot) => (
                       <Link
                         key={`${slot.dateLabel}-${slot.time}`}
-                        to={`/booking/${lawyer.id}?source=profile_slot`}
+                        to={buildBookingLink(lawyer.id, "profile_slot", slot, lowestConsultation?.mode)}
                         onClick={() => trackFunnelEvent("profile_booking_start", { lawyerId: lawyer.id, source: "profile_slot" })}
                         className="rounded-xl border border-border bg-background p-3 transition hover:border-primary/25"
                       >
@@ -728,7 +752,7 @@ const LawyerProfile = () => {
               ) : (
                 <Button asChild className="mt-4 h-12 w-full rounded-xl text-[15px] font-bold">
                   <Link
-                    to={`/booking/${lawyer.id}?source=profile`}
+                    to={buildBookingLink(lawyer.id, "profile", undefined, lowestConsultation?.mode)}
                     data-testid="profile-booking-link"
                     onClick={() => trackFunnelEvent("profile_booking_start", { lawyerId: lawyer.id, specialty: lawyer.specialty })}
                   >
@@ -770,7 +794,7 @@ const LawyerProfile = () => {
             </div>
             <Button asChild className="h-11 shrink-0 rounded-xl px-4 text-sm font-bold">
               <Link
-                to={`/booking/${lawyer.id}?source=profile_mobile`}
+                to={buildBookingLink(lawyer.id, "profile_mobile", undefined, lowestConsultation?.mode)}
                 onClick={() => trackFunnelEvent("profile_booking_start", { lawyerId: lawyer.id, specialty: lawyer.specialty, source: "profile_mobile" })}
               >
                 Κλείσε

@@ -46,6 +46,7 @@ import {
 } from "@/lib/partnerCalendarRepository";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { allowLocalCriticalFallback } from "@/lib/runtimeGuards";
+import { formatLocalDateIso } from "@/lib/bookingDates";
 import { cn } from "@/lib/utils";
 
 const steps = ["Τύπος", "Ημερομηνία", "Στοιχεία", "Πληρωμή", "Επιβεβαίωση"];
@@ -142,35 +143,45 @@ const Booking = () => {
   }, [id]);
 
   const selectedConsultation = selectedType !== null && lawyer ? lawyer.consultations[selectedType] : null;
+  const selectedDurationMinutes = getDurationMinutes(selectedConsultation?.duration);
   const selectedDateLabel = selectedDate !== null ? dates[selectedDate].full : "";
   const selectedAvailabilitySlot =
     selectedDate !== null ? getAvailabilitySlotForDate(availabilityRules.availability, dates[selectedDate].dateObject, availabilityRules.timeOff) : null;
-  const availableTimeSlotsBeforeCalendar =
-    selectedDate !== null
-      ? buildAvailabilityTimeSlots(
-          selectedAvailabilitySlot,
-          getDurationMinutes(selectedConsultation?.duration),
-          availabilityRules.bufferMinutes,
-        )
-      : [];
-  const availableTimeSlots =
-    selectedDate !== null
-      ? availableTimeSlotsBeforeCalendar.filter(
-          (time) =>
-            !isSlotBlockedByBusyIntervals(
-              dates[selectedDate].dateObject,
-              time,
-              getDurationMinutes(selectedConsultation?.duration),
-              calendarBusyIntervals,
-            ),
-        )
-      : [];
+  const availableTimeSlotsBeforeCalendar = useMemo(
+    () =>
+      selectedDate !== null
+        ? buildAvailabilityTimeSlots(
+            selectedAvailabilitySlot,
+            selectedDurationMinutes,
+            availabilityRules.bufferMinutes,
+          )
+        : [],
+    [availabilityRules.bufferMinutes, selectedAvailabilitySlot, selectedDate, selectedDurationMinutes],
+  );
+  const availableTimeSlots = useMemo(
+    () =>
+      selectedDate !== null
+        ? availableTimeSlotsBeforeCalendar.filter(
+            (time) =>
+              !isSlotBlockedByBusyIntervals(
+                dates[selectedDate].dateObject,
+                time,
+                selectedDurationMinutes,
+                calendarBusyIntervals,
+              ),
+          )
+        : [],
+    [availableTimeSlotsBeforeCalendar, calendarBusyIntervals, dates, selectedDate, selectedDurationMinutes],
+  );
   const selectedSlotKey =
     lawyer && selectedDateLabel && selectedTime
       ? getBookingSlotKey({ lawyerId: lawyer.id, dateLabel: selectedDateLabel, time: selectedTime })
       : "";
   const selectedSlotReserved = Boolean(selectedSlotKey && reservedSlots.has(selectedSlotKey));
   const bookingStartSource = searchParams.get("source") || "direct";
+  const requestedDateIso = searchParams.get("date");
+  const requestedTime = searchParams.get("time");
+  const requestedMode = searchParams.get("mode");
   const profileName = profile?.name;
   const profileEmail = profile?.email;
   const profilePhone = profile?.phone;
@@ -232,6 +243,36 @@ const Booking = () => {
       active = false;
     };
   }, [partnerSessionEmail, partnerSessionToken]);
+
+  useEffect(() => {
+    if (!lawyer || !requestedMode) return;
+    const requestedModeIndex = lawyer.consultations.findIndex((consultation) => consultation.mode === requestedMode);
+    if (requestedModeIndex < 0) return;
+
+    setSelectedType((current) => current ?? requestedModeIndex);
+  }, [lawyer, requestedMode]);
+
+  useEffect(() => {
+    if (!requestedDateIso) return;
+    const requestedDateIndex = dates.findIndex((date) => formatLocalDateIso(date.dateObject) === requestedDateIso);
+    if (requestedDateIndex < 0) return;
+
+    setSelectedDate((current) => current ?? requestedDateIndex);
+    setCurrentStep((current) => (current === 0 ? 1 : current));
+  }, [dates, requestedDateIso]);
+
+  useEffect(() => {
+    if (!requestedTime || selectedDate === null) return;
+    if (!availableTimeSlots.includes(requestedTime)) return;
+
+    const requestedSlotKey =
+      lawyer && selectedDateLabel
+        ? getBookingSlotKey({ lawyerId: lawyer.id, dateLabel: selectedDateLabel, time: requestedTime })
+        : "";
+    if (requestedSlotKey && reservedSlots.has(requestedSlotKey)) return;
+
+    setSelectedTime((current) => current ?? requestedTime);
+  }, [availableTimeSlots, lawyer, requestedTime, reservedSlots, selectedDate, selectedDateLabel]);
 
   useEffect(() => {
     const checkout = searchParams.get("checkout");
@@ -396,7 +437,7 @@ const Booking = () => {
           price: selectedConsultation.price,
           duration: selectedConsultation.duration,
           dateLabel: selectedDateLabel,
-          dateIso: selectedDate !== null ? dates[selectedDate].dateObject.toISOString().slice(0, 10) : undefined,
+          dateIso: selectedDate !== null ? formatLocalDateIso(dates[selectedDate].dateObject) : undefined,
           time: selectedTime,
           clientName: details.fullName.trim(),
           clientEmail: details.email.trim().toLowerCase(),
@@ -469,7 +510,7 @@ const Booking = () => {
 
         if (session.persistenceSource === "local" && allowLocalCheckoutReturnRecording) {
           recordLocalCheckoutReturn(confirmedBooking.id, "paid");
-          trackFunnelEvent("payment_completed_local_demo", {
+          trackFunnelEvent("payment_completed_local_fallback", {
             bookingId: confirmedBooking.id,
             lawyerId: confirmedBooking.lawyerId,
             userId: user?.id,

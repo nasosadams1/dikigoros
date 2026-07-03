@@ -175,8 +175,9 @@ export const level4FunnelEvents = [
   "approved_lawyer_first_completed_consultation",
   "partner_plan_checkout_opened",
   "partner_subscription_active",
-  "pipeline_status_updated",
-  "followup_task_created",
+  "case_created",
+  "case_status_updated",
+  "case_note_created",
 ] as const;
 
 export const level4PipelineStatuses = [

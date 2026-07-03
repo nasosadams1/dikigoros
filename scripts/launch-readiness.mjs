@@ -20,12 +20,11 @@ const requiredFunnelEvents = [
   "lawyer_application_submitted",
   "lawyer_application_approved",
   "approved_lawyer_first_completed_consultation",
-  "intake_submitted",
-  "intake_routed",
   "partner_plan_checkout_opened",
   "partner_subscription_active",
-  "pipeline_status_updated",
-  "followup_task_created",
+  "case_created",
+  "case_status_updated",
+  "case_note_created",
 ];
 
 const coreLaunchCities = [
@@ -291,8 +290,7 @@ const getSourceHardeningChecks = () => {
   const platformRepository = readRepoFile("src/lib/platformRepository.ts");
   const operationsRepository = readRepoFile("src/lib/operationsRepository.ts");
   const level4Marketplace = readRepoFile("src/lib/level4Marketplace.ts");
-  const intakeRepository = readRepoFile("src/lib/intakeRepository.ts");
-  const partnerCrmRepository = readRepoFile("src/lib/partnerCrmRepository.ts");
+  const partnerCasesRepository = readRepoFile("src/lib/partnerCasesRepository.ts");
   const desiredSchema = readRepoFile("supabase/desired_supabase_from_scratch.sql");
   const syntheticLaunchCleanupMigration = readRepoFile("supabase/migrations/20260418162000_remove_synthetic_launch_cases.sql");
   const webhookFunction = readRepoFile("supabase/functions/stripe-webhook/index.ts");
@@ -301,6 +299,23 @@ const getSourceHardeningChecks = () => {
   const reconciliationWorkflow = readRepoFile(".github/workflows/daily-stripe-reconciliation.yml");
   const workflow = readRepoFile(".github/workflows/stage4-release-gate.yml");
   const sitemap = readRepoFile("public/sitemap.xml");
+  const vercelConfig = readRepoFile("vercel.json");
+  const calendarSyncShared = readRepoFile("supabase/functions/_shared/calendar-sync.ts");
+  const browserCallableEdgeFunctions = [
+    "supabase/functions/create-booking-checkout-session/index.ts",
+    "supabase/functions/create-payment-setup-session/index.ts",
+    "supabase/functions/create-booking-refund/index.ts",
+    "supabase/functions/partner-access-code/index.ts",
+    "supabase/functions/create-partner-document-url/index.ts",
+    "supabase/functions/submit-partner-profile-photo/index.ts",
+    "supabase/functions/create-partner-subscription-checkout-session/index.ts",
+  ].map((filePath) => readRepoFile(filePath));
+  const requiredBrowserOrigins = [
+    "https://dikigoros.vercel.app",
+    "https://dikigoros.gr",
+    "http://localhost:8080",
+    "http://localhost:8081",
+  ];
 
   return [
     {
@@ -347,6 +362,23 @@ const getSourceHardeningChecks = () => {
         readRepoFile("package.json").includes("npm run test:e2e"),
     },
     {
+      label: "Vercel serves React deep links through the SPA entrypoint",
+      ready:
+        vercelConfig.includes('"source": "/(.*)"') &&
+        vercelConfig.includes('"destination": "/index.html"'),
+    },
+    {
+      label: "Browser-callable Edge Functions trust the current app origins",
+      ready:
+        browserCallableEdgeFunctions.every((source) =>
+          requiredBrowserOrigins.every((origin) => source.includes(origin)) &&
+          source.includes(".concat(defaultAllowedOrigins)") &&
+          !source.includes('"Access-Control-Allow-Origin": "*"'),
+        ) &&
+        requiredBrowserOrigins.every((origin) => calendarSyncShared.includes(origin)) &&
+        !calendarSyncShared.includes('"Access-Control-Allow-Origin": "*"'),
+    },
+    {
       label: "Level 4 ranking and coverage are shared across the marketplace",
       ready:
         level4Marketplace.includes("rankMarketplaceLawyers") &&
@@ -355,22 +387,14 @@ const getSourceHardeningChecks = () => {
         level4Marketplace.includes("sponsoredLabel"),
     },
     {
-      label: "Guided intake persists through backend RPCs",
+      label: "Partner case work is backed by cases, notes, and history contracts",
       ready:
-        intakeRepository.includes("create_intake_request") &&
-        intakeRepository.includes("routeIntakeRequest") &&
-        desiredSchema.includes("create table if not exists public.intake_requests") &&
-        desiredSchema.includes("create or replace function public.create_intake_request"),
-    },
-    {
-      label: "Partner CRM is backed by pipeline, notes, and follow-up contracts",
-      ready:
-        partnerCrmRepository.includes("update_partner_pipeline_status") &&
-        partnerCrmRepository.includes("save_partner_case_note") &&
-        partnerCrmRepository.includes("upsert_partner_followup_task") &&
-        desiredSchema.includes("create table if not exists public.partner_pipeline_items") &&
-        desiredSchema.includes("create table if not exists public.partner_case_notes") &&
-        desiredSchema.includes("create table if not exists public.partner_followup_tasks"),
+        partnerCasesRepository.includes("createPartnerCaseFromBooking") &&
+        partnerCasesRepository.includes("updatePartnerCase") &&
+        partnerCasesRepository.includes("savePartnerCasePrivateNote") &&
+        desiredSchema.includes("create table if not exists public.partner_cases") &&
+        desiredSchema.includes("create table if not exists public.partner_case_private_notes") &&
+        desiredSchema.includes("create table if not exists public.partner_case_history_events"),
     },
     {
       label: "Partner subscriptions run through Edge Functions and Stripe webhooks",
@@ -388,7 +412,6 @@ const getSourceHardeningChecks = () => {
             sitemap.includes(`/lawyers/${category}/${city}`),
           ),
         ) &&
-        sitemap.includes("/intake") &&
         sitemap.includes("/for-lawyers/plans"),
     },
   ];

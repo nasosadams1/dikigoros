@@ -7,6 +7,7 @@ const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const defaultAllowedOrigins = [
   "https://dikigoros.gr",
   "https://www.dikigoros.gr",
+  "https://dikigoros.vercel.app",
   "https://dikigoros-oud1.vercel.app",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -14,6 +15,8 @@ const defaultAllowedOrigins = [
   "http://127.0.0.1:4173",
   "http://localhost:8080",
   "http://127.0.0.1:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
 ];
 
 const getAllowedOrigins = () => {

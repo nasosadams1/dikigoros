@@ -11,6 +11,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  Star,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import {
   isVerifiedBooking,
   requestBookingCheckoutSession,
   requestBookingRefund,
+  submitBookingReview,
   type StoredBooking,
   type StoredPayment,
 } from "@/lib/platformRepository";
@@ -41,6 +43,7 @@ import {
   bookingStateLabels,
   canCancelBooking,
   canOpenCheckout,
+  canSubmitReview,
   getCanonicalBookingState,
   getCanonicalPaymentState,
 } from "@/lib/bookingState";
@@ -70,10 +73,25 @@ type PaymentActionState = {
   message: string;
   tone: "success" | "error" | "info";
 };
+type ReviewDraft = {
+  rating: number;
+  clarityRating: number;
+  responsivenessRating: number;
+  text: string;
+  submitted: boolean;
+};
 
 type AccountProfileDraft = {
   name: string;
   phone: string;
+};
+
+const defaultReviewDraft: ReviewDraft = {
+  rating: 5,
+  clarityRating: 5,
+  responsivenessRating: 5,
+  text: "",
+  submitted: false,
 };
 
 const bookingFilters: Array<{ id: BookingFilter; label: string }> = [
@@ -196,6 +214,8 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     message: "",
     tone: "info",
   });
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({});
+  const [reviewActionState, setReviewActionState] = useState<Record<string, PaymentActionState>>({});
   const [profileSaveState, setProfileSaveState] = useState<PaymentActionState>({
     loading: false,
     message: "",
@@ -663,6 +683,100 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
     }
   };
 
+  const updateReviewDraft = (bookingId: string, updates: Partial<ReviewDraft>) => {
+    setReviewDrafts((current) => ({
+      ...current,
+      [bookingId]: {
+        ...(current[bookingId] || defaultReviewDraft),
+        ...updates,
+      },
+    }));
+    setReviewActionState((current) => ({
+      ...current,
+      [bookingId]: { loading: false, message: "", tone: "info" },
+    }));
+  };
+
+  const handleSubmitReview = async (booking: StoredBooking) => {
+    const draft = reviewDrafts[booking.id] || defaultReviewDraft;
+    const payment = paymentForBooking(booking.id);
+    if (!canSubmitReview(booking) || getCanonicalPaymentState(payment) !== "paid") {
+      setReviewActionState((current) => ({
+        ...current,
+        [booking.id]: {
+          loading: false,
+          message: "Η αξιολόγηση ανοίγει μόνο μετά από ολοκληρωμένη και πληρωμένη συμβουλευτική.",
+          tone: "error",
+        },
+      }));
+      return;
+    }
+
+    if (draft.text.trim().length < 12) {
+      setReviewActionState((current) => ({
+        ...current,
+        [booking.id]: {
+          loading: false,
+          message: "Γράψτε τουλάχιστον μία σύντομη πρόταση για την εμπειρία σας.",
+          tone: "error",
+        },
+      }));
+      return;
+    }
+
+    setReviewActionState((current) => ({
+      ...current,
+      [booking.id]: {
+        loading: true,
+        message: "Αποθήκευση αξιολόγησης...",
+        tone: "info",
+      },
+    }));
+
+    try {
+      await submitBookingReview({
+        bookingId: booking.id,
+        lawyerId: booking.lawyerId,
+        rating: draft.rating,
+        clarityRating: draft.clarityRating,
+        responsivenessRating: draft.responsivenessRating,
+        text: draft.text,
+        clientName: booking.clientName,
+        consultationType: booking.consultationType,
+      });
+      trackFunnelEvent("review_submitted", {
+        bookingId: booking.id,
+        lawyerId: booking.lawyerId,
+        userId,
+        rating: draft.rating,
+      });
+      setReviewDrafts((current) => ({
+        ...current,
+        [booking.id]: {
+          ...draft,
+          submitted: true,
+        },
+      }));
+      setReviewActionState((current) => ({
+        ...current,
+        [booking.id]: {
+          loading: false,
+          message: "Η αξιολόγηση στάλθηκε για έλεγχο πριν δημοσιευτεί.",
+          tone: "success",
+        },
+      }));
+    } catch (error) {
+      setReviewActionState((current) => ({
+        ...current,
+        [booking.id]: {
+          loading: false,
+          message: error instanceof Error && error.message ? error.message : "Η αξιολόγηση δεν αποθηκεύτηκε. Δοκιμάστε ξανά.",
+          tone: "error",
+        },
+      }));
+    }
+  };
+
   const updateBooleanSetting = (
     group: "privacy" | "notifications",
     key: keyof UserWorkspace["privacy"] | keyof UserWorkspace["notifications"],
@@ -867,6 +981,10 @@ const UserProfile = ({ embedded = false }: { embedded?: boolean }) => {
                         payment={payments.find((payment) => payment.bookingId === booking.id)}
                         onCancel={handleCancelBookingWithRefund}
                         onCheckout={handleBookingCheckout}
+                        reviewDraft={reviewDrafts[booking.id] || defaultReviewDraft}
+                        reviewState={reviewActionState[booking.id]}
+                        onReviewChange={(updates) => updateReviewDraft(booking.id, updates)}
+                        onReviewSubmit={() => void handleSubmitReview(booking)}
                       />
                     ))
                   ) : (
@@ -1273,12 +1391,20 @@ const BookingCard = ({
   payment,
   onCancel,
   onCheckout,
+  reviewDraft,
+  reviewState,
+  onReviewChange,
+  onReviewSubmit,
   featured = false,
 }: {
   booking: StoredBooking;
   payment?: StoredPayment;
   onCancel: (bookingId: string) => void;
   onCheckout: (booking: StoredBooking) => void;
+  reviewDraft: ReviewDraft;
+  reviewState?: PaymentActionState;
+  onReviewChange: (updates: Partial<ReviewDraft>) => void;
+  onReviewSubmit: () => void;
   featured?: boolean;
 }) => {
   const verified = isVerifiedBooking(booking);
@@ -1288,6 +1414,7 @@ const BookingCard = ({
   const cancelled = bookingState === "cancelled";
   const completed = bookingState === "completed";
   const pendingConfirmation = bookingState === "pending_confirmation";
+  const reviewOpen = canSubmitReview(booking) && paymentState === "paid";
 
   return (
   <article
@@ -1354,9 +1481,101 @@ const BookingCard = ({
         ) : null}
       </div>
     </div>
+    {reviewOpen ? (
+      <div className="mt-4 rounded-lg border border-border bg-background/70 p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Αξιολόγηση συνεργασίας</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">
+              Βοηθήστε άλλους πελάτες μετά από ολοκληρωμένη συμβουλευτική.
+            </p>
+          </div>
+          <RatingPicker
+            value={reviewDraft.rating}
+            onChange={(rating) => onReviewChange({ rating })}
+            disabled={reviewDraft.submitted || reviewState?.loading}
+          />
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <label className="block">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Σαφήνεια</span>
+            <select
+              value={reviewDraft.clarityRating}
+              onChange={(event) => onReviewChange({ clarityRating: Number(event.target.value) })}
+              disabled={reviewDraft.submitted || reviewState?.loading}
+              className="mt-1 h-10 w-full rounded-lg border border-border bg-card px-3 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+            >
+              {[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating}/5</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Ανταπόκριση</span>
+            <select
+              value={reviewDraft.responsivenessRating}
+              onChange={(event) => onReviewChange({ responsivenessRating: Number(event.target.value) })}
+              disabled={reviewDraft.submitted || reviewState?.loading}
+              className="mt-1 h-10 w-full rounded-lg border border-border bg-card px-3 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+            >
+              {[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating}/5</option>)}
+            </select>
+          </label>
+        </div>
+        <textarea
+          value={reviewDraft.text}
+          onChange={(event) => onReviewChange({ text: event.target.value })}
+          disabled={reviewDraft.submitted || reviewState?.loading}
+          placeholder="Περιγράψτε σύντομα την εμπειρία σας χωρίς εμπιστευτικές λεπτομέρειες υπόθεσης."
+          className="mt-3 min-h-24 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:opacity-60"
+        />
+        {reviewState?.message ? <ActionNotice state={reviewState} /> : null}
+        <div className="mt-3 flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            onClick={onReviewSubmit}
+            disabled={reviewDraft.submitted || reviewState?.loading || reviewDraft.text.trim().length < 12}
+            className="rounded-lg font-bold"
+          >
+            {reviewState?.loading ? "Αποθήκευση..." : reviewDraft.submitted ? "Στάλθηκε" : "Υποβολή αξιολόγησης"}
+          </Button>
+        </div>
+      </div>
+    ) : null}
   </article>
   );
 };
+
+const RatingPicker = ({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: number;
+  onChange: (rating: number) => void;
+  disabled?: boolean;
+}) => (
+  <div className="flex items-center gap-1" aria-label="Βαθμολογία συνεργασίας">
+    {[1, 2, 3, 4, 5].map((rating) => (
+      <button
+        key={rating}
+        type="button"
+        onClick={() => onChange(rating)}
+        disabled={disabled}
+        className={cn(
+          "inline-flex h-9 w-9 items-center justify-center rounded-lg border transition",
+          rating <= value
+            ? "border-primary/25 bg-primary/10 text-primary"
+            : "border-border bg-card text-muted-foreground hover:text-foreground",
+          disabled && "cursor-not-allowed opacity-60",
+        )}
+        aria-label={`${rating} από 5`}
+        aria-pressed={rating <= value}
+      >
+        <Star className={cn("h-4 w-4", rating <= value && "fill-current")} />
+      </button>
+    ))}
+  </div>
+);
 
 const PaymentCard = ({
   booking,

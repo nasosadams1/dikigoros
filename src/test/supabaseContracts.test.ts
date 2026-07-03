@@ -165,10 +165,12 @@ describe("Supabase production contracts", () => {
       partnerSubscriptionCheckoutFunction,
     ].forEach((source) => {
       expect(source).toContain("ALLOWED_APP_ORIGINS");
+      expect(source).toContain("https://dikigoros.vercel.app");
       expect(source).toContain("https://dikigoros-oud1.vercel.app");
       expect(source).toContain("http://127.0.0.1:5173");
       expect(source).toContain(".concat(defaultAllowedOrigins)");
       expect(source).toContain("http://localhost:8080");
+      expect(source).toContain("http://localhost:8081");
       expect(source).not.toContain('"Access-Control-Allow-Origin": "*"');
     });
   });
@@ -283,6 +285,8 @@ describe("Supabase production contracts", () => {
     expect(partnerCalendarAvailabilityFunction).toContain("Europe/Athens");
     expect(partnerCalendarAvailabilityFunction).not.toContain("MICROSOFT_CALENDAR");
     expect(calendarSyncShared).toContain("refresh_token");
+    expect(calendarSyncShared).toContain("https://dikigoros.vercel.app");
+    expect(calendarSyncShared).toContain("http://localhost:8081");
     expect(calendarSyncShared).toContain("crypto.subtle.encrypt");
     expect(calendarSyncShared).toContain("crypto.subtle.decrypt");
     expect(calendarSyncShared).not.toContain("refreshMicrosoftAccessToken");

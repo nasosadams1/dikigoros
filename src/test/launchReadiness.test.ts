@@ -61,8 +61,9 @@ describe("launch readiness gates", () => {
       event("approved_lawyer_first_completed_consultation", 0),
       event("partner_plan_checkout_opened", 5),
       event("partner_subscription_active", 4),
-      event("pipeline_status_updated", 3),
-      event("followup_task_created", 2),
+      event("case_created", 3),
+      event("case_status_updated", 3),
+      event("case_note_created", 2),
     ]);
 
     expect(fullCoverage.checks.every((check) => check.ready)).toBe(true);

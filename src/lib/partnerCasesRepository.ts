@@ -1,4 +1,5 @@
 import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
+import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import { publicSupabase } from "@/lib/supabase";
 import {
   isPartnerSessionInvalidError,
@@ -149,10 +150,16 @@ export const createPartnerCaseFromBooking = async (
     });
 
     if (error || !data) throw error || new Error("Partner case was not created.");
-    return mapPartnerCase({
+    const savedCase = mapPartnerCase({
       ...(data as Record<string, unknown>),
       booking_ids: [booking.id],
     });
+    trackFunnelEvent("case_created", {
+      lawyerId: savedCase.lawyerId,
+      bookingId: booking.id,
+      caseId: savedCase.id,
+    });
+    return savedCase;
   } catch (error) {
     if (isPartnerSessionInvalidError(error)) throw new Error("PARTNER_SESSION_INVALID");
     throw error;
@@ -178,10 +185,18 @@ export const updatePartnerCase = async (
     });
 
     if (error || !data) throw error || new Error("Partner case was not updated.");
-    return mapPartnerCase({
+    const updatedCase = mapPartnerCase({
       ...(data as Record<string, unknown>),
       booking_ids: partnerCase.bookingIds,
     });
+    if (updates.status && updates.status !== partnerCase.status) {
+      trackFunnelEvent("case_status_updated", {
+        lawyerId: updatedCase.lawyerId,
+        caseId: updatedCase.id,
+        status: updatedCase.status,
+      });
+    }
+    return updatedCase;
   } catch (error) {
     if (isPartnerSessionInvalidError(error)) throw new Error("PARTNER_SESSION_INVALID");
     throw error;
@@ -205,7 +220,12 @@ export const savePartnerCasePrivateNote = async (
     });
 
     if (error || !data) throw error || new Error("Partner case note was not saved.");
-    return mapCaseNote(data as Record<string, unknown>);
+    const savedNote = mapCaseNote(data as Record<string, unknown>);
+    trackFunnelEvent("case_note_created", {
+      lawyerId: savedNote.lawyerId,
+      caseId: savedNote.caseId,
+    });
+    return savedNote;
   } catch (error) {
     if (isPartnerSessionInvalidError(error)) throw new Error("PARTNER_SESSION_INVALID");
     throw error;

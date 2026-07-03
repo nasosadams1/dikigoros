@@ -16,8 +16,9 @@ export type FunnelEventName =
   | "approved_lawyer_first_completed_consultation"
   | "partner_plan_checkout_opened"
   | "partner_subscription_active"
-  | "pipeline_status_updated"
-  | "followup_task_created";
+  | "case_created"
+  | "case_status_updated"
+  | "case_note_created";
 
 export interface FunnelEvent {
   id: string;
@@ -63,8 +64,9 @@ export const funnelSteps: Array<{ name: FunnelEventName; label: string }> = [
 funnelSteps.push(
   { name: "partner_plan_checkout_opened", label: "Partner plan checkout opened" },
   { name: "partner_subscription_active", label: "Partner subscription active" },
-  { name: "pipeline_status_updated", label: "Partner pipeline updated" },
-  { name: "followup_task_created", label: "Partner follow-up task created" },
+  { name: "case_created", label: "Partner case created" },
+  { name: "case_status_updated", label: "Partner case status updated" },
+  { name: "case_note_created", label: "Partner case note created" },
 );
 
 const canUseStorage = () => typeof window !== "undefined" && Boolean(window.localStorage);

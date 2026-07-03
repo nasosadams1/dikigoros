@@ -190,6 +190,51 @@ const recordPaymentMismatch = async (
   }
 };
 
+const recordFunnelEvent = async (
+  eventName: string,
+  object: Record<string, unknown>,
+  event: Record<string, unknown>,
+  details: Record<string, unknown> = {},
+) => {
+  const { supabaseUrl, serviceRoleKey } = getSupabaseCredentials();
+  const metadata =
+    typeof object.metadata === "object" && object.metadata ? (object.metadata as Record<string, unknown>) : {};
+  const occurredAt =
+    typeof event.created === "number" && event.created > 0
+      ? new Date(event.created * 1000).toISOString()
+      : new Date().toISOString();
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/funnel_events`, {
+    method: "POST",
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      event_name: eventName,
+      occurred_at: occurredAt,
+      session_id: `stripe:${event.id || crypto.randomUUID()}`,
+      user_id: metadata.user_id || details.userId || null,
+      lawyer_id: metadata.lawyer_id || details.lawyerId || null,
+      booking_id: metadata.booking_id || details.bookingId || null,
+      source: "stripe_webhook",
+      metadata: {
+        stripeApiVersion,
+        stripeEventId: event.id || "",
+        stripeEventType: event.type || "",
+        stripeObjectId: object.id || "",
+        ...details,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    console.error("Funnel event record failed", eventName, await response.text());
+  }
+};
+
 const findBookingIdForStripeObject = async (object: Record<string, unknown>) => {
   const metadata =
     typeof object.metadata === "object" && object.metadata ? (object.metadata as Record<string, unknown>) : {};
@@ -336,6 +381,15 @@ const upsertPartnerSubscription = async (
   if (!lawyerResponse.ok) {
     console.error("Partner plan profile sync failed", await lawyerResponse.text());
   }
+
+  if (status === "active") {
+    await recordFunnelEvent("partner_subscription_active", object, event, {
+      lawyerId: metadata.lawyerId,
+      partnerEmail: metadata.partnerEmail.toLowerCase(),
+      planId: metadata.planId,
+      billingInterval: metadata.billingInterval,
+    });
+  }
 };
 
 const fetchReceiptUrl = async (paymentIntentId?: string | null) => {
@@ -459,6 +513,7 @@ Deno.serve(async (request) => {
     await patchBooking(bookingId, {
       status: "confirmed_paid",
     });
+    await recordFunnelEvent("payment_completed", object, event, { bookingId });
   }
 
   if (

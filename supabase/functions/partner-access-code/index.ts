@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.55.0";
 const defaultAllowedOrigins = [
   "https://dikigoros.gr",
   "https://www.dikigoros.gr",
+  "https://dikigoros.vercel.app",
   "https://dikigoros-oud1.vercel.app",
   "http://localhost:5173",
   "http://127.0.0.1:5173",

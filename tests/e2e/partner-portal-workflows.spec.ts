@@ -81,7 +81,7 @@ test.describe("partner portal workflow guardrails", () => {
     await expect(page).toHaveURL(/\/for-lawyers\/profile$/);
     await expect(page.locator("aside nav button")).toHaveCount(5);
     await expect(page.locator('a[href^="/lawyer/"]')).toBeVisible();
-    await expect(page.locator("textarea")).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Επαγγελματική περιγραφή" })).toBeVisible();
   });
 
   test("legacy pipeline view redirects to cases and payments workspace", async ({ page }) => {

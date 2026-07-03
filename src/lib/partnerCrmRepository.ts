@@ -1,5 +1,4 @@
 import { getCanonicalBookingState, getCanonicalPaymentState, isBookingScheduled } from "@/lib/bookingState";
-import { trackFunnelEvent } from "@/lib/funnelAnalytics";
 import type { Level4PipelineStatus } from "@/lib/level4Marketplace";
 import { allowLocalCriticalFallback, failClosedCriticalPath } from "@/lib/runtimeGuards";
 import { publicSupabase } from "@/lib/supabase";
@@ -229,7 +228,6 @@ export const upsertPartnerFollowupTask = async (
       p_status: "open",
     });
     if (error || !data) throw error || new Error("Partner follow-up was not persisted.");
-    trackFunnelEvent("followup_task_created", { lawyerId: booking.lawyerId, bookingId: booking.id });
     return record;
   } catch (error) {
     if (partnerSession?.sessionToken && isPartnerSessionInvalidError(error)) {
@@ -256,7 +254,6 @@ export const updatePartnerPipelineStatus = async (
       p_status: status,
     });
     if (error) throw error;
-    trackFunnelEvent("pipeline_status_updated", { lawyerId: booking.lawyerId, bookingId: booking.id, status });
   } catch (error) {
     if (partnerSession?.sessionToken && isPartnerSessionInvalidError(error)) {
       throw new Error("PARTNER_SESSION_INVALID");

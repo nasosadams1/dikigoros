@@ -9,10 +9,8 @@ import {
   CalendarDays,
   CircleAlert,
   Clock3,
-  CreditCard,
   Eye,
   FileText,
-  Landmark,
   MailCheck,
   MapPin,
   MessageSquareText,
@@ -49,7 +47,6 @@ import {
   type StoredPayment,
 } from "@/lib/platformRepository";
 import {
-  canSubmitReview,
   getCanonicalBookingState,
   getCanonicalPaymentState,
   isBookingScheduled,
@@ -74,19 +71,9 @@ import {
   validateAvailabilitySlot,
 } from "@/lib/availabilityRules";
 import { trackFunnelEvent } from "@/lib/funnelAnalytics";
+import { formatLocalDateIso } from "@/lib/bookingDates";
 import { cn } from "@/lib/utils";
 import { createOperationalCase } from "@/lib/operationsRepository";
-import {
-  buildPartnerPipelineItems,
-  fetchPartnerCrmState,
-  savePartnerCaseNote,
-  updatePartnerPipelineStatus,
-  upsertPartnerFollowupTask,
-  type PartnerCaseNote,
-  type PartnerFollowupTask,
-  type PartnerPipelineItem,
-} from "@/lib/partnerCrmRepository";
-import { type Level4PipelineStatus } from "@/lib/level4Marketplace";
 import { allowedMarketplaceCityNames, legalPracticeAreaLabels } from "@/lib/marketplaceTaxonomy";
 import {
   createPartnerCaseFromBooking,
@@ -306,7 +293,6 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
   const [activeView, setActiveView] = useState<PartnerView>(() =>
     parsePartnerView(searchParams.get("view"), chrome === "profile" ? "profile" : "bookings"),
   );
-  const [queueFilter, setQueueFilter] = useState<PipelineQueueFilter>("all");
   const [workspace, setWorkspace] = useState<PartnerWorkspace>(() => getPartnerWorkspace(email));
   const [savedWorkspace, setSavedWorkspace] = useState<PartnerWorkspace>(() => getPartnerWorkspace(email));
   const [bookingsVersion, setBookingsVersion] = useState(0);
@@ -314,8 +300,6 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
   const [partnerPayments, setPartnerPayments] = useState<StoredPayment[]>([]);
   const [partnerDocuments, setPartnerDocuments] = useState<StoredBookingDocument[]>([]);
   const [partnerReviews, setPartnerReviews] = useState<StoredLawyerReview[]>([]);
-  const [partnerCaseNotes, setPartnerCaseNotes] = useState<PartnerCaseNote[]>([]);
-  const [partnerFollowups, setPartnerFollowups] = useState<PartnerFollowupTask[]>([]);
   const [partnerCases, setPartnerCases] = useState<PartnerCase[]>([]);
   const [partnerCasePrivateNotes, setPartnerCasePrivateNotes] = useState<PartnerCasePrivateNote[]>([]);
   const [partnerCaseHistory, setPartnerCaseHistory] = useState<PartnerCaseHistoryEvent[]>([]);
@@ -407,18 +391,15 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
       fetchPaymentsForLawyer(workspace.profile.lawyerId, session),
       fetchDocumentsForLawyer(workspace.profile.lawyerId, session),
       fetchReviewsForLawyer(workspace.profile.lawyerId, true, session),
-      fetchPartnerCrmState(workspace.profile.lawyerId, session),
       fetchPartnerCasesState(workspace.profile.lawyerId, session),
       fetchPartnerCalendarConnections(workspace.profile.lawyerId, session),
     ])
-      .then(([nextBookings, nextPayments, nextDocuments, nextReviews, nextCrm, nextCasesState, nextCalendarConnections]) => {
+      .then(([nextBookings, nextPayments, nextDocuments, nextReviews, nextCasesState, nextCalendarConnections]) => {
         if (!active) return;
         setPartnerBookings(nextBookings);
         setPartnerPayments(nextPayments);
         setPartnerDocuments(nextDocuments);
         setPartnerReviews(nextReviews);
-        setPartnerCaseNotes(nextCrm.notes);
-        setPartnerFollowups(nextCrm.followups);
         setPartnerCases(nextCasesState.cases);
         setPartnerCasePrivateNotes(nextCasesState.notes);
         setPartnerCaseHistory(nextCasesState.history);
@@ -432,8 +413,6 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
           setPartnerPayments([]);
           setPartnerDocuments([]);
           setPartnerReviews([]);
-          setPartnerCaseNotes([]);
-          setPartnerFollowups([]);
           setPartnerCases([]);
           setPartnerCasePrivateNotes([]);
           setPartnerCaseHistory([]);
@@ -455,19 +434,11 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
     () => [...partnerBookings].sort(sortBookingsNewestFirst),
     [partnerBookings],
   );
-  const pipelineItems = useMemo(
-    () =>
-      buildPartnerPipelineItems({
-        bookings: partnerBookings,
-        payments: partnerPayments,
-        documents: partnerDocuments,
-        notes: partnerCaseNotes,
-        followups: partnerFollowups,
-      }),
-    [partnerBookings, partnerCaseNotes, partnerDocuments, partnerFollowups, partnerPayments],
-  );
   const paymentForBooking = (bookingId: string) => partnerPayments.find((payment) => payment.bookingId === bookingId);
-  const newRequestCount = filterPartnerPipelineItems(pipelineItems, "new").length;
+  const newRequestCount = partnerBookings.filter((booking) => {
+    const payment = paymentForBooking(booking.id);
+    return getCanonicalBookingState(booking, payment) === "pending_confirmation" || !isVerifiedBooking(booking);
+  }).length;
   const confirmedBookings = partnerBookings.filter((booking) => isBookingScheduled(booking, paymentForBooking(booking.id)));
   const upcomingBookings = useMemo(
     () =>
@@ -483,6 +454,22 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
   const pendingRevenueCents = partnerPayments
     .filter((payment) => getCanonicalPaymentState(payment) === "checkout_opened" || getCanonicalPaymentState(payment) === "not_opened")
     .reduce((sum, payment) => sum + getPartnerNetCents(payment), 0);
+  const failedReviewRevenueCents = partnerPayments
+    .filter((payment) => {
+      const state = getCanonicalPaymentState(payment);
+      return state === "failed" || state === "refund_requested";
+    })
+    .reduce((sum, payment) => sum + getPartnerNetCents(payment), 0);
+  const attentionRevenueCents = pendingRevenueCents + failedReviewRevenueCents;
+  const pendingPaymentCount = partnerPayments
+    .filter((payment) => getCanonicalPaymentState(payment) === "checkout_opened" || getCanonicalPaymentState(payment) === "not_opened")
+    .length;
+  const failedPaymentCount = partnerPayments
+    .filter((payment) => {
+      const state = getCanonicalPaymentState(payment);
+      return state === "failed" || state === "refund_requested";
+    })
+    .length;
   const completedPlatformFeeCents = partnerPayments
     .filter((payment) => getCanonicalPaymentState(payment) === "paid")
     .reduce((sum, payment) => sum + getPartnerFeeCents(payment), 0);
@@ -524,6 +511,12 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
   const enabledAvailabilityDays = workspace.availability.filter(
     (slot) => slot.enabled && validateAvailabilitySlot(slot, workspaceSessionDuration).valid,
   ).length;
+  const dailyActionCount =
+    newRequestCount +
+    failedPaymentCount +
+    (pendingPaymentCount > 0 ? 1 : 0) +
+    (!searchVisibility.loading && !searchVisibility.ready ? 1 : 0) +
+    (enabledAvailabilityDays < 3 ? 1 : 0);
   const activeNavItem = navItems.find((item) => item.id === activeView) ?? navItems[0];
   const ActiveViewIcon = activeNavItem.icon;
   const publicProfileStatus = searchVisibility.loading
@@ -645,50 +638,6 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
         ...updates,
       },
     });
-  };
-
-  const addPipelineNote = async (booking: StoredBooking, note: string) => {
-    if (!note.trim()) return;
-    try {
-      const savedNote = await savePartnerCaseNote(booking, note.trim(), session);
-      setPartnerCaseNotes((current) => [savedNote, ...current]);
-      setProfileSaveState({ loading: false, message: "Η σημείωση αποθηκεύτηκε.", tone: "success" });
-    } catch (error) {
-      if (isPartnerSessionInvalidError(error)) {
-        handleExpiredPartnerSession();
-        return;
-      }
-      setProfileSaveState({ loading: false, message: getPartnerWorkspaceSaveErrorMessage(error), tone: "error" });
-    }
-  };
-
-  const addPipelineFollowup = async (booking: StoredBooking, title: string, dueAt: string) => {
-    if (!title.trim() || !dueAt.trim()) return;
-    try {
-      const savedTask = await upsertPartnerFollowupTask(booking, title.trim(), dueAt, session);
-      setPartnerFollowups((current) => [savedTask, ...current]);
-      setProfileSaveState({ loading: false, message: "Η υπενθύμιση αποθηκεύτηκε.", tone: "success" });
-    } catch (error) {
-      if (isPartnerSessionInvalidError(error)) {
-        handleExpiredPartnerSession();
-        return;
-      }
-      setProfileSaveState({ loading: false, message: getPartnerWorkspaceSaveErrorMessage(error), tone: "error" });
-    }
-  };
-
-  const changePipelineStatus = async (booking: StoredBooking, status: Level4PipelineStatus) => {
-    try {
-      await updatePartnerPipelineStatus(booking, status, session);
-      setBookingsVersion((version) => version + 1);
-      setProfileSaveState({ loading: false, message: "Η κατάσταση ενημερώθηκε.", tone: "success" });
-    } catch (error) {
-      if (isPartnerSessionInvalidError(error)) {
-        handleExpiredPartnerSession();
-        return;
-      }
-      setProfileSaveState({ loading: false, message: getPartnerWorkspaceSaveErrorMessage(error), tone: "error" });
-    }
   };
 
   const completeBooking = (booking?: StoredBooking) => {
@@ -1067,11 +1016,6 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
     }
   };
 
-  const selectQueueFilter = (filter: PipelineQueueFilter) => {
-    setQueueFilter(filter);
-    selectPartnerView("casePayments");
-  };
-
   const updateReviewReplyDraft = (reviewId: string, reply: string) => {
     setPartnerReviews((currentReviews) =>
       currentReviews.map((review) => review.id === reviewId ? { ...review, reply } : review),
@@ -1145,8 +1089,12 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
       key: "casePayments",
       label: "Υποθέσεις & Πληρωμές",
       icon: FileText,
-      badge: activeCaseCount > 0
-        ? { value: String(activeCaseCount), tone: "navy", title: "Ενεργές υποθέσεις" }
+      badge: failedPaymentCount > 0
+        ? { value: String(failedPaymentCount), tone: "danger", title: "Πληρωμές που απέτυχαν ή θέλουν έλεγχο" }
+        : pendingPaymentCount > 0
+          ? { value: String(pendingPaymentCount), tone: "amber", title: "Απλήρωτες ή ανοικτές πληρωμές" }
+          : activeCaseCount > 0
+            ? { value: String(activeCaseCount), tone: "navy", title: "Ενεργές υποθέσεις" }
         : undefined,
       active: activeView === "casePayments",
       onClick: () => selectPartnerView("casePayments"),
@@ -1216,10 +1164,14 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
 
         <PartnerCommandBar
           nextBooking={nextBooking}
+          dailyActionCount={dailyActionCount}
           newRequestCount={newRequestCount}
-          pendingRevenueCents={pendingRevenueCents}
+          pendingPaymentCount={pendingPaymentCount}
+          failedPaymentCount={failedPaymentCount}
+          attentionRevenueCents={attentionRevenueCents}
           enabledAvailabilityDays={enabledAvailabilityDays}
-          onSelectFilter={selectQueueFilter}
+          profileReady={searchVisibility.ready}
+          profileIssueCount={searchVisibility.issues.length}
           onSelectView={selectPartnerView}
         />
 
@@ -1265,24 +1217,19 @@ const PartnerPortal = ({ chrome = "partner" }: PartnerPortalProps) => {
 
           <div className="min-w-0 space-y-4">
             {activeView !== "bookings" ? (
-            <section className="rounded-lg border border-border bg-card p-4 shadow-lg shadow-foreground/[0.03]">
-              <div className="flex flex-col gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <ActiveViewIcon className="h-4 w-4 text-primary" />
-                    <h2 className="truncate font-serif text-xl tracking-tight text-foreground">
-                      {activeNavItem.label}
-                    </h2>
+              <section className="rounded-lg border border-border bg-card p-4 shadow-lg shadow-foreground/[0.03]">
+                <div className="flex flex-col gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <ActiveViewIcon className="h-4 w-4 text-primary" />
+                      <h2 className="truncate font-serif text-xl tracking-tight text-foreground">
+                        {activeNavItem.label}
+                      </h2>
+                    </div>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{currentView.description}</p>
                   </div>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{currentView.description}</p>
                 </div>
-              </div>
-              {profileSaveState.message ? (
-                <div className="mt-3">
-                  <SaveMessage saveState={profileSaveState} />
-                </div>
-              ) : null}
-            </section>
+              </section>
             ) : null}
 
           {activeView === "profile" ? (
@@ -1393,6 +1340,9 @@ const formatEuroCents = (amountCents: number) => {
   })}`;
 };
 
+const formatGreekUnitCount = (count: number, singular: string, plural: string) =>
+  `${count} ${count === 1 ? singular : plural}`;
+
 const getPartnerFeeCents = (payment?: StoredPayment) =>
   Math.max(0, Number(payment?.partnerPlatformFeeCents || 0));
 
@@ -1425,7 +1375,7 @@ const InlineRuleValue = ({ label, value }: { label: string; value: string }) => 
   </span>
 );
 
-const demoClientNames = [
+const realisticClientNameFallbacks = [
   "Μαρία Παπαδοπούλου",
   "Νίκος Αντωνίου",
   "Ελένη Καραγιάννη",
@@ -1437,14 +1387,14 @@ const demoClientNames = [
 ];
 
 const getStableNameIndex = (value: string) =>
-  Math.abs(Array.from(value).reduce((sum, character) => sum + character.charCodeAt(0), 0)) % demoClientNames.length;
+  Math.abs(Array.from(value).reduce((sum, character) => sum + character.charCodeAt(0), 0)) % realisticClientNameFallbacks.length;
 
 const lowCredibilityClientNames = new Set(["codhak", "test", "demo", "user", "client", "πελατης", "pelatis"]);
 
 const getDisplayPersonName = (name?: string | null, seed = "") => {
   const normalized = normalizeQualityText(name || "");
   if (!normalized || lowCredibilityClientNames.has(normalized) || normalized.length < 3) {
-    return demoClientNames[getStableNameIndex(seed || normalized || "client")];
+    return realisticClientNameFallbacks[getStableNameIndex(seed || normalized || "client")];
   }
   return name || "";
 };
@@ -1456,83 +1406,138 @@ const getDisplayClientName = (booking?: Pick<StoredBooking, "clientName" | "refe
 
 const PartnerCommandBar = ({
   nextBooking,
+  dailyActionCount,
   newRequestCount,
-  pendingRevenueCents,
+  pendingPaymentCount,
+  failedPaymentCount,
+  attentionRevenueCents,
   enabledAvailabilityDays,
-  onSelectFilter,
+  profileReady,
+  profileIssueCount,
   onSelectView,
 }: {
   nextBooking?: StoredBooking;
+  dailyActionCount: number;
   newRequestCount: number;
-  pendingRevenueCents: number;
+  pendingPaymentCount: number;
+  failedPaymentCount: number;
+  attentionRevenueCents: number;
   enabledAvailabilityDays: number;
-  onSelectFilter: (filter: PipelineQueueFilter) => void;
+  profileReady: boolean;
+  profileIssueCount: number;
   onSelectView: (view: PartnerView) => void;
-}) => (
-  <section className="grid min-w-0 gap-2 md:grid-cols-4">
-    <button
-      type="button"
-      onClick={() => onSelectFilter("today")}
-      className="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-3 text-left shadow-lg shadow-foreground/[0.03] transition hover:border-primary/35 hover:bg-primary/5"
-    >
-      <span className="flex items-start justify-between gap-2">
-        <span>
-          <p className="partner-kicker">Επόμενο ραντεβού</p>
-          <p className="mt-1 text-lg font-bold text-foreground">{nextBooking ? formatNextBookingSlot(nextBooking) : "Κανένα επόμενο"}</p>
-        </span>
-        <CalendarDays className="h-4 w-4 text-primary" />
-      </span>
-      <p className="mt-1 truncate text-xs text-muted-foreground">
-        {nextBooking ? getDisplayClientName(nextBooking) : "Δεν υπάρχει μελλοντικό ραντεβού"}
-      </p>
-    </button>
+}) => {
+  const openPriorityArea = () => {
+    if (newRequestCount > 0) {
+      onSelectView("bookings");
+      return;
+    }
+    if (failedPaymentCount > 0 || pendingPaymentCount > 0) {
+      onSelectView("casePayments");
+      return;
+    }
+    if (!profileReady || profileIssueCount > 0) {
+      onSelectView("profile");
+      return;
+    }
+    onSelectView("availability");
+  };
 
-    <button
-      type="button"
-      onClick={() => onSelectFilter("new")}
-      className="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-3 text-left shadow-lg shadow-foreground/[0.03] transition hover:border-primary/35 hover:bg-primary/5"
-    >
-      <span className="flex items-start justify-between gap-2">
-        <span>
-          <p className="partner-kicker">Νέα αιτήματα</p>
-          <p className="mt-1 text-lg font-bold text-foreground">{newRequestCount} αιτήματα</p>
+  return (
+    <section className="grid min-w-0 gap-2 md:grid-cols-4">
+      <button
+        type="button"
+        onClick={() => onSelectView("bookings")}
+        className="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-3 text-left shadow-lg shadow-foreground/[0.03] transition hover:border-primary/35 hover:bg-primary/5"
+      >
+        <span className="flex items-start justify-between gap-2">
+          <span>
+            <p className="partner-kicker">Επόμενο ραντεβού</p>
+            <p className="mt-1 text-lg font-bold text-foreground">{nextBooking ? formatNextBookingSlot(nextBooking) : "Κανένα επόμενο"}</p>
+          </span>
+          <CalendarDays className="h-4 w-4 text-primary" />
         </span>
-        <CircleAlert className={cn("h-4 w-4", newRequestCount > 0 ? "text-amber-700" : "text-muted-foreground")} />
-      </span>
-      <p className="mt-1 text-xs text-muted-foreground">{newRequestCount > 0 ? "Περιμένουν αποδοχή" : "Δεν υπάρχουν νέα αιτήματα"}</p>
-    </button>
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {nextBooking ? getDisplayClientName(nextBooking) : "Δεν υπάρχει μελλοντικό ραντεβού"}
+        </p>
+      </button>
 
-    <button
-      type="button"
-      onClick={() => onSelectView("casePayments")}
-      className="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-3 text-left shadow-lg shadow-foreground/[0.03] transition hover:border-primary/35 hover:bg-primary/5"
-    >
-      <span className="flex items-start justify-between gap-2">
-        <span>
-          <p className="partner-kicker">Εκκρεμείς πληρωμές</p>
-          <p className="mt-1 text-lg font-bold text-foreground">{formatEuroCents(pendingRevenueCents)}</p>
+      <button
+        type="button"
+        onClick={openPriorityArea}
+        className={cn(
+          "min-w-0 rounded-lg border bg-white px-3 py-3 text-left shadow-lg shadow-foreground/[0.03] transition hover:border-primary/35 hover:bg-primary/5",
+          dailyActionCount > 0 ? "border-amber-500/60" : "border-slate-300",
+        )}
+      >
+        <span className="flex items-start justify-between gap-2">
+          <span>
+            <p className="partner-kicker">Άμεσες ενέργειες</p>
+            <p className="mt-1 text-lg font-bold text-foreground">
+              {formatGreekUnitCount(dailyActionCount, "θέμα", "θέματα")}
+            </p>
+          </span>
+          <CircleAlert className={cn("h-4 w-4", dailyActionCount > 0 ? "text-amber-700" : "text-muted-foreground")} />
         </span>
-        <WalletCards className="h-4 w-4 text-primary" />
-      </span>
-      <p className="mt-1 text-xs text-muted-foreground">Ποσό που δεν έχει κλείσει ακόμα</p>
-    </button>
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {newRequestCount > 0
+            ? `${formatGreekUnitCount(newRequestCount, "αίτημα θέλει", "αιτήματα θέλουν")} αποδοχή`
+            : failedPaymentCount > 0
+              ? `${formatGreekUnitCount(failedPaymentCount, "πληρωμή θέλει", "πληρωμές θέλουν")} έλεγχο`
+              : dailyActionCount > 0
+                ? "Ελέγξτε πληρωμές, προφίλ ή διαθεσιμότητα"
+                : "Καμία επείγουσα εκκρεμότητα"}
+        </p>
+      </button>
 
-    <button
-      type="button"
-      onClick={() => onSelectView("availability")}
-      className="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-3 text-left shadow-lg shadow-foreground/[0.03] transition hover:border-primary/35 hover:bg-primary/5"
-    >
-      <span className="flex items-start justify-between gap-2">
-        <span>
-          <p className="partner-kicker">Διαθεσιμότητα</p>
-          <p className="mt-1 text-lg font-bold text-foreground">{enabledAvailabilityDays}/7 ημέρες</p>
+      <button
+        type="button"
+        onClick={() => onSelectView("casePayments")}
+        className={cn(
+          "min-w-0 rounded-lg border bg-white px-3 py-3 text-left shadow-lg shadow-foreground/[0.03] transition hover:border-primary/35 hover:bg-primary/5",
+          failedPaymentCount > 0 ? "border-red-500/60" : pendingPaymentCount > 0 ? "border-amber-500/60" : "border-slate-300",
+        )}
+      >
+        <span className="flex items-start justify-between gap-2">
+          <span>
+            <p className="partner-kicker">Χρήματα σε έλεγχο</p>
+            <p className="mt-1 text-lg font-bold text-foreground">{formatEuroCents(attentionRevenueCents)}</p>
+          </span>
+          <WalletCards className={cn("h-4 w-4", failedPaymentCount > 0 ? "text-red-700" : "text-primary")} />
         </span>
-        <Clock3 className="h-4 w-4 text-primary" />
-      </span>
-      <p className="mt-1 text-xs text-muted-foreground">Δημόσιο πρόγραμμα κρατήσεων</p>
-    </button>
-  </section>
-);
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {failedPaymentCount > 0
+            ? formatGreekUnitCount(failedPaymentCount, "αποτυχία πληρωμής", "αποτυχίες πληρωμής")
+            : pendingPaymentCount > 0
+              ? formatGreekUnitCount(pendingPaymentCount, "απλήρωτη / checkout κράτηση", "απλήρωτες / checkout κρατήσεις")
+              : "Δεν υπάρχουν απλήρωτες κρατήσεις"}
+        </p>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onSelectView(profileReady ? "availability" : "profile")}
+        className={cn(
+          "min-w-0 rounded-lg border bg-white px-3 py-3 text-left shadow-lg shadow-foreground/[0.03] transition hover:border-primary/35 hover:bg-primary/5",
+          profileReady && enabledAvailabilityDays >= 3 ? "border-slate-300" : "border-amber-500/60",
+        )}
+      >
+        <span className="flex items-start justify-between gap-2">
+          <span>
+            <p className="partner-kicker">Ορατότητα αναζήτησης</p>
+            <p className="mt-1 text-lg font-bold text-foreground">{profileReady ? "Live" : "Θέλει έλεγχο"}</p>
+          </span>
+          <Clock3 className={cn("h-4 w-4", profileReady ? "text-primary" : "text-amber-700")} />
+        </span>
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {profileReady
+            ? `${enabledAvailabilityDays}/7 ημέρες διαθέσιμες`
+            : formatGreekUnitCount(profileIssueCount || 1, "θέμα καταχώρισης", "θέματα καταχώρισης")}
+        </p>
+      </button>
+    </section>
+  );
+};
 
 const SignalRow = ({
   icon: Icon,
@@ -1574,24 +1579,6 @@ const StatusPill = ({ tone, children }: { tone: DashboardTone; children: ReactNo
   </span>
 );
 
-const AppointmentBadge = ({ tone, children }: { tone: DashboardTone; children: ReactNode }) => (
-  <span className={`relative inline-flex min-w-[6.75rem] items-center justify-center rounded-full border px-3 py-1 text-center text-xs font-semibold leading-tight ${getToneClasses(tone)}`}>
-    <span className="absolute left-2 h-1.5 w-1.5 rounded-full bg-current opacity-80" aria-hidden="true" />
-    <span className="block max-w-full text-center">{children}</span>
-  </span>
-);
-
-type PipelineQueueFilter = "all" | "today" | "new" | "confirmed" | "completed" | "cancelled";
-
-const pipelineQueueFilters: Array<{ id: PipelineQueueFilter; label: string }> = [
-  { id: "all", label: "Όλα" },
-  { id: "today", label: "Σήμερα" },
-  { id: "new", label: "Νέα αιτήματα" },
-  { id: "confirmed", label: "Επιβεβαιωμένα" },
-  { id: "completed", label: "Ολοκληρωμένα" },
-  { id: "cancelled", label: "Ακυρωμένα" },
-];
-
 const getPaymentTone = (state?: PaymentState | null): DashboardTone => {
   if (state === "paid") return "sage";
   if (state === "failed" || state === "refund_requested") return "danger";
@@ -1607,102 +1594,6 @@ const getBookingTone = (state: BookingState): DashboardTone => {
   return "neutral";
 };
 
-const getOpenFollowups = (item: PartnerPipelineItem) => item.followups.filter((task) => task.status === "open");
-
-const getFollowupTone = (item: PartnerPipelineItem): DashboardTone => {
-  const openFollowups = getOpenFollowups(item);
-  if (openFollowups.some((task) => new Date(task.dueAt).getTime() < Date.now())) return "danger";
-  return openFollowups.length > 0 ? "amber" : "neutral";
-};
-
-const getFollowupLabel = (item: PartnerPipelineItem) => {
-  const openFollowups = getOpenFollowups(item);
-  if (openFollowups.some((task) => new Date(task.dueAt).getTime() < Date.now())) return "Εκκρεμεί συνέχεια";
-  if (openFollowups.length > 0) return "Χρειάζεται συνέχεια";
-  return "Δεν χρειάζεται συνέχεια";
-};
-
-function partnerPipelineItemNeedsAction(item: PartnerPipelineItem) {
-  const paymentState = item.payment ? getCanonicalPaymentState(item.payment) : null;
-  const bookingState = getCanonicalBookingState(item.booking);
-
-  return (
-    item.status === "follow_up_needed" ||
-    item.status === "refund_risk" ||
-    paymentState === "failed" ||
-    paymentState === "refund_requested" ||
-    getOpenFollowups(item).length > 0 ||
-    (item.documents.length === 0 && bookingState !== "completed" && bookingState !== "cancelled") ||
-    !isVerifiedBooking(item.booking)
-  );
-}
-
-function filterPartnerPipelineItems(items: PartnerPipelineItem[], filter: PipelineQueueFilter) {
-  return items.filter((item) => {
-    const bookingState = getCanonicalBookingState(item.booking, item.payment);
-
-    if (filter === "today") return isAppointmentToday(item.booking);
-    if (filter === "new") return bookingState === "pending_confirmation" || !isVerifiedBooking(item.booking);
-    if (filter === "confirmed") return bookingState === "confirmed_paid" || bookingState === "confirmed_unpaid";
-    if (filter === "completed") return item.status === "completed" || bookingState === "completed";
-    if (filter === "cancelled") return bookingState === "cancelled";
-    return true;
-  });
-}
-
-const normalizeAppointmentDateText = (value: string) =>
-  normalizeQualityText(value)
-    .replace(/[.,]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const isAppointmentToday = (booking: StoredBooking) => {
-  const now = new Date();
-  const label = normalizeAppointmentDateText(booking.dateLabel);
-  const candidates = [
-    now.toLocaleDateString("el-GR", { weekday: "long", day: "numeric", month: "long" }),
-    now.toLocaleDateString("el-GR", { day: "numeric", month: "long" }),
-    now.toLocaleDateString("el-GR", { day: "2-digit", month: "2-digit", year: "numeric" }),
-  ].map(normalizeAppointmentDateText);
-
-  return candidates.some((candidate) => candidate && label.includes(candidate));
-};
-
-const getAppointmentStatusLabel = (item: PartnerPipelineItem) => {
-  const bookingState = getCanonicalBookingState(item.booking, item.payment);
-  if (bookingState === "pending_confirmation" || !isVerifiedBooking(item.booking)) return "Νέο αίτημα";
-  if (bookingState === "confirmed_paid" || bookingState === "confirmed_unpaid") return "Επιβεβαιωμένο";
-  if (bookingState === "completed") return "Ολοκληρωμένο";
-  if (bookingState === "no_show") return "Δεν εμφανίστηκε";
-  if (bookingState === "cancelled") return "Ακυρωμένο";
-  return "Νέο αίτημα";
-};
-
-const getAppointmentStatusTone = (item: PartnerPipelineItem): DashboardTone => {
-  const bookingState = getCanonicalBookingState(item.booking, item.payment);
-  if (bookingState === "pending_confirmation" || !isVerifiedBooking(item.booking)) return "amber";
-  if (bookingState === "confirmed_paid" || bookingState === "confirmed_unpaid" || bookingState === "completed") return "sage";
-  return "neutral";
-};
-
-const getAppointmentPaymentLabel = (payment?: StoredPayment | null) => {
-  const paymentState = getCanonicalPaymentState(payment);
-  if (paymentState === "paid") return "Πληρωμένο";
-  if (paymentState === "failed") return "Αποτυχία πληρωμής";
-  if (paymentState === "checkout_opened") return "Σε αναμονή";
-  if (paymentState === "refund_requested") return "Αίτημα επιστροφής";
-  if (paymentState === "refunded") return "Επιστράφηκε";
-  return "Δεν έχει ανοίξει";
-};
-
-const getAppointmentPaymentTone = (payment?: StoredPayment | null): DashboardTone => {
-  const paymentState = getCanonicalPaymentState(payment);
-  if (paymentState === "paid") return "sage";
-  if (paymentState === "failed" || paymentState === "refund_requested") return "danger";
-  if (paymentState === "checkout_opened" || paymentState === "not_opened") return "amber";
-  return "neutral";
-};
-
 const getAppointmentIssue = (booking: StoredBooking) =>
   booking.issueSummary?.trim() || "Δεν έχει προστεθεί θέμα από τον πελάτη.";
 
@@ -1712,185 +1603,36 @@ const getAppointmentDescription = (booking: StoredBooking) =>
 const buildAppointmentMailto = (booking: StoredBooking, subject: string, body: string) =>
   `mailto:${encodeURIComponent(booking.clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-const getPipelineNextAction = (item: PartnerPipelineItem) => {
-  const paymentState = item.payment ? getCanonicalPaymentState(item.payment) : null;
-  const bookingState = getCanonicalBookingState(item.booking);
-  const openFollowups = getOpenFollowups(item);
+const paymentRequiresPartnerAction = (paymentState: PaymentState | null) =>
+  paymentState === "failed" || paymentState === "checkout_opened" || paymentState === "not_opened" || paymentState === "refund_requested";
 
-  if (paymentState === "failed") return "Στείλτε νέο σύνδεσμο πληρωμής";
-  if (paymentState === "refund_requested" || item.status === "refund_risk") return "Ελέγξτε αίτημα επιστροφής";
-  if (!isVerifiedBooking(item.booking)) return "Αναμονή επιβεβαίωσης συστήματος";
-  if (openFollowups.length > 0) return "Κλείστε εκκρεμή υπενθύμιση";
-  if (item.documents.length === 0 && bookingState !== "completed") return "Ζητήστε έγγραφα υπόθεσης";
-  if (bookingState === "confirmed_paid") return "Προετοιμάστε τη συνεδρία";
-  if (bookingState === "completed") return "Κλείστε οικονομική συνέχεια";
-  return "Ελέγξτε το επόμενο βήμα";
-};
-
-const getCasePrimaryState = (item: PartnerPipelineItem): { label: string; tone: DashboardTone } => {
-  const paymentState = item.payment ? getCanonicalPaymentState(item.payment) : null;
-  const bookingState = getCanonicalBookingState(item.booking);
-  const openFollowups = getOpenFollowups(item);
-  const hasOverdueFollowup = openFollowups.some((task) => new Date(task.dueAt).getTime() < Date.now());
-
-  if (paymentState === "failed") return { label: "Αποτυχία πληρωμής", tone: "danger" };
-  if (paymentState === "refund_requested") return { label: "Αίτημα επιστροφής", tone: "danger" };
-  if (hasOverdueFollowup) return { label: "Εκκρεμεί συνέχεια", tone: "danger" };
-  if (item.status === "refund_risk") return { label: "Πιθανή επανεπικοινωνία", tone: "amber" };
-  if (item.status === "follow_up_needed" || openFollowups.length > 0) return { label: "Χρειάζεται συνέχεια", tone: "amber" };
-  if (!isVerifiedBooking(item.booking)) return { label: "Αναμονή επιβεβαίωσης", tone: "amber" };
-  if (bookingState === "confirmed_paid") return { label: "Επόμενο ραντεβού", tone: "sage" };
-  if (bookingState === "completed") return { label: "Ολοκληρωμένο", tone: "sage" };
-  if (bookingState === "cancelled") return { label: "Ακυρωμένη κράτηση", tone: "neutral" };
-  return { label: "Έλεγχος υπόθεσης", tone: "neutral" };
-};
-
-const getCaseSecondaryLine = (item: PartnerPipelineItem) => {
-  const bookingState = getCanonicalBookingState(item.booking);
-  const paymentState = item.payment ? getCanonicalPaymentState(item.payment) : null;
-  const bookingDetails: Record<BookingState, string> = {
-    pending_confirmation: "Κράτηση σε έλεγχο",
-    confirmed_unpaid: "Αναμονή πληρωμής",
-    confirmed_paid: "Επιβεβαιωμένη κράτηση",
-    completed: "Ολοκληρωμένη κράτηση",
-    no_show: "Δεν εμφανίστηκε",
-    cancelled: "Ακυρωμένη κράτηση",
-  };
-  const followupDetail =
-    item.status === "refund_risk"
-      ? "Πιθανή επανεπικοινωνία"
-      : getFollowupLabel(item) === "Δεν χρειάζεται συνέχεια"
-        ? ""
-        : getFollowupLabel(item);
-  const parts = [
-    bookingDetails[bookingState],
-    paymentState && paymentState !== "failed" ? partnerPaymentStateLabels[paymentState] : "",
-    followupDetail,
-  ].filter(Boolean);
-
-  return Array.from(new Set(parts)).join(" · ");
-};
-
-type RecommendedCaseAction = {
-  title: string;
-  description: string;
-  primaryLabel: string;
-  primaryView?: PartnerView;
-  completeBooking?: boolean;
-  reminderTitle: string;
-  tone: DashboardTone;
-};
-
-const getRecommendedCaseAction = (item: PartnerPipelineItem): RecommendedCaseAction => {
-  const paymentState = item.payment ? getCanonicalPaymentState(item.payment) : null;
-  const bookingState = getCanonicalBookingState(item.booking);
-  const openFollowups = getOpenFollowups(item);
-  const hasOverdueFollowup = openFollowups.some((task) => new Date(task.dueAt).getTime() < Date.now());
-
+const getPartnerPaymentActionCopy = (paymentState: PaymentState | null, payment?: StoredPayment | null) => {
   if (paymentState === "failed") {
-    return {
-      title: "Ελέγξτε την αποτυχία πληρωμής",
-      description: "Η πληρωμή δεν ολοκληρώθηκε. Επικοινωνήστε με τον πελάτη και ελέγξτε την κράτηση στις πληρωμές.",
-      primaryLabel: "Έλεγχος πληρωμής",
-      primaryView: "casePayments",
-      reminderTitle: "Επικοινωνία για αποτυχία πληρωμής",
-      tone: "danger" as DashboardTone,
-    };
+    return payment?.checkoutSessionUrl
+      ? "Η κάρτα/πληρωμή απέτυχε. Στείλτε ξανά τον σύνδεσμο πληρωμής πριν κρατήσετε οριστικά την ώρα."
+      : "Η πληρωμή απέτυχε. Δεν υπάρχει ενεργός σύνδεσμος πληρωμής σε αυτή την εγγραφή.";
   }
-
-  if (paymentState === "refund_requested" || item.status === "refund_risk") {
-    return {
-      title: "Χρειάζεται έλεγχος επανεπικοινωνίας",
-      description: "Υπάρχει ένδειξη ότι η υπόθεση μπορεί να χρειάζεται νέα επικοινωνία ή οικονομικό έλεγχο.",
-      primaryLabel: "Άνοιγμα πληρωμών",
-      primaryView: "casePayments",
-      reminderTitle: "Έλεγχος επανεπικοινωνίας πελάτη",
-      tone: "amber" as DashboardTone,
-    };
+  if (paymentState === "checkout_opened") {
+    return "Ο πελάτης άνοιξε το checkout αλλά δεν πλήρωσε ακόμη. Υπενθυμίστε την πληρωμή πριν τη συνεδρία.";
   }
-
-  if (hasOverdueFollowup || openFollowups.length > 0) {
-    return {
-      title: "Κλείστε την εκκρεμή συνέχεια",
-      description: "Υπάρχει υπενθύμιση που περιμένει ενέργεια. Σημειώστε τι έγινε και ορίστε νέο βήμα μόνο αν χρειάζεται.",
-      primaryLabel: "Προσθήκη σημείωσης",
-      reminderTitle: "Νέα συνέχεια υπόθεσης",
-      tone: hasOverdueFollowup ? "danger" as DashboardTone : "amber" as DashboardTone,
-    };
-  }
-
-  if (item.documents.length === 0 && bookingState !== "completed" && bookingState !== "cancelled") {
-    return {
-      title: "Λείπουν έγγραφα υπόθεσης",
-      description: "Δεν έχουν ανέβει έγγραφα για την υπόθεση. Αν χρειάζονται για την προετοιμασία, ζητήστε τα πριν τη συνεδρία.",
-      primaryLabel: "Προσθήκη σημείωσης",
-      reminderTitle: "Ζητήστε έγγραφα υπόθεσης",
-      tone: "amber" as DashboardTone,
-    };
-  }
-
-  if (bookingState === "confirmed_paid") {
-    return {
-      title: "Προετοιμασία συνεδρίας",
-      description: "Η κράτηση είναι πληρωμένη. Ελέγξτε στοιχεία πελάτη, σημειώσεις και έγγραφα πριν τη συνεδρία.",
-      primaryLabel: "Σήμανση ολοκλήρωσης",
-      completeBooking: true,
-      reminderTitle: "Προετοιμασία συνεδρίας",
-      tone: "sage" as DashboardTone,
-    };
-  }
-
-  return {
-    title: "Καταγράψτε το επόμενο βήμα",
-    description: "Κρατήστε σύντομη εσωτερική σημείωση ώστε η υπόθεση να έχει καθαρή συνέχεια.",
-    primaryLabel: "Προσθήκη σημείωσης",
-    reminderTitle: "Επόμενη ενέργεια υπόθεσης",
-    tone: "neutral" as DashboardTone,
-  };
-};
-
-const getCaseStatusExplanation = (item: PartnerPipelineItem) => {
-  const paymentState = item.payment ? getCanonicalPaymentState(item.payment) : null;
-  const bookingState = getCanonicalBookingState(item.booking);
-
-  if (paymentState === "failed") return "Η πληρωμή δεν ολοκληρώθηκε και η κράτηση ακυρώθηκε αυτόματα.";
-  if (paymentState === "refund_requested") return "Υπάρχει αίτημα επιστροφής που χρειάζεται έλεγχο πριν κλείσει η οικονομική συνέχεια.";
-  if (getFollowupTone(item) === "danger") return "Υπάρχει υπενθύμιση που έχει περάσει την προγραμματισμένη ώρα.";
-  if (item.documents.length === 0 && bookingState !== "completed" && bookingState !== "cancelled") return "Δεν έχουν ανέβει έγγραφα για την υπόθεση.";
-  if (!isVerifiedBooking(item.booking)) return "Η κράτηση περιμένει επιβεβαίωση από το σύστημα.";
-  return "Η υπόθεση εμφανίζεται στην ουρά για να υπάρχει καθαρή συνέχεια εργασίας.";
-};
-
-const formatActivityDate = (value?: string) => {
-  if (!value) return "Σήμερα";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("el-GR", { day: "numeric", month: "short" });
-};
-
-const getCaseActivity = (item: PartnerPipelineItem) => {
-  const paymentState = item.payment ? getCanonicalPaymentState(item.payment) : null;
-  const bookingState = getCanonicalBookingState(item.booking);
-  const paymentDate = item.payment?.updatedAt || item.payment?.createdAt || item.booking.createdAt;
-  const entries: Array<{ date: string; label: string }> = [];
-
-  if (paymentState === "failed") {
-    entries.push({ date: formatActivityDate(paymentDate), label: "Η πληρωμή απέτυχε" });
+  if (paymentState === "not_opened") {
+    return "Η πληρωμή δεν έχει ανοίξει ακόμη. Η κράτηση δεν πρέπει να θεωρηθεί πληρωμένη.";
   }
   if (paymentState === "refund_requested") {
-    entries.push({ date: formatActivityDate(paymentDate), label: "Ζητήθηκε έλεγχος επιστροφής" });
+    return "Υπάρχει αίτημα επιστροφής. Ελέγξτε πριν κλείσετε οικονομικά την υπόθεση.";
   }
-  if (bookingState === "cancelled") {
-    entries.push({ date: formatActivityDate(item.booking.createdAt), label: "Η κράτηση ακυρώθηκε" });
-  }
-  if (item.followups.length > 0) {
-    entries.push({ date: formatActivityDate(item.followups[0]?.createdAt || item.followups[0]?.dueAt), label: "Δημιουργήθηκε υπενθύμιση" });
-  }
+  if (paymentState === "paid") return "Η πληρωμή είναι επιβεβαιωμένη. Μπορείτε να ολοκληρώσετε τη συνεδρία μετά το ραντεβού.";
+  if (paymentState === "refunded") return "Η πληρωμή έχει επιστραφεί. Δεν υπάρχει καθαρό ποσό για εκκαθάριση.";
+  return "Δεν υπάρχει καταγεγραμμένη πληρωμή για αυτή την κράτηση.";
+};
 
-  entries.push({ date: formatActivityDate(item.booking.createdAt), label: "Η κράτηση δημιουργήθηκε" });
-  entries.push({ date: item.booking.dateLabel, label: `Ο πελάτης επέλεξε ${item.booking.consultationType} στις ${item.booking.time}` });
-
-  return entries;
+const buildPaymentReminderMailto = (booking: StoredBooking, payment?: StoredPayment | null) => {
+  const paymentLink = payment?.checkoutSessionUrl ? `\n\nΣύνδεσμος πληρωμής: ${payment.checkoutSessionUrl}` : "";
+  return buildAppointmentMailto(
+    booking,
+    `Πληρωμή ραντεβού ${booking.referenceId}`,
+    `Καλησπέρα σας,\n\nη πληρωμή για το ραντεβού ${booking.referenceId} δεν έχει ολοκληρωθεί ακόμη.${paymentLink}\n\nΜε εκτίμηση,`,
+  );
 };
 
 const CaseSection = ({ title, children, quiet = false }: { title: string; children: ReactNode; quiet?: boolean }) => (
@@ -1899,234 +1641,6 @@ const CaseSection = ({ title, children, quiet = false }: { title: string; childr
     <div className="mt-2">{children}</div>
   </div>
 );
-
-const CaseStateIndicator = ({ state }: { state: { label: string; tone: DashboardTone } }) =>
-  state.label === "Ακυρωμένη κράτηση" ? (
-    <span className="inline-flex shrink-0 items-center rounded-full bg-white/65 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
-      {state.label}
-    </span>
-  ) : (
-    <StatusPill tone={state.tone}>{state.label}</StatusPill>
-  );
-
-const PipelineView = ({
-  items,
-  activeFilter,
-  onFilterChange,
-  actionState,
-  onChangeStatus,
-  onCancel,
-}: {
-  items: PartnerPipelineItem[];
-  activeFilter: PipelineQueueFilter;
-  onFilterChange: (filter: PipelineQueueFilter) => void;
-  actionState: Record<string, BookingActionState>;
-  onAddNote: (booking: StoredBooking, note: string) => void;
-  onAddFollowup: (booking: StoredBooking, title: string, dueAt: string) => void;
-  onChangeStatus: (booking: StoredBooking, status: Level4PipelineStatus) => void;
-  onComplete: (booking?: StoredBooking) => void;
-  onCancel: (booking?: StoredBooking) => void;
-  onSelectView: (view: PartnerView) => void;
-}) => {
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const filteredItems = filterPartnerPipelineItems(items, activeFilter);
-  const selectedItem = filteredItems.find((item) => item.booking.id === selectedItemId) || filteredItems[0] || null;
-  const selectedAction = selectedItem ? actionState[selectedItem.booking.id] : undefined;
-  const selectedCanConfirm = selectedItem ? getAppointmentStatusLabel(selectedItem) === "Νέο αίτημα" : false;
-
-  return (
-    <section className="min-w-0 space-y-4">
-      <div className="partner-panel min-w-0 p-4">
-        <h3 className="text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Ραντεβού</h3>
-        <div className="mt-4 flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Φίλτρα ραντεβού">
-          {pipelineQueueFilters.map((filter) => {
-            const active = activeFilter === filter.id;
-            return (
-              <button
-                key={filter.id}
-                type="button"
-                onClick={() => onFilterChange(filter.id)}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-                  active
-                    ? "border-[hsl(var(--sage))]/30 bg-[hsl(var(--sage))]/12 text-[hsl(var(--sage-foreground))]"
-                    : "border-[hsl(var(--partner-line))] bg-white/70 text-[hsl(var(--partner-ink))] hover:bg-white"
-                }`}
-              >
-                {filter.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <section className="partner-panel min-w-0 overflow-hidden p-2">
-          {filteredItems.length > 0 ? (
-            <div className="grid gap-2">
-              {filteredItems.map((item) => {
-                const selected = selectedItem?.booking.id === item.booking.id;
-                const appointmentStatus = getAppointmentStatusLabel(item);
-                const canConfirm = appointmentStatus === "Νέο αίτημα";
-                return (
-                  <article
-                    key={item.booking.id}
-                    className={`grid min-w-0 gap-4 rounded-2xl border border-l-4 px-5 py-4 transition hover:bg-white/75 md:grid-cols-[minmax(0,1fr)_auto] ${
-                      selected
-                        ? "border-[hsl(var(--partner-line))] border-l-[hsl(var(--sage))] bg-[hsl(var(--sage))]/8 shadow-[0_10px_26px_rgba(18,30,44,0.06)]"
-                        : "border-[hsl(var(--partner-line))]/70 border-l-[hsl(var(--partner-line))]/70 bg-white/52"
-                    }`}
-                  >
-                    <button type="button" onClick={() => setSelectedItemId(item.booking.id)} className="min-w-0 text-left">
-                      <span className="block break-words font-semibold text-[hsl(var(--partner-ink))]">{getDisplayClientName(item.booking)}</span>
-                      <span className="mt-1 block text-sm leading-6 text-muted-foreground">{getAppointmentIssue(item.booking)}</span>
-                      <span className="mt-3 block text-sm font-semibold leading-6 text-[hsl(var(--partner-ink))]">
-                        {item.booking.dateLabel}, {item.booking.time}
-                      </span>
-                      <span className="mt-1 block text-sm leading-6 text-muted-foreground">
-                        {item.booking.consultationType} · {item.booking.duration} · {formatEuroCents(item.booking.price * 100)}
-                      </span>
-                      <span className="mt-3 flex flex-wrap gap-2">
-                        <AppointmentBadge tone={getAppointmentStatusTone(item)}>Κατάσταση: {appointmentStatus}</AppointmentBadge>
-                        <AppointmentBadge tone={getAppointmentPaymentTone(item.payment)}>Πληρωμή: {getAppointmentPaymentLabel(item.payment)}</AppointmentBadge>
-                      </span>
-                    </button>
-                    <div className="flex shrink-0 items-center gap-2 self-end md:self-center">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-9 rounded-xl border-[hsl(var(--partner-line))] bg-white/80 px-3 text-xs font-bold"
-                        onClick={() => setSelectedItemId(item.booking.id)}
-                      >
-                        Άνοιγμα
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-9 rounded-xl px-3 text-xs font-bold"
-                        disabled={!canConfirm || actionState[item.booking.id]?.loading}
-                        onClick={() => {
-                          setSelectedItemId(item.booking.id);
-                          onChangeStatus(item.booking, "upcoming");
-                        }}
-                      >
-                        Επιβεβαίωση
-                      </Button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyPartnerState
-              icon={CalendarDays}
-              title="Δεν υπάρχουν ραντεβού σε αυτή την κατηγορία."
-              description="Αλλάξτε καρτέλα ή περιμένετε νέα κράτηση για να εμφανιστεί εδώ."
-            />
-          )}
-        </section>
-
-        <aside className="partner-panel min-w-0 p-4 xl:sticky xl:top-[86px] xl:self-start">
-          {selectedItem ? (
-            <div className="space-y-3">
-              <div>
-                <p className="partner-kicker">Άνοιγμα ραντεβού</p>
-                <div className="mt-2 flex min-w-0 items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="break-words text-lg font-semibold text-[hsl(var(--partner-ink))]">{getDisplayClientName(selectedItem.booking)}</h3>
-                    <p className="mt-0.5 break-all text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{selectedItem.booking.referenceId}</p>
-                  </div>
-                  <AppointmentBadge tone={getAppointmentStatusTone(selectedItem)}>{getAppointmentStatusLabel(selectedItem)}</AppointmentBadge>
-                </div>
-              </div>
-
-              <CaseSection title="Πελάτης" quiet>
-                <div className="grid gap-1 text-sm leading-6 text-[hsl(var(--partner-ink))]">
-                  <p className="font-semibold">{getDisplayClientName(selectedItem.booking)}</p>
-                  <a className="break-all text-muted-foreground" href={`mailto:${selectedItem.booking.clientEmail}`}>
-                    {selectedItem.booking.clientEmail || "Δεν δηλώθηκε email"}
-                  </a>
-                  <a className="break-all text-muted-foreground" href={`tel:${selectedItem.booking.clientPhone}`}>
-                    {selectedItem.booking.clientPhone || "Δεν δηλώθηκε τηλέφωνο"}
-                  </a>
-                </div>
-              </CaseSection>
-
-              <CaseSection title="Θέμα" quiet>
-                <p className="text-sm leading-6 text-[hsl(var(--partner-ink))]">{getAppointmentIssue(selectedItem.booking)}</p>
-              </CaseSection>
-
-              <CaseSection title="Περιγραφή" quiet>
-                <p className="text-sm leading-6 text-muted-foreground">{getAppointmentDescription(selectedItem.booking)}</p>
-              </CaseSection>
-
-              <CaseSection title="Ραντεβού" quiet>
-                <div className="grid gap-1 text-sm leading-6 text-[hsl(var(--partner-ink))]">
-                  <p>{selectedItem.booking.dateLabel}, {selectedItem.booking.time}</p>
-                  <p>{selectedItem.booking.consultationType}</p>
-                  <p>{selectedItem.booking.duration}</p>
-                  <p className="font-semibold">{formatEuroCents(selectedItem.booking.price * 100)}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <AppointmentBadge tone={getAppointmentStatusTone(selectedItem)}>Κατάσταση: {getAppointmentStatusLabel(selectedItem)}</AppointmentBadge>
-                    <AppointmentBadge tone={getAppointmentPaymentTone(selectedItem.payment)}>Πληρωμή: {getAppointmentPaymentLabel(selectedItem.payment)}</AppointmentBadge>
-                  </div>
-                </div>
-              </CaseSection>
-
-              <CaseSection title="Ενέργειες">
-                <div className="grid gap-2">
-                  <Button
-                    type="button"
-                    className="h-10 rounded-xl text-sm font-bold"
-                    disabled={!selectedCanConfirm || selectedAction?.loading}
-                    onClick={() => onChangeStatus(selectedItem.booking, "upcoming")}
-                  >
-                    Επιβεβαίωση
-                  </Button>
-                  {selectedItem.booking.clientEmail ? (
-                    <Button asChild variant="outline" className="h-10 rounded-xl border-[hsl(var(--partner-line))] bg-white/80 text-sm font-bold">
-                      <a href={buildAppointmentMailto(selectedItem.booking, `Πρόταση νέας ώρας για ${selectedItem.booking.referenceId}`, "Προτείνετε νέα ώρα για το ραντεβού σας.")}>Πρόταση νέας ώρας</a>
-                    </Button>
-                  ) : (
-                    <Button type="button" variant="outline" disabled className="h-10 rounded-xl border-[hsl(var(--partner-line))] bg-white/80 text-sm font-bold">
-                      Πρόταση νέας ώρας
-                    </Button>
-                  )}
-                  {selectedItem.booking.clientEmail ? (
-                    <Button asChild variant="outline" className="h-10 rounded-xl border-[hsl(var(--partner-line))] bg-white/80 text-sm font-bold">
-                      <a href={buildAppointmentMailto(selectedItem.booking, `Ραντεβού ${selectedItem.booking.referenceId}`, "")}>Μήνυμα στον πελάτη</a>
-                    </Button>
-                  ) : (
-                    <Button type="button" variant="outline" disabled className="h-10 rounded-xl border-[hsl(var(--partner-line))] bg-white/80 text-sm font-bold">
-                      Μήνυμα στον πελάτη
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-10 rounded-xl border-[hsl(var(--partner-line))] bg-white/80 text-sm font-bold text-[hsl(var(--partner-ink))]"
-                    disabled={selectedAction?.loading}
-                    onClick={() => onCancel(selectedItem.booking)}
-                  >
-                    Ακύρωση
-                  </Button>
-                </div>
-              </CaseSection>
-
-              {selectedAction?.message ? <SaveMessage saveState={selectedAction} /> : null}
-            </div>
-          ) : (
-            <div className="py-8 text-center">
-              <CalendarDays className="mx-auto h-7 w-7 text-muted-foreground/60" />
-              <p className="mt-3 text-sm font-semibold text-[hsl(var(--partner-ink))]">Επιλέξτε ραντεβού</p>
-              <p className="mx-auto mt-1 max-w-[260px] text-xs leading-5 text-muted-foreground">Τα στοιχεία πελάτη, θέματος και ενεργειών εμφανίζονται εδώ.</p>
-            </div>
-          )}
-        </aside>
-      </div>
-    </section>
-  );
-};
 
 const AppointmentsView = ({
   bookings,
@@ -2207,8 +1721,13 @@ const AppointmentsView = ({
   }, [page, totalPages]);
 
   useEffect(() => {
-    if (selectedBookingId && !visibleBookings.some((booking) => booking.id === selectedBookingId)) {
+    if (visibleBookings.length === 0) {
       setSelectedBookingId(null);
+      return;
+    }
+
+    if (!selectedBookingId || !visibleBookings.some((booking) => booking.id === selectedBookingId)) {
+      setSelectedBookingId(visibleBookings[0].id);
     }
   }, [selectedBookingId, visibleBookings]);
 
@@ -2358,19 +1877,63 @@ const AppointmentsView = ({
               const canAccept = bookingState === "pending_confirmation" && verified;
               const canConvertToCase = bookingState === "confirmed_paid" || bookingState === "completed" || paymentState === "paid";
               const hasClientEmail = Boolean(selectedBooking.clientEmail);
+              const canRecoverPayment = paymentRequiresPartnerAction(paymentState);
+              const hasPaymentLink = Boolean(canRecoverPayment && payment?.checkoutSessionUrl);
+              const canEmailPaymentReminder = Boolean(canRecoverPayment && hasClientEmail);
 
               return (
                 <div className="space-y-4">
                   <div>
                     <p className="partner-kicker">Λεπτομέρειες ραντεβού</p>
                     <h4 className="mt-1 text-lg font-semibold text-[hsl(var(--partner-ink))]">{getDisplayClientName(selectedBooking)}</h4>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{selectedBooking.issueSummary || "Δεν έχει προστεθεί περιγραφή υπόθεσης από τον πελάτη."}</p>
+                  </div>
+
+                  <div className="grid gap-3">
+                    <CaseSection title="Πελάτης" quiet>
+                      <div className="grid gap-1 text-sm leading-6 text-[hsl(var(--partner-ink))]">
+                        <p className="font-semibold">{getDisplayClientName(selectedBooking)}</p>
+                        <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{selectedBooking.referenceId}</p>
+                      </div>
+                    </CaseSection>
+                    <CaseSection title="Θέμα" quiet>
+                      <p className="text-sm leading-6 text-[hsl(var(--partner-ink))]">{getAppointmentIssue(selectedBooking)}</p>
+                    </CaseSection>
+                    <CaseSection title="Περιγραφή" quiet>
+                      <p className="text-sm leading-6 text-muted-foreground">{getAppointmentDescription(selectedBooking)}</p>
+                    </CaseSection>
                   </div>
 
                   <div className="grid gap-2">
                     <SignalRow icon={PhoneCall} label="Τηλέφωνο" value={selectedBooking.clientPhone || "Δεν δηλώθηκε"} tone="neutral" />
                     <SignalRow icon={MailCheck} label="Email" value={selectedBooking.clientEmail || "Δεν δηλώθηκε"} tone="neutral" />
                     <SignalRow icon={WalletCards} label="Αμοιβή συμβουλευτικής" value={formatEuroCents(selectedBooking.price * 100)} tone={getPaymentTone(paymentState)} />
+                  </div>
+
+                  <div className={cn(
+                    "rounded-xl border p-3",
+                    canRecoverPayment ? getToneClasses(getPaymentTone(paymentState)) : "border-[hsl(var(--partner-line))] bg-white/70 text-[hsl(var(--partner-ink))]",
+                  )}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="partner-kicker">Πληρωμή και επόμενο βήμα</p>
+                        <p className="mt-1 text-sm font-semibold leading-6">{getPartnerPaymentActionCopy(paymentState, payment)}</p>
+                      </div>
+                      <StatusPill tone={getPaymentTone(paymentState)}>{paymentState ? partnerPaymentStateLabels[paymentState] : "Καμία πληρωμή"}</StatusPill>
+                    </div>
+                    {canRecoverPayment ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {hasPaymentLink ? (
+                          <Button asChild variant="outline" className={secondaryAppointmentActionClassName}>
+                            <a href={payment?.checkoutSessionUrl} target="_blank" rel="noreferrer">Άνοιγμα πληρωμής</a>
+                          </Button>
+                        ) : null}
+                        {canEmailPaymentReminder ? (
+                          <Button asChild variant="outline" className={secondaryAppointmentActionClassName}>
+                            <a href={buildPaymentReminderMailto(selectedBooking, payment)}>Email υπενθύμιση πληρωμής</a>
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="rounded-xl border border-[hsl(var(--partner-line))] bg-white/70 p-3">
@@ -2400,59 +1963,59 @@ const AppointmentsView = ({
                   <div className="rounded-xl border border-[hsl(var(--partner-line))] bg-white/70 p-3">
                     <p className="partner-kicker">Ενέργειες</p>
                     <div className="mt-3 grid gap-2">
-                      <Button
-                        type="button"
-                        onClick={() => onAccept(selectedBooking)}
-                        disabled={!canAccept || currentAction?.loading}
-                        title={!canAccept ? "Η αποδοχή είναι διαθέσιμη μόνο σε νέο επιβεβαιωμένο αίτημα." : undefined}
-                        className="h-10 rounded-xl text-sm font-bold"
-                      >
-                        Αποδοχή
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => onCancel(selectedBooking)}
-                        disabled={!scheduled || currentAction?.loading}
-                        title={!scheduled ? "Η απόρριψη είναι διαθέσιμη μόνο σε ενεργό ραντεβού." : undefined}
-                        className={scheduled ? dangerAppointmentActionClassName : disabledAppointmentActionClassName}
-                      >
-                        Απόρριψη
-                      </Button>
-                      {hasClientEmail ? (
-                        <Button asChild variant="outline" className={secondaryAppointmentActionClassName}>
-                          <a href={buildAppointmentMailto(selectedBooking, `Πρόταση νέας ώρας για ${selectedBooking.referenceId}`, "Προτείνετε νέα ώρα για το ραντεβού σας.")}>Πρόταση νέας ώρας</a>
+                      {canAccept ? (
+                        <Button
+                          type="button"
+                          onClick={() => onAccept(selectedBooking)}
+                          disabled={currentAction?.loading}
+                          className="h-10 rounded-xl text-sm font-bold"
+                        >
+                          Αποδοχή
                         </Button>
                       ) : (
-                        <Button type="button" variant="outline" disabled className={disabledAppointmentActionClassName}>
-                          Πρόταση νέας ώρας
+                        <UnavailableAppointmentAction label="Αποδοχή" reason="Διαθέσιμη μόνο σε νέο αίτημα που έχει επιβεβαιωθεί από το σύστημα." />
+                      )}
+                      {scheduled ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => onCancel(selectedBooking)}
+                          disabled={currentAction?.loading}
+                          className={dangerAppointmentActionClassName}
+                        >
+                          Απόρριψη
                         </Button>
+                      ) : (
+                        <UnavailableAppointmentAction label="Απόρριψη" reason="Διαθέσιμη μόνο όσο το ραντεβού είναι ενεργό." />
                       )}
                       {hasClientEmail ? (
                         <Button asChild variant="outline" className={secondaryAppointmentActionClassName}>
-                          <a href={buildAppointmentMailto(selectedBooking, `Ραντεβού ${selectedBooking.referenceId}`, "")}>Μήνυμα στον πελάτη</a>
+                          <a href={buildAppointmentMailto(selectedBooking, `Πρόταση νέας ώρας για ${selectedBooking.referenceId}`, "Προτείνετε νέα ώρα για το ραντεβού σας.")}>Email πρόταση νέας ώρας</a>
                         </Button>
                       ) : (
-                        <Button type="button" variant="outline" disabled className={disabledAppointmentActionClassName}>
-                          Μήνυμα στον πελάτη
-                        </Button>
+                        <UnavailableAppointmentAction label="Email πρόταση νέας ώρας" reason="Λείπει email πελάτη." />
                       )}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => onConvertToCase(selectedBooking)}
-                        disabled={!canConvertToCase || currentCaseAction?.loading}
-                        title={!canConvertToCase ? "Η μετατροπή σε υπόθεση ανοίγει μετά από επιβεβαιωμένη ή πληρωμένη κράτηση." : undefined}
-                        className={canConvertToCase ? secondaryAppointmentActionClassName : disabledAppointmentActionClassName}
-                      >
-                        Μετατροπή σε υπόθεση
-                      </Button>
+                      {hasClientEmail ? (
+                        <Button asChild variant="outline" className={secondaryAppointmentActionClassName}>
+                          <a href={buildAppointmentMailto(selectedBooking, `Ραντεβού ${selectedBooking.referenceId}`, "")}>Email στον πελάτη</a>
+                        </Button>
+                      ) : (
+                        <UnavailableAppointmentAction label="Email στον πελάτη" reason="Λείπει email πελάτη." />
+                      )}
+                      {canConvertToCase ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => onConvertToCase(selectedBooking)}
+                          disabled={currentCaseAction?.loading}
+                          className={secondaryAppointmentActionClassName}
+                        >
+                          Μετατροπή σε υπόθεση
+                        </Button>
+                      ) : (
+                        <UnavailableAppointmentAction label="Μετατροπή σε υπόθεση" reason="Ανοίγει μετά από επιβεβαιωμένη πληρωμή ή ολοκληρωμένο ραντεβού." />
+                      )}
                     </div>
-                    {!hasClientEmail ? (
-                      <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">
-                        Δεν υπάρχει email πελάτη, οπότε οι ενέργειες μηνύματος μένουν ανενεργές.
-                      </p>
-                    ) : null}
                     {currentCaseAction?.message ? (
                       <div className="mt-3">
                         <SaveMessage saveState={currentCaseAction} />
@@ -2462,9 +2025,13 @@ const AppointmentsView = ({
 
                   {scheduled && verified ? (
                     <div className="grid gap-2">
-                      <Button type="button" onClick={() => onComplete(selectedBooking)} disabled={currentAction?.loading || !canMarkComplete} className="h-10 rounded-xl text-sm font-bold">
-                        {canMarkComplete ? "Σήμανση ολοκλήρωσης" : "Αναμονή πληρωμής"}
-                      </Button>
+                      {canMarkComplete ? (
+                        <Button type="button" onClick={() => onComplete(selectedBooking)} disabled={currentAction?.loading} className="h-10 rounded-xl text-sm font-bold">
+                          Σήμανση ολοκλήρωσης
+                        </Button>
+                      ) : (
+                        <UnavailableAppointmentAction label="Σήμανση ολοκλήρωσης" reason="Ανοίγει μόνο αφού επιβεβαιωθεί η πληρωμή." />
+                      )}
                       <Button
                         type="button"
                         variant="outline"
@@ -2579,8 +2146,12 @@ const secondaryAppointmentActionClassName =
 const dangerAppointmentActionClassName =
   "h-10 rounded-xl border-red-300 bg-white text-sm font-bold text-red-800 shadow-sm hover:bg-red-50";
 
-const disabledAppointmentActionClassName =
-  "h-10 rounded-xl border-slate-200 bg-slate-50 text-sm font-bold text-slate-500";
+const UnavailableAppointmentAction = ({ label, reason }: { label: string; reason: string }) => (
+  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+    <p className="text-sm font-bold text-slate-600">{label}</p>
+    <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{reason}</p>
+  </div>
+);
 
 const ProfileView = ({
   workspace,
@@ -2807,8 +2378,8 @@ const SignupAvailabilityView = ({
   const coverageTone: DashboardTone = enabledSlots.length >= 4 ? "sage" : enabledSlots.length >= 2 ? "amber" : "neutral";
   const invalidSlots = workspace.availability.filter((slot) => slot.enabled && !validateAvailabilitySlot(slot, sessionDuration).valid);
   const [timeOffDraft, setTimeOffDraft] = useState({
-    startDate: new Date().toISOString().slice(0, 10),
-    endDate: new Date().toISOString().slice(0, 10),
+    startDate: formatLocalDateIso(new Date()),
+    endDate: formatLocalDateIso(new Date()),
     label: "Άδεια / διακοπές",
   });
 
@@ -3010,9 +2581,9 @@ const SignupAvailabilityView = ({
 
         <aside className="partner-panel p-4">
           <p className="partner-kicker">Συγχρονισμός ημερολογίου</p>
-          <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Google Calendar</h3>
+          <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Προαιρετικός έλεγχος Google Calendar</h3>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            Η σύνδεση είναι read-only για busy/free έλεγχο και δεν δημιουργεί events στο εξωτερικό ημερολόγιο.
+            Χρησιμοποιείται μόνο για έλεγχο busy/free. Τα ραντεβού και οι πληρωμές παραμένουν στο Dikigoros.
           </p>
 
           <div className="mt-4 grid gap-2">
@@ -3149,6 +2720,20 @@ const CasesPaymentsView = ({
   const selectedHistory = selectedCase ? history.filter((event) => event.caseId === selectedCase.id) : [];
   const selectedTotalCents = selectedPayments.reduce((sum, payment) => sum + getPartnerNetCents(payment), 0);
   const selectedAction = selectedCase ? actionState[selectedCase.id] : undefined;
+  const caseBookingIds = new Set(cases.flatMap((partnerCase) => [partnerCase.sourceBookingId, ...partnerCase.bookingIds].filter(Boolean)));
+  const financialBookings = bookings
+    .filter((booking) => {
+      const payment = getBookingPayment(booking.id);
+      const bookingState = getCanonicalBookingState(booking, payment);
+      return Boolean(payment) || bookingState === "confirmed_unpaid" || bookingState === "confirmed_paid" || bookingState === "completed";
+    })
+    .sort(sortBookingsNewestFirst);
+  const uncasedFinancialBookings = financialBookings.filter((booking) => !caseBookingIds.has(booking.id));
+  const paymentWorkQueue = uncasedFinancialBookings.filter((booking) => {
+    const payment = getBookingPayment(booking.id);
+    const paymentState = payment ? getCanonicalPaymentState(payment) : "not_opened";
+    return paymentRequiresPartnerAction(paymentState) || paymentState === "paid";
+  });
 
   return (
     <section className="space-y-4">
@@ -3158,6 +2743,12 @@ const CasesPaymentsView = ({
         <Metric label="Προμήθεια πλατφόρμας" value={formatEuroCents(completedPlatformFeeCents)} helper="μέχρι σήμερα" />
         <Metric label="Ενεργές υποθέσεις" value={String(cases.filter((item) => !["completed", "archived"].includes(item.status)).length)} helper={`${cases.length} συνολικά`} />
       </div>
+
+      <PaymentWorkQueue
+        bookings={paymentWorkQueue}
+        payments={payments}
+        onSelectAppointments={onSelectAppointments}
+      />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]">
         <section className="partner-panel min-w-0 overflow-hidden p-0">
@@ -3354,128 +2945,89 @@ const CasesPaymentsView = ({
   );
 };
 
-const EarningsView = ({
-  completedRevenueCents,
-  pendingRevenueCents,
-  completedPlatformFeeCents,
+const PaymentWorkQueue = ({
   bookings,
   payments,
+  onSelectAppointments,
 }: {
-  completedRevenueCents: number;
-  pendingRevenueCents: number;
-  completedPlatformFeeCents: number;
   bookings: StoredBooking[];
   payments: StoredPayment[];
+  onSelectAppointments: () => void;
 }) => {
-  const visibleBookings = bookings.filter((booking) => {
-    const payment = payments.find((item) => item.bookingId === booking.id);
-    const bookingState = getCanonicalBookingState(booking);
-    return Boolean(payment) || bookingState === "confirmed_paid" || bookingState === "confirmed_unpaid" || bookingState === "completed";
-  });
-  const paidPayments = payments.filter((payment) => getCanonicalPaymentState(payment) === "paid");
-  const attentionPayments = payments.filter((payment) => {
-    const state = getCanonicalPaymentState(payment);
-    return state === "failed" || state === "refund_requested" || state === "checkout_opened";
-  });
-  const pendingBookings = visibleBookings.filter((booking) => {
-    const payment = payments.find((item) => item.bookingId === booking.id);
-    const paymentState = payment ? getCanonicalPaymentState(payment) : "not_opened";
-    return paymentState === "checkout_opened" || paymentState === "not_opened";
-  });
-  const completedPaymentBookings = visibleBookings.filter((booking) => {
-    const payment = payments.find((item) => item.bookingId === booking.id);
-    return payment ? getCanonicalPaymentState(payment) === "paid" : false;
-  });
+  if (bookings.length === 0) return null;
+
+  const getPaymentForBooking = (bookingId: string) => payments.find((payment) => payment.bookingId === bookingId);
+  const visibleBookings = bookings.slice(0, 4);
+  const attentionCount = bookings.filter((booking) => paymentRequiresPartnerAction(getCanonicalPaymentState(getPaymentForBooking(booking.id)))).length;
 
   return (
-    <section className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="partner-panel p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="partner-kicker">Οικονομική εικόνα</p>
-              <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Έσοδα και εκκαθάριση</h3>
-            </div>
-          </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
-            <Metric label="Καθαρό ποσό" value={formatEuroCents(completedRevenueCents)} helper={`${completedPaymentBookings.length} πληρωμένες συνεδρίες`} />
-            <Metric label="Σε αναμονή" value={formatEuroCents(pendingRevenueCents)} helper={`${pendingBookings.length} κρατήσεις`} />
-            <Metric label="Χρεώσεις πλάνου" value={formatEuroCents(completedPlatformFeeCents)} helper="χρεώσεις πρώτης συνεδρίας" />
-          </div>
+    <section className="partner-panel p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="partner-kicker">Οικονομική συνέχεια χωρίς υπόθεση</p>
+          <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Πληρωμές που χρειάζονται πλαίσιο</h3>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+            Αυτές οι κρατήσεις έχουν οικονομική κίνηση αλλά δεν έχουν μετατραπεί ακόμη σε υπόθεση. Κρατήστε τις μέσα στην καθημερινή ροή μέχρι να κλείσει το επόμενο βήμα.
+          </p>
         </div>
-
-        <aside className="partner-panel p-4">
-          <p className="partner-kicker">Εκκαθάριση</p>
-          <div className="mt-3 grid gap-2">
-            <SignalRow icon={WalletCards} label="Πληρωμένες" value={String(paidPayments.length)} tone="sage" />
-            <SignalRow icon={CircleAlert} label="Θέλουν έλεγχο" value={String(attentionPayments.length)} tone={attentionPayments.length ? "amber" : "neutral"} />
-            <SignalRow icon={Landmark} label="Προς εκκαθάριση" value={formatEuroCents(pendingRevenueCents)} tone={pendingRevenueCents ? "amber" : "sage"} />
-          </div>
-        </aside>
+        <StatusPill tone={attentionCount > 0 ? "amber" : "neutral"}>
+          {attentionCount > 0 ? formatGreekUnitCount(attentionCount, "θέλει ενέργεια", "θέλουν ενέργεια") : "Μόνο παρακολούθηση"}
+        </StatusPill>
       </div>
 
-      <div className="partner-panel p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="partner-kicker">Κινήσεις</p>
-            <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Ανά κράτηση</h3>
-          </div>
-          <StatusPill tone={attentionPayments.length ? "amber" : "sage"}>
-            {attentionPayments.length ? `${attentionPayments.length} εκκρεμότητες` : "Ταμειακή εικόνα καθαρή"}
-          </StatusPill>
-        </div>
+      <div className="mt-3 grid gap-2">
+        {visibleBookings.map((booking) => {
+          const payment = getPaymentForBooking(booking.id);
+          const paymentState = getCanonicalPaymentState(payment);
+          const canRecoverPayment = paymentRequiresPartnerAction(paymentState);
+          const hasPaymentLink = Boolean(canRecoverPayment && payment?.checkoutSessionUrl);
+          const hasClientEmail = Boolean(booking.clientEmail);
 
-        <div className="mt-3 grid gap-2">
-          {visibleBookings.length > 0 ? (
-            visibleBookings.map((booking) => {
-              const payment = payments.find((item) => item.bookingId === booking.id);
-              const feeCents = getPartnerFeeCents(payment);
-              const netCents = getPartnerNetCents(payment, booking);
-              const paymentState = payment ? getCanonicalPaymentState(payment) : "not_opened";
-              return (
-                <div key={booking.id} className="rounded-2xl border border-[hsl(var(--partner-line))] bg-white/70 p-3">
-                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_130px_120px_150px] lg:items-center">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusPill tone={paymentState === "paid" ? "sage" : paymentState === "failed" || paymentState === "refund_requested" ? "danger" : "amber"}>
-                          {partnerPaymentStateLabels[paymentState]}
-                        </StatusPill>
-                        <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{booking.referenceId}</span>
-                      </div>
-                      <p className="mt-2 font-semibold text-[hsl(var(--partner-ink))]">{getDisplayClientName(booking)}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">{booking.consultationType} · {booking.dateLabel} · {booking.time}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Καθαρό</p>
-                      <p className="mt-1 text-lg font-semibold text-[hsl(var(--partner-ink))]">{formatEuroCents(netCents)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Χρέωση</p>
-                      <p className="mt-1 text-sm font-semibold text-[hsl(var(--partner-ink))]">{feeCents > 0 ? `-${formatEuroCents(feeCents)}` : "€0"}</p>
-                    </div>
-                    <div className="text-left lg:text-right">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Επόμενο</p>
-                      <p className="mt-1 text-sm font-semibold text-[hsl(var(--partner-ink))]">
-                        {canSubmitReview(booking)
-                          ? "Έτοιμο για εκταμίευση"
-                          : paymentState === "paid"
-                            ? "Ολοκληρώστε συνεδρία"
-                            : "Αναμονή πληρωμής"}
-                      </p>
-                    </div>
+          return (
+            <div key={booking.id} className="rounded-2xl border border-[hsl(var(--partner-line))] bg-white/70 p-3">
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_140px_auto] xl:items-center">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill tone={getPaymentTone(paymentState)}>{partnerPaymentStateLabels[paymentState]}</StatusPill>
+                    <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{booking.referenceId}</span>
                   </div>
+                  <p className="mt-2 font-semibold text-[hsl(var(--partner-ink))]">{getDisplayClientName(booking)}</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{getPartnerPaymentActionCopy(paymentState, payment)}</p>
                 </div>
-              );
-            })
-          ) : (
-            <EmptyPartnerState
-              icon={CreditCard}
-              title={pendingRevenueCents > 0 ? "Υπάρχει ποσό σε αναμονή χωρίς συνδεδεμένη κράτηση" : "Δεν υπάρχουν οικονομικές κινήσεις"}
-              description={pendingRevenueCents > 0 ? "Η οικονομική σύνοψη δείχνει ποσό σε αναμονή. Χρειάζεται έλεγχος συγχρονισμού πληρωμών." : "Οι πληρωμές θα εμφανίζονται όταν υπάρξουν κρατήσεις."}
-            />
-          )}
-        </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Καθαρό ποσό</p>
+                  <p className="mt-1 text-lg font-semibold text-[hsl(var(--partner-ink))]">{formatEuroCents(getPartnerNetCents(payment, booking))}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 xl:justify-end">
+                  {hasPaymentLink ? (
+                    <Button asChild variant="outline" className={secondaryAppointmentActionClassName}>
+                      <a href={payment?.checkoutSessionUrl} target="_blank" rel="noreferrer">Άνοιγμα πληρωμής</a>
+                    </Button>
+                  ) : null}
+                  {canRecoverPayment && hasClientEmail ? (
+                    <Button asChild variant="outline" className={secondaryAppointmentActionClassName}>
+                      <a href={buildPaymentReminderMailto(booking, payment)}>Email υπενθύμιση</a>
+                    </Button>
+                  ) : null}
+                  <Button type="button" variant="outline" className={secondaryAppointmentActionClassName} onClick={onSelectAppointments}>
+                    Άνοιγμα ραντεβού
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
+
+      {bookings.length > visibleBookings.length ? (
+        <button
+          type="button"
+          className="mt-3 text-xs font-bold text-primary hover:underline"
+          onClick={onSelectAppointments}
+        >
+          Δείτε όλες τις σχετικές κρατήσεις στα Ραντεβού
+        </button>
+      ) : null}
     </section>
   );
 };
@@ -3669,15 +3221,15 @@ const NotificationsView = ({
       <div className="partner-panel p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="partner-kicker">Ασφάλεια και δημοσίευση</p>
-            <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Κατάσταση αλλαγών</h3>
+            <p className="partner-kicker">Δημοσίευση και κατάσταση</p>
+            <h3 className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[hsl(var(--partner-ink))]">Τι ισχύει τώρα</h3>
           </div>
           <ShieldCheck className="h-5 w-5 text-muted-foreground" />
         </div>
         <div className="mt-3 grid gap-2">
-          <SignalRow icon={BadgeCheck} label="Αλλαγές" value={hasUnsavedChanges ? "Πρόχειρες" : "Συγχρονισμένες"} tone={hasUnsavedChanges ? "amber" : "sage"} />
-          <SignalRow icon={SearchCheck} label="Καταχώριση" value={workspace.profile.displayName ? "Ταυτοποιημένη" : "Λείπει όνομα"} tone={workspace.profile.displayName ? "sage" : "danger"} />
-          <SignalRow icon={MailCheck} label="Digest" value={workspace.notifications.weeklyDigest ? "Ενεργό" : "Ανενεργό"} tone={workspace.notifications.weeklyDigest ? "sage" : "neutral"} />
+          <SignalRow icon={BadgeCheck} label="Αλλαγές" value={hasUnsavedChanges ? "Προς αποθήκευση" : "Αποθηκευμένες"} tone={hasUnsavedChanges ? "amber" : "sage"} />
+          <SignalRow icon={SearchCheck} label="Καταχώριση" value={workspace.profile.displayName ? "Έχει δημόσιο όνομα" : "Λείπει δημόσιο όνομα"} tone={workspace.profile.displayName ? "sage" : "danger"} />
+          <SignalRow icon={MailCheck} label="Εβδομαδιαίο email" value={workspace.notifications.weeklyDigest ? "Ενεργό" : "Ανενεργό"} tone={workspace.notifications.weeklyDigest ? "sage" : "neutral"} />
         </div>
       </div>
     </section>
@@ -3695,10 +3247,25 @@ const SectionSaveFooter = ({
   saveState: SaveState;
   hasUnsavedChanges: boolean;
 }) => (
-  <div className="flex flex-col gap-3">
-    <div className="flex justify-end">
+  <div className="sticky bottom-4 z-20 rounded-2xl border border-slate-300 bg-card/95 p-3 shadow-xl shadow-foreground/[0.08] backdrop-blur">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="text-sm font-bold text-foreground">
+          {hasUnsavedChanges ? "Υπάρχουν μη αποθηκευμένες αλλαγές" : "Όλα είναι αποθηκευμένα"}
+        </p>
+        <p className="mt-1 text-xs font-semibold text-muted-foreground">
+          {hasUnsavedChanges
+            ? "Οι αλλαγές επηρεάζουν τη δημόσια καταχώριση, τη διαθεσιμότητα ή τις ειδοποιήσεις."
+            : "Η δημόσια εικόνα και οι κανόνες λειτουργίας είναι ενημερωμένοι."}
+        </p>
+      </div>
       <SaveButton onSave={onSave} saveState={saveState} disabled={!hasUnsavedChanges} />
     </div>
+    {saveState.message ? (
+      <div className="mt-3">
+        <SaveMessage saveState={saveState} />
+      </div>
+    ) : null}
   </div>
 );
 

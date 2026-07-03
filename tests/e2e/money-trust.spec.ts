@@ -111,6 +111,10 @@ const mockBackend = async (page: Page) => {
       return route.fulfill(json({ id: "cs_test_stage4", status: "setup_required", url: "https://checkout.stripe.com/c/pay/cs_test_stage4" }));
     }
 
+    if (url.includes("/functions/v1/check-partner-calendar-availability")) {
+      return route.fulfill(json({ ok: true }));
+    }
+
     if (url.includes("/auth/v1/user")) {
       return route.fulfill(json({ ...demoProfile, app_metadata: {}, user_metadata: demoProfile }));
     }
@@ -125,7 +129,7 @@ const mockBackend = async (page: Page) => {
     }
 
     if (url.includes("/rest/v1/rpc/reserve_booking_slot")) {
-      return route.fulfill(json({ ok: true }));
+      return route.fulfill(json(null));
     }
 
     if (url.includes("/rest/v1/rpc/")) {
@@ -184,12 +188,12 @@ test.describe("money and trust flows", () => {
 
     await page.goto("/account?tab=payments&checkout=success&bookingId=BK-RETURN");
     await expect(page.getByText(/Επιστρέψατε από το Stripe/).first()).toBeVisible();
-    await expect(page.getByText(/backend/).first()).toBeVisible();
+    await expect(page.getByText(/μόλις ολοκληρωθεί η επιβεβαίωση/).first()).toBeVisible();
     await expect(page.getByText(/Άνοιγμα απόδειξης/)).toHaveCount(0);
 
     await page.goto("/booking/maria-papadopoulou?bookingId=BK-MISSING&checkout=success");
     await expect(page.getByText(/Stripe/).first()).toBeVisible();
-    await expect(page.getByText(/webhook|backend/).first()).toBeVisible();
+    await expect(page.getByText(/ασφαλή επιβεβαίωση|επιβεβαίωση/).first()).toBeVisible();
   });
 
   test("partner portal requires server-issued partner session", async ({ page }) => {

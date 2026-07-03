@@ -1828,7 +1828,12 @@ create table if not exists public.funnel_events (
     'review_submitted',
     'lawyer_application_submitted',
     'lawyer_application_approved',
-    'approved_lawyer_first_completed_consultation'
+    'approved_lawyer_first_completed_consultation',
+    'partner_plan_checkout_opened',
+    'partner_subscription_active',
+    'case_created',
+    'case_status_updated',
+    'case_note_created'
   )),
   occurred_at timestamptz not null default now(),
   session_id text not null,

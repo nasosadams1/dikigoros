@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -27,6 +27,7 @@ describe("stage 4 hardening contracts", () => {
   it("keeps production fallbacks behind the shared local/demo runtime guard", () => {
     const runtimeGuards = readRepoFile("src/lib/runtimeGuards.ts");
     const platformRepository = readRepoFile("src/lib/platformRepository.ts");
+    const bookingPage = readRepoFile("src/pages/Booking.tsx");
     const userWorkspace = readRepoFile("src/lib/userWorkspace.ts");
     const partnerWorkspace = readRepoFile("src/lib/partnerWorkspace.ts");
     const operationsRepository = readRepoFile("src/lib/operationsRepository.ts");
@@ -41,6 +42,71 @@ describe("stage 4 hardening contracts", () => {
     expect(partnerWorkspace).toContain('failClosedCriticalPath("Partner');
     expect(operationsRepository).toContain('source: "unavailable"');
     expect(funnelAnalytics).toContain("backend_write_failed");
+    expect(bookingPage).toContain("allowLocalCheckoutReturnRecording");
+    expect(bookingPage).toContain("payment_completed_local_fallback");
+    expect(bookingPage).not.toContain("payment_completed_local_demo");
+    expect(bookingPage).toContain("formatLocalDateIso(dates[selectedDate].dateObject)");
+    expect(bookingPage).not.toContain("dateObject.toISOString().slice(0, 10)");
+  });
+
+  it("does not keep copied auth implementations in the production source tree", () => {
+    expect(existsSync(join(process.cwd(), "src", "components", "auth - Copy"))).toBe(false);
+  });
+
+  it("keeps production bundles split instead of hiding oversized chunk warnings", () => {
+    const viteConfig = readRepoFile("vite.config.ts");
+
+    expect(viteConfig).toContain("manualChunks");
+    expect(viteConfig).toContain("vendor-react");
+    expect(viteConfig).toContain("vendor-supabase");
+    expect(viteConfig).toContain("vendor-ui");
+    expect(viteConfig).toContain("vendor-icons");
+    expect(viteConfig).not.toContain("chunkSizeWarningLimit");
+  });
+
+  it("keeps Vercel deep links routed through the SPA entrypoint", () => {
+    const vercelConfig = readRepoFile("vercel.json");
+    const launchReadiness = readRepoFile("scripts/launch-readiness.mjs");
+
+    expect(vercelConfig).toContain('"source": "/(.*)"');
+    expect(vercelConfig).toContain('"destination": "/index.html"');
+    expect(launchReadiness).toContain("Vercel serves React deep links through the SPA entrypoint");
+    expect(launchReadiness).toContain('"destination": "/index.html"');
+  });
+
+  it("checks current browser origins before launch", () => {
+    const launchReadiness = readRepoFile("scripts/launch-readiness.mjs");
+
+    expect(launchReadiness).toContain("Browser-callable Edge Functions trust the current app origins");
+    expect(launchReadiness).toContain("https://dikigoros.vercel.app");
+    expect(launchReadiness).toContain("http://localhost:8081");
+    expect(launchReadiness).toContain("browserCallableEdgeFunctions.every");
+    expect(launchReadiness).toContain('!source.includes(\'"Access-Control-Allow-Origin": "*"\')');
+  });
+
+  it("does not advertise an unrouted intake workflow as a launch feature", () => {
+    const app = readRepoFile("src/App.tsx");
+    const sitemap = readRepoFile("public/sitemap.xml");
+    const launchReadiness = readRepoFile("scripts/launch-readiness.mjs");
+
+    expect(app).not.toContain('path="/intake"');
+    expect(sitemap).not.toContain("/intake");
+    expect(launchReadiness).not.toContain("intakeRepository");
+    expect(launchReadiness).not.toContain("intake_submitted");
+    expect(launchReadiness).not.toContain("intake_routed");
+  });
+
+  it("keeps public profile slot links tied to the booking step", () => {
+    const lawyerProfile = readRepoFile("src/pages/LawyerProfile.tsx");
+    const bookingPage = readRepoFile("src/pages/Booking.tsx");
+
+    expect(lawyerProfile).toContain("buildBookingLink");
+    expect(lawyerProfile).toContain('params.set("date", formatLocalDateIso(slot.date))');
+    expect(lawyerProfile).toContain('params.set("time", slot.time)');
+    expect(lawyerProfile).toContain('params.set("mode", consultationMode)');
+    expect(bookingPage).toContain("requestedDateIso");
+    expect(bookingPage).toContain("requestedTime");
+    expect(bookingPage).toContain("requestedMode");
   });
 
   it("removes seeded launch operational cases from canonical production setup", () => {
@@ -183,13 +249,23 @@ describe("stage 4 hardening contracts", () => {
     expect(partnerPortal).toContain('chrome?: "partner" | "profile"');
     expect(partnerPortal).not.toContain('label: "Απόδοση αναζήτησης"');
     expect(partnerPortal).toContain('label: "Ραντεβού"');
-    expect(partnerPortal).toContain("Νέα αιτήματα");
-    expect(partnerPortal).toContain("Επιβεβαιωμένα");
-    expect(partnerPortal).toContain("Ακυρωμένα");
+    expect(partnerPortal).toContain("Νέο αίτημα");
+    expect(partnerPortal).toContain("Επιβεβαιωμένο");
+    expect(partnerPortal).toContain("Ακυρωμένο");
     expect(partnerPortal).toContain("Άνοιγμα");
-    expect(partnerPortal).toContain("Επιβεβαίωση");
-    expect(partnerPortal).toContain("Πρόταση νέας ώρας");
-    expect(partnerPortal).toContain("Μήνυμα στον πελάτη");
+    expect(partnerPortal).toContain("Αποδοχή");
+    expect(partnerPortal).toContain("Χρήματα σε έλεγχο");
+    expect(partnerPortal).toContain("Πληρωμή και επόμενο βήμα");
+    expect(partnerPortal).toContain("Πληρωμές που χρειάζονται πλαίσιο");
+    expect(partnerPortal).toContain("paymentRequiresPartnerAction");
+    expect(partnerPortal).toContain("attentionRevenueCents");
+    expect(partnerPortal).toContain("failedReviewRevenueCents");
+    expect(partnerPortal).toContain("formatGreekUnitCount");
+    expect(partnerPortal).toContain("Άνοιγμα πληρωμής");
+    expect(partnerPortal).toContain("Email πρόταση νέας ώρας");
+    expect(partnerPortal).toContain("Email στον πελάτη");
+    expect(partnerPortal).toContain("Email υπενθύμιση πληρωμής");
+    expect(partnerPortal).toContain("UnavailableAppointmentAction");
     expect(partnerPortal).toContain("Πελάτης");
     expect(partnerPortal).toContain("Θέμα");
     expect(partnerPortal).toContain("Περιγραφή");
@@ -231,6 +307,10 @@ describe("stage 4 hardening contracts", () => {
     expect(partnerPortal).not.toContain('section", "profile"');
     expect(partnerPortal).not.toContain("Έλεγχος δημόσιας καταχώρισης");
     expect(partnerPortal).not.toContain("Ουρά ενεργειών");
+    expect(partnerPortal).not.toContain("const PipelineView");
+    expect(partnerPortal).not.toContain("const EarningsView");
+    expect(partnerPortal).not.toContain("fetchPartnerCrmState");
+    expect(partnerPortal).not.toContain("buildPartnerPipelineItems");
     expect(partnerPortal).not.toContain("Προτεινόμενη ενέργεια");
     expect(partnerPortal).not.toContain("Ολοκλήρωση ενέργειας");
     expect(partnerPortal).not.toContain("Δραστηριότητα υπόθεσης");
